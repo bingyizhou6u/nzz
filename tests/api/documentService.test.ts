@@ -637,6 +637,18 @@ describe("DocumentService", () => {
     expect(repo.approveWithPostings).toHaveBeenCalledWith(
       expect.objectContaining({
         documentId: "doc_1",
+        accountEntries: [
+          { accountId: "acct_aed", currencyCode: "AED", amountMinor: -367000, entryDate: "2026-04-25" }
+        ],
+        loanEntries: [
+          {
+            borrowerPersonId: "person_borrower",
+            currencyCode: "AED",
+            amountMinor: 367000,
+            usdtCostMinor: 100000,
+            entryDate: "2026-04-25"
+          }
+        ],
         loanItemCreations: [
           {
             clientLoanItemId: "doc_1:loan:1",
