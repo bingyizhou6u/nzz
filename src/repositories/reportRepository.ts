@@ -157,19 +157,22 @@ export class ReportRepository {
     return all<PendingCostRow>(
       this.db.prepare(`
         SELECT
-          id,
-          document_id,
-          person_id,
-          account_id,
-          currency_code,
-          amount_minor,
-          remaining_amount_minor,
-          expense_date,
-          status,
-          created_at
-        FROM pending_cost_matches
-        WHERE remaining_amount_minor > 0
-        ORDER BY expense_date, created_at
+          pcm.id AS id,
+          pcm.document_id AS document_id,
+          pcm.person_id AS person_id,
+          pcm.account_id AS account_id,
+          pcm.currency_code AS currency_code,
+          pcm.amount_minor AS amount_minor,
+          pcm.remaining_amount_minor AS remaining_amount_minor,
+          pcm.expense_date AS expense_date,
+          pcm.status AS status,
+          pcm.created_at AS created_at
+        FROM pending_cost_matches pcm
+        JOIN documents d ON d.id = pcm.document_id
+        WHERE d.status = 'approved'
+          AND pcm.status IN ('open', 'partial')
+          AND pcm.remaining_amount_minor > 0
+        ORDER BY pcm.expense_date, pcm.created_at
       `)
     );
   }

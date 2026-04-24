@@ -4,20 +4,34 @@ import { route } from "../../src/worker/router";
 import type { Env } from "../../src/worker/env";
 
 function mockEnv(rows: unknown[] = []): Env {
+  return mockEnvWithSql(rows).env;
+}
+
+function mockEnvWithSql(rows: unknown[] = []): { env: Env; sql: string[] } {
+  const sql: string[] = [];
   return {
-    DB: {
-      prepare: () =>
-        ({
-          bind() {
-            return this;
-          },
-          all: async () => ({ success: true, results: rows }),
-          first: async () => null,
-          run: async () => ({ success: true } as D1Result)
-        }) as unknown as D1PreparedStatement
-    } as unknown as D1Database,
-    ASSETS: { fetch: async () => new Response("asset") } as unknown as Fetcher
+    env: {
+      DB: {
+        prepare: (query: string) => {
+          sql.push(query);
+          return {
+            bind() {
+              return this;
+            },
+            all: async () => ({ success: true, results: rows }),
+            first: async () => null,
+            run: async () => ({ success: true } as D1Result)
+          } as unknown as D1PreparedStatement;
+        }
+      } as unknown as D1Database,
+      ASSETS: { fetch: async () => new Response("asset") } as unknown as Fetcher
+    },
+    sql
   };
+}
+
+function normalizeSql(sql: string): string {
+  return sql.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 describe("reports API", () => {
@@ -73,5 +87,19 @@ describe("report routes", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ data: [] });
+  });
+
+  it.each([
+    ["/api/reports/lots", "from lots"],
+    ["/api/reports/lot-movements", "from lot_movements"],
+    ["/api/reports/pending-costs", "from pending_cost_matches"]
+  ])("routes GET %s to the expected report query", async (pathname, expectedFrom) => {
+    const { env, sql } = mockEnvWithSql();
+
+    const response = await route(new Request(`https://ledger.test${pathname}`), env);
+
+    expect(response.status).toBe(200);
+    expect(sql).toHaveLength(1);
+    expect(normalizeSql(sql[0])).toContain(expectedFrom);
   });
 });

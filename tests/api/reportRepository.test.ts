@@ -144,8 +144,11 @@ describe("ReportRepository", () => {
     await expect(repo.pendingCostMatches()).resolves.toEqual(rows);
 
     const normalized = normalizeSql(sql);
-    expect(normalized).toContain("from pending_cost_matches");
-    expect(normalized).toContain("where remaining_amount_minor > 0");
-    expect(normalized).toContain("order by expense_date, created_at");
+    expect(normalized).toContain("from pending_cost_matches pcm");
+    expect(normalized).toContain("join documents d on d.id = pcm.document_id");
+    expect(normalized).toContain("d.status = 'approved'");
+    expect(normalized).toContain("pcm.status in ('open', 'partial')");
+    expect(normalized).toContain("pcm.remaining_amount_minor > 0");
+    expect(normalized).toContain("order by pcm.expense_date, pcm.created_at");
   });
 });
