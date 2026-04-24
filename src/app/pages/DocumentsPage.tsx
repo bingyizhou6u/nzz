@@ -35,8 +35,11 @@ interface DocumentForm {
   merchantId: string;
   categoryId: string;
   accountId: string;
+  counterpartyAccountId: string;
   currencyCode: string;
   amountMajor: string;
+  usdtAmountMajor: string;
+  personId: string;
   borrowerPersonId: string;
 }
 
@@ -128,8 +131,11 @@ function createInitialForm(): DocumentForm {
     merchantId: "",
     categoryId: "",
     accountId: "",
+    counterpartyAccountId: "",
     currencyCode: "AED",
     amountMajor: "",
+    usdtAmountMajor: "",
+    personId: "",
     borrowerPersonId: ""
   };
 }
@@ -155,8 +161,23 @@ export function canApproveDocument(status: string) {
 }
 
 export function buildDocumentPayload(
-  form: DocumentForm & { accountId: string; currencyCode: string; amountMajor: string; borrowerPersonId: string }
+  form: DocumentForm & {
+    accountId: string;
+    counterpartyAccountId: string;
+    currencyCode: string;
+    amountMajor: string;
+    usdtAmountMajor: string;
+    personId: string;
+    borrowerPersonId: string;
+  }
 ) {
+  const line: Record<string, unknown> = {
+    lineType: "main",
+    accountId: form.accountId.trim(),
+    currencyCode: form.currencyCode.trim().toUpperCase(),
+    amountMinor: amountMajorToMinor(form.amountMajor)
+  };
+
   const payload: Record<string, unknown> = {
     documentType: form.documentType,
     actionType: form.actionType,
@@ -164,14 +185,7 @@ export function buildDocumentPayload(
     period: form.period,
     summary: form.summary.trim(),
     createdBy: form.createdBy.trim(),
-    lines: [
-      {
-        lineType: "main",
-        accountId: form.accountId.trim(),
-        currencyCode: form.currencyCode.trim().toUpperCase(),
-        amountMinor: amountMajorToMinor(form.amountMajor)
-      }
-    ]
+    lines: [line]
   };
 
   for (const [key, value] of Object.entries({
@@ -186,7 +200,21 @@ export function buildDocumentPayload(
 
   const borrowerPersonId = form.borrowerPersonId.trim();
   if (borrowerPersonId) {
-    (payload.lines as Array<Record<string, unknown>>)[0].borrowerPersonId = borrowerPersonId;
+    line.borrowerPersonId = borrowerPersonId;
+  }
+
+  const counterpartyAccountId = form.counterpartyAccountId.trim();
+  if (counterpartyAccountId) {
+    line.counterpartyAccountId = counterpartyAccountId;
+  }
+
+  const personId = form.personId.trim();
+  if (personId) {
+    line.personId = personId;
+  }
+
+  if (form.usdtAmountMajor.trim()) {
+    line.usdtAmountMinor = amountMajorToMinor(form.usdtAmountMajor);
   }
 
   return payload;
@@ -529,6 +557,15 @@ export function DocumentsPage() {
           </label>
 
           <label>
+            对方账户ID
+            <input
+              value={form.counterpartyAccountId}
+              onChange={(event) => setForm((current) => ({ ...current, counterpartyAccountId: event.target.value }))}
+              maxLength={80}
+            />
+          </label>
+
+          <label>
             币种代码
             <input
               value={form.currencyCode}
@@ -546,6 +583,25 @@ export function DocumentsPage() {
               required
               inputMode="decimal"
               maxLength={24}
+            />
+          </label>
+
+          <label>
+            USDT成本
+            <input
+              value={form.usdtAmountMajor}
+              onChange={(event) => setForm((current) => ({ ...current, usdtAmountMajor: event.target.value }))}
+              inputMode="decimal"
+              maxLength={24}
+            />
+          </label>
+
+          <label>
+            人员ID
+            <input
+              value={form.personId}
+              onChange={(event) => setForm((current) => ({ ...current, personId: event.target.value }))}
+              maxLength={80}
             />
           </label>
 

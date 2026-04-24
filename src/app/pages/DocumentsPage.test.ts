@@ -53,7 +53,10 @@ describe("document date defaults", () => {
         accountId: "acct_usdt",
         currencyCode: "USDT",
         amountMajor: "100.50",
-        borrowerPersonId: ""
+        borrowerPersonId: "",
+        counterpartyAccountId: "",
+        personId: "",
+        usdtAmountMajor: ""
       })
     ).toEqual({
       documentType: "project_income",
@@ -66,6 +69,90 @@ describe("document date defaults", () => {
       merchantId: "merchant_1",
       categoryId: "cat_income",
       lines: [{ lineType: "main", accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 10050 }]
+    });
+  });
+
+  it("includes counterparty account and USDT cost on exchange lines", () => {
+    expect(
+      buildDocumentPayload({
+        documentType: "exchange",
+        actionType: "normal",
+        businessDate: "2026-04-24",
+        period: "2026-04",
+        originalDocumentId: "",
+        summary: "Exchange",
+        createdBy: "user_1",
+        operatorPersonId: "",
+        projectId: "",
+        merchantId: "",
+        categoryId: "",
+        accountId: "acct_aed",
+        currencyCode: "AED",
+        amountMajor: "367.25",
+        borrowerPersonId: "",
+        counterpartyAccountId: " acct_usdt ",
+        personId: "",
+        usdtAmountMajor: "100.25"
+      })
+    ).toEqual({
+      documentType: "exchange",
+      actionType: "normal",
+      businessDate: "2026-04-24",
+      period: "2026-04",
+      summary: "Exchange",
+      createdBy: "user_1",
+      lines: [
+        {
+          lineType: "main",
+          accountId: "acct_aed",
+          currencyCode: "AED",
+          amountMinor: 36725,
+          counterpartyAccountId: "acct_usdt",
+          usdtAmountMinor: 10025
+        }
+      ]
+    });
+  });
+
+  it("includes person ID and omits blank FIFO line fields on petty cash reimbursements", () => {
+    expect(
+      buildDocumentPayload({
+        documentType: "petty_cash_reimbursement",
+        actionType: "normal",
+        businessDate: "2026-04-24",
+        period: "2026-04",
+        originalDocumentId: "",
+        summary: "Reimbursement",
+        createdBy: "user_1",
+        operatorPersonId: "",
+        projectId: "",
+        merchantId: "",
+        categoryId: "cat_travel",
+        accountId: "acct_cash",
+        currencyCode: "AED",
+        amountMajor: "42",
+        borrowerPersonId: "",
+        counterpartyAccountId: " ",
+        personId: " person_1 ",
+        usdtAmountMajor: " "
+      })
+    ).toEqual({
+      documentType: "petty_cash_reimbursement",
+      actionType: "normal",
+      businessDate: "2026-04-24",
+      period: "2026-04",
+      summary: "Reimbursement",
+      createdBy: "user_1",
+      categoryId: "cat_travel",
+      lines: [
+        {
+          lineType: "main",
+          accountId: "acct_cash",
+          currencyCode: "AED",
+          amountMinor: 4200,
+          personId: "person_1"
+        }
+      ]
     });
   });
 
