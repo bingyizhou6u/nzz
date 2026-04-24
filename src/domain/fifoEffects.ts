@@ -80,7 +80,7 @@ export interface FifoPostingEffects {
   lotMovements: LotMovementEffect[];
   pendingCostCreations: PendingCostCreationEffect[];
   pendingCostUpdates: PendingCostUpdateEffect[];
-  pendingCostApplications?: PendingCostApplicationEffect[];
+  pendingCostApplications: PendingCostApplicationEffect[];
 }
 
 export interface ExchangeLotCreationInput {

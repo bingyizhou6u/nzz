@@ -98,7 +98,8 @@ export function planSafeFifoReversalEffects(input: SafeFifoReversalInput): FifoP
     lotUpdates: [...restoreEffects.lotUpdates, ...closeEffects.lotUpdates],
     lotMovements: restoreEffects.lotMovements,
     pendingCostCreations: [],
-    pendingCostUpdates: []
+    pendingCostUpdates: [],
+    pendingCostApplications: []
   };
 }
 
@@ -132,7 +133,8 @@ function restoreMovementLots(input: {
       movementDate: input.reversalDate
     })),
     pendingCostCreations: [],
-    pendingCostUpdates: []
+    pendingCostUpdates: [],
+    pendingCostApplications: []
   };
 }
 
@@ -199,7 +201,8 @@ function closeCreatedLots(input: {
       movementDate: input.reversalDate
     })),
     pendingCostCreations: [],
-    pendingCostUpdates: []
+    pendingCostUpdates: [],
+    pendingCostApplications: []
   };
 }
 
