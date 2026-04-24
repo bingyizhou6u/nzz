@@ -63,6 +63,7 @@ describe("planSafeFifoReversalEffects", () => {
         }
       ],
       pendingCostCreations: [],
+      pendingCostApplications: [],
       pendingCostUpdates: []
     });
   });
