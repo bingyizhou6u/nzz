@@ -1,3 +1,5 @@
+import type { DocumentType } from "./types";
+
 export interface RawDocumentLine {
   lineType?: unknown;
   accountId?: unknown;
@@ -14,7 +16,7 @@ export interface RawDocumentLine {
 export interface NormalizedDocumentLine {
   lineNo: number;
   lineType: string;
-  accountId: string;
+  accountId: string | null;
   counterpartyAccountId: string | null;
   personId: string | null;
   borrowerPersonId: string | null;
@@ -25,7 +27,11 @@ export interface NormalizedDocumentLine {
   note: string | null;
 }
 
-export function normalizeDocumentLines(lines: unknown): NormalizedDocumentLine[] {
+export interface NormalizeDocumentLinesOptions {
+  documentType?: DocumentType;
+}
+
+export function normalizeDocumentLines(lines: unknown, options: NormalizeDocumentLinesOptions = {}): NormalizedDocumentLine[] {
   if (!Array.isArray(lines) || lines.length === 0) {
     throw new Error("At least one document line is required");
   }
@@ -36,7 +42,8 @@ export function normalizeDocumentLines(lines: unknown): NormalizedDocumentLine[]
     }
 
     const lineType = textOrDefault(line.lineType, "main");
-    const accountId = requiredText(line.accountId, "line accountId");
+    const accountId =
+      options.documentType === "loan_writeoff" ? optionalText(line.accountId) : requiredText(line.accountId, "line accountId");
     const currencyCode = requiredText(line.currencyCode, "line currencyCode").toUpperCase();
     const amountMinor = positiveSafeInteger(line.amountMinor, "line amountMinor");
 

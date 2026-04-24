@@ -109,6 +109,10 @@ export function isOriginalDocumentRequired(actionType: ActionType) {
   return actionType === "correction" || actionType === "reversal";
 }
 
+export function isLineAccountRequired(documentType: DocumentType) {
+  return documentType !== "loan_writeoff";
+}
+
 function getToday() {
   return formatLocalDateInputValue(new Date());
 }
@@ -173,10 +177,12 @@ export function buildDocumentPayload(
 ) {
   const line: Record<string, unknown> = {
     lineType: "main",
-    accountId: form.accountId.trim(),
     currencyCode: form.currencyCode.trim().toUpperCase(),
     amountMinor: amountMajorToMinor(form.amountMajor)
   };
+  if (isLineAccountRequired(form.documentType)) {
+    line.accountId = form.accountId.trim();
+  }
 
   const payload: Record<string, unknown> = {
     documentType: form.documentType,
@@ -551,7 +557,7 @@ export function DocumentsPage() {
             <input
               value={form.accountId}
               onChange={(event) => setForm((current) => ({ ...current, accountId: event.target.value }))}
-              required
+              required={isLineAccountRequired(form.documentType)}
               maxLength={80}
             />
           </label>

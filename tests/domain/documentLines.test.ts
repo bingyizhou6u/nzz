@@ -59,6 +59,28 @@ describe("normalizeDocumentLines", () => {
     ).toThrow("line currencyCode is required");
   });
 
+  it("allows accountless loan writeoff lines", () => {
+    expect(
+      normalizeDocumentLines([{ lineType: "main", currencyCode: "AED", amountMinor: 100, borrowerPersonId: "person_1" }], {
+        documentType: "loan_writeoff"
+      })
+    ).toEqual([
+      {
+        lineNo: 1,
+        lineType: "main",
+        accountId: null,
+        counterpartyAccountId: null,
+        personId: null,
+        borrowerPersonId: "person_1",
+        currencyCode: "AED",
+        amountMinor: 100,
+        usdtAmountMinor: null,
+        exchangeRateText: null,
+        note: null
+      }
+    ]);
+  });
+
   it("defaults missing and blank line types to main", () => {
     expect(
       normalizeDocumentLines([

@@ -103,7 +103,7 @@ export class DocumentService {
       Array.isArray(input.lines) && input.lines.length > 0
         ? await this.documents.createDraftWithLines({
             ...draftInput,
-            lines: normalizeDocumentLines(input.lines)
+            lines: normalizeDocumentLines(input.lines, { documentType: input.documentType })
           })
         : await this.documents.createDraft(draftInput);
 

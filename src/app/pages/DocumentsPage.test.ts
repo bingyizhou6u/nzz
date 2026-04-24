@@ -5,6 +5,7 @@ import {
   canSubmitDocument,
   formatLocalDateInputValue,
   formatLocalMonthInputValue,
+  isLineAccountRequired,
   isOriginalDocumentRequired
 } from "./DocumentsPage";
 
@@ -34,6 +35,11 @@ describe("document date defaults", () => {
     expect(isOriginalDocumentRequired("reversal")).toBe(true);
     expect(isOriginalDocumentRequired("normal")).toBe(false);
     expect(isOriginalDocumentRequired("repost")).toBe(false);
+  });
+
+  it("does not require a line account for loan writeoffs", () => {
+    expect(isLineAccountRequired("loan_writeoff")).toBe(false);
+    expect(isLineAccountRequired("loan_out")).toBe(true);
   });
 
   it("builds a document payload with one line", () => {
@@ -153,6 +159,42 @@ describe("document date defaults", () => {
           personId: "person_1"
         }
       ]
+    });
+  });
+
+  it("omits account ID when building loan writeoff payloads", () => {
+    expect(
+      buildDocumentPayload({
+        documentType: "loan_writeoff",
+        actionType: "normal",
+        businessDate: "2026-04-24",
+        period: "2026-04",
+        originalDocumentId: "doc_loan",
+        summary: "Write off bad loan",
+        createdBy: "user_1",
+        operatorPersonId: "",
+        projectId: "proj_1",
+        merchantId: "",
+        categoryId: "cat_bad_debt",
+        accountId: "acct_should_not_be_sent",
+        currencyCode: "AED",
+        amountMajor: "120",
+        borrowerPersonId: " person_1 ",
+        counterpartyAccountId: "",
+        personId: "",
+        usdtAmountMajor: ""
+      })
+    ).toEqual({
+      documentType: "loan_writeoff",
+      actionType: "normal",
+      businessDate: "2026-04-24",
+      period: "2026-04",
+      originalDocumentId: "doc_loan",
+      summary: "Write off bad loan",
+      createdBy: "user_1",
+      projectId: "proj_1",
+      categoryId: "cat_bad_debt",
+      lines: [{ lineType: "main", currencyCode: "AED", amountMinor: 12000, borrowerPersonId: "person_1" }]
     });
   });
 

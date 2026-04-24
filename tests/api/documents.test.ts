@@ -346,6 +346,36 @@ describe("documents API", () => {
     expect(batchCalled).toBe(false);
   });
 
+  it("creates accountless loan writeoff draft documents", async () => {
+    let lineBindings: unknown[] = [];
+    const response = await createDocument({
+      request: new Request("https://ledger.test/api/documents", {
+        method: "POST",
+        body: JSON.stringify({
+          documentType: "loan_writeoff",
+          businessDate: "2026-04-24",
+          period: "2026-04",
+          originalDocumentId: "doc_loan",
+          summary: "Write off bad loan",
+          createdBy: "user_1",
+          categoryId: "cat_bad_debt",
+          lines: [{ currencyCode: "AED", amountMinor: 10000, borrowerPersonId: "person_1" }]
+        })
+      }),
+      env: mockEnv({
+        onBatch: (statements) => {
+          lineBindings =
+            statements.find((statement) => statement.sql.toLowerCase().includes("insert into document_lines"))?.bindings ?? [];
+        }
+      }),
+      params: {}
+    });
+
+    expect(response.status).toBe(201);
+    expect(lineBindings[4]).toBeNull();
+    expect(lineBindings[8]).toBe("AED");
+  });
+
   it("rejects invalid provided document lines", async () => {
     const response = await createDocument({
       request: new Request("https://ledger.test/api/documents", {
