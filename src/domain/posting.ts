@@ -35,7 +35,10 @@ export function entriesForApprovedDocument(document: PostingDocument): PostingRe
     throw new Error(`Unsupported documentType: ${document.documentType}`);
   }
 
-  if (document.actionType !== "normal" && document.actionType !== "reversal") {
+  if (
+    document.actionType !== "normal" &&
+    (document.actionType !== "reversal" || !supportsReversalPosting(document.documentType))
+  ) {
     throw new Error(`Unsupported actionType for posting: ${document.actionType}`);
   }
 
@@ -113,6 +116,10 @@ function requireOptionalText(value: string | null | undefined, label: string) {
   const trimmed = value?.trim() ?? "";
   if (!trimmed) throw new Error(requiredMessage(label));
   return trimmed;
+}
+
+function supportsReversalPosting(documentType: DocumentType) {
+  return documentType === "project_income" || documentType === "loan_out" || documentType === "loan_repayment";
 }
 
 function requirePositiveSafeInteger(value: number | null | undefined, label: string) {

@@ -124,6 +124,8 @@ export class DocumentService {
       throw new Error(`Period ${approvalPeriod} is locked`);
     }
 
+    guardPendingFifoApprovalEffects(document.document_type);
+
     const lines = await this.documents.getDocumentLines(id);
     const posting = entriesForApprovedDocument({
       id: document.id,
@@ -179,4 +181,10 @@ function nullableText(value: string | null | undefined) {
 
 export function firstBorrower(lines: Array<{ borrower_person_id: string | null }>) {
   return lines.find((line) => line.borrower_person_id)?.borrower_person_id ?? undefined;
+}
+
+function guardPendingFifoApprovalEffects(documentType: DocumentType) {
+  if (documentType === "exchange" || documentType === "petty_cash_issue" || documentType === "petty_cash_reimbursement") {
+    throw new Error(`FIFO approval effects are not implemented for ${documentType}`);
+  }
 }

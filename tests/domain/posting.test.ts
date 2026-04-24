@@ -294,4 +294,63 @@ describe("entriesForApprovedDocument", () => {
       })
     ).toThrow("line usdtAmountMinor is required for exchange");
   });
+
+  it("rejects exchange reversals until FIFO restoration is implemented", () => {
+    expect(() =>
+      entriesForApprovedDocument({
+        id: "doc_fx_reversal",
+        documentType: "exchange",
+        actionType: "reversal",
+        businessDate: "2026-04-24",
+        lines: [
+          {
+            accountId: "acct_aed_reserve",
+            counterpartyAccountId: "acct_usdt_main",
+            currencyCode: "AED",
+            amountMinor: 367000,
+            usdtAmountMinor: 100000
+          }
+        ]
+      })
+    ).toThrow("Unsupported actionType for posting: reversal");
+  });
+
+  it("rejects petty cash issue reversals until FIFO restoration is implemented", () => {
+    expect(() =>
+      entriesForApprovedDocument({
+        id: "doc_issue_reversal",
+        documentType: "petty_cash_issue",
+        actionType: "reversal",
+        businessDate: "2026-04-24",
+        lines: [
+          {
+            accountId: "acct_aed_reserve",
+            counterpartyAccountId: "acct_petty_bob",
+            personId: "person_bob",
+            currencyCode: "AED",
+            amountMinor: 200000
+          }
+        ]
+      })
+    ).toThrow("Unsupported actionType for posting: reversal");
+  });
+
+  it("rejects petty cash reimbursement reversals until FIFO restoration is implemented", () => {
+    expect(() =>
+      entriesForApprovedDocument({
+        id: "doc_reim_reversal",
+        documentType: "petty_cash_reimbursement",
+        actionType: "reversal",
+        businessDate: "2026-04-24",
+        lines: [
+          {
+            accountId: "acct_petty_bob",
+            personId: "person_bob",
+            currencyCode: "AED",
+            amountMinor: 215000
+          }
+        ]
+      })
+    ).toThrow("Unsupported actionType for posting: reversal");
+  });
 });

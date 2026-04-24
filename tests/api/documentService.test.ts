@@ -301,6 +301,18 @@ describe("DocumentService", () => {
     expect(audit.prepareRecordWhen).not.toHaveBeenCalled();
   });
 
+  it("rejects exchange approval until FIFO approval effects are implemented", async () => {
+    const { repo, audit, service } = createMocks({
+      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "exchange" }))
+    });
+
+    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("FIFO approval effects are not implemented for exchange");
+
+    expect(repo.getDocumentLines).not.toHaveBeenCalled();
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
+    expect(audit.prepareRecordWhen).not.toHaveBeenCalled();
+  });
+
   it("uses the first borrower when approving loan documents", async () => {
     const { repo, service } = createMocks({
       getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "loan_out" })),
