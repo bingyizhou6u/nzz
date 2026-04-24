@@ -10,6 +10,14 @@ export async function first<T>(stmt: D1PreparedStatement): Promise<T | null> {
   return (await stmt.first<T>()) ?? null;
 }
 
+export async function run(stmt: D1PreparedStatement): Promise<D1Result> {
+  const result = await stmt.run();
+  if (!result.success) {
+    throw new Error(result.error || "D1 write failed");
+  }
+  return result;
+}
+
 export function nowIso(): string {
   return new Date().toISOString();
 }

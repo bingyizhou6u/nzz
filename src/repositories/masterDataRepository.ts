@@ -1,4 +1,4 @@
-import { all, first, newId, nowIso } from "./db";
+import { all, first, newId, nowIso, run } from "./db";
 
 export interface CurrencyRow {
   code: string;
@@ -27,12 +27,13 @@ export class MasterDataRepository {
 
   async createProject(input: ProjectInput): Promise<{ id: string; code: string; name: string }> {
     const id = newId("proj");
-    await this.db
-      .prepare(
-        "INSERT INTO projects (id, code, name, owner_person_id, status, note, created_at) VALUES (?, ?, ?, ?, 'active', ?, ?)"
-      )
-      .bind(id, input.code, input.name, input.ownerPersonId ?? null, input.note ?? null, nowIso())
-      .run();
+    await run(
+      this.db
+        .prepare(
+          "INSERT INTO projects (id, code, name, owner_person_id, status, note, created_at) VALUES (?, ?, ?, ?, 'active', ?, ?)"
+        )
+        .bind(id, input.code, input.name, input.ownerPersonId ?? null, input.note ?? null, nowIso())
+    );
     return { id, code: input.code, name: input.name };
   }
 }
