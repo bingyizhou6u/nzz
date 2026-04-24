@@ -46,7 +46,9 @@ export function planSafeLoanReversalEffects(input: {
 }
 
 function reverseLoanOut(createdLoanItems: LoanItemSnapshot[], reversalDate: string): LoanPostingEffects {
-  if (createdLoanItems.length === 0) return emptyLoanPostingEffects();
+  if (createdLoanItems.length === 0) {
+    throw new Error("Complex loan reversal requires manual review: loan item snapshots are missing");
+  }
 
   return {
     loanItemCreations: [],
@@ -75,6 +77,10 @@ function reverseLoanReduction(
   affectedLoanItems: LoanItemSnapshot[],
   reversalDate: string
 ): LoanPostingEffects {
+  if (allocations.length === 0) {
+    throw new Error("Complex loan reversal requires manual review: loan allocation snapshots are missing");
+  }
+
   const itemsById = new Map(affectedLoanItems.map((item) => [item.id, item]));
 
   return {

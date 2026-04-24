@@ -187,4 +187,41 @@ describe("loanReversal", () => {
       })
     ).toThrow("Complex loan reversal requires manual review: loan item has been reduced");
   });
+
+  it("rejects loan_out reversal when created loan item snapshots are missing", () => {
+    expect(() =>
+      planSafeLoanReversalEffects({
+        reversalDocumentId: "doc_reversal",
+        originalDocumentId: "doc_loan",
+        originalDocumentType: "loan_out",
+        reversalDate: "2026-04-26",
+        createdLoanItems: [],
+        originalAllocations: [],
+        laterAllocationLoanItemIds: []
+      })
+    ).toThrow("Complex loan reversal requires manual review: loan item snapshots are missing");
+  });
+
+  it("rejects loan repayment reversal when original allocation snapshots are missing", () => {
+    expect(() =>
+      planSafeLoanReversalEffects({
+        reversalDocumentId: "doc_reversal",
+        originalDocumentId: "doc_repay",
+        originalDocumentType: "loan_repayment",
+        reversalDate: "2026-04-26",
+        createdLoanItems: [],
+        originalAllocations: [],
+        affectedLoanItems: [
+          {
+            id: "loan_item_1",
+            originalAmountMinor: 100000,
+            remainingAmountMinor: 60000,
+            originalUsdtCostMinor: 27000,
+            remainingUsdtCostMinor: 16200
+          }
+        ],
+        laterAllocationLoanItemIds: []
+      })
+    ).toThrow("Complex loan reversal requires manual review: loan allocation snapshots are missing");
+  });
 });

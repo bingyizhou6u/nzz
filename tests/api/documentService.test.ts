@@ -1077,6 +1077,15 @@ describe("DocumentService", () => {
       ]),
       listLoanEntriesForDocument: vi.fn(async () => [
         { borrower_person_id: "person_borrower", currency_code: "USDT", amount_minor: 120000, usdt_cost_minor: 120000 }
+      ]),
+      listLoanItemsCreatedByDocument: vi.fn(async () => [
+        {
+          id: "loan_item_original",
+          original_amount_minor: 120000,
+          remaining_amount_minor: 120000,
+          original_usdt_cost_minor: 120000,
+          remaining_usdt_cost_minor: 120000
+        }
       ])
     });
 
@@ -1116,8 +1125,58 @@ describe("DocumentService", () => {
       ],
       lotCreations: [],
       lotUpdates: [],
-      lotMovements: []
+      lotMovements: [],
+      loanItemUpdates: [
+        {
+          loanItemId: "loan_item_original",
+          amountDeltaMinor: -120000,
+          usdtCostDeltaMinor: -120000,
+          expectedRemainingAmountMinor: 120000,
+          expectedRemainingUsdtCostMinor: 120000
+        }
+      ],
+      loanAllocations: [
+        {
+          loanItemId: "loan_item_original",
+          allocationType: "reversal",
+          amountMinor: 120000,
+          usdtCostMinor: 120000,
+          allocationDate: "2026-04-25"
+        }
+      ]
     }));
+  });
+
+  it("rejects loan reversals when loan item snapshots are missing", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi
+        .fn()
+        .mockResolvedValueOnce(documentRow({
+          id: "doc_rev",
+          status: "pending",
+          action_type: "reversal",
+          document_type: "loan_out",
+          original_document_id: "doc_original",
+          business_date: "2026-04-25"
+        }))
+        .mockResolvedValueOnce(documentRow({
+          id: "doc_original",
+          status: "approved",
+          document_type: "loan_out",
+          action_type: "normal",
+          business_date: "2026-04-20"
+        })),
+      listLoanEntriesForDocument: vi.fn(async () => [
+        { borrower_person_id: "person_borrower", currency_code: "USDT", amount_minor: 120000, usdt_cost_minor: 120000 }
+      ]),
+      listLoanItemsCreatedByDocument: vi.fn(async () => [])
+    });
+
+    await expect(service.approve("doc_rev", "reviewer_1")).rejects.toThrow(
+      "Complex loan reversal requires manual review: loan item snapshots are missing"
+    );
+
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
   });
 
   it("approves safe exchange reversals with fifo restoration effects", async () => {
