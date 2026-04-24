@@ -1,4 +1,11 @@
-import { createDocument } from "../api/documents";
+import {
+  approveDocument,
+  createDocument,
+  getDocument,
+  listDocuments,
+  rejectDocument,
+  submitDocument
+} from "../api/documents";
 import { createProject, listCurrencies } from "../api/masterData";
 import { accountBalances, loanBalances, pettyCashPendingMatches } from "../api/reports";
 import type { Env, Handler } from "./env";
@@ -7,22 +14,56 @@ interface Route {
   method: string;
   pathname: string;
   handler: Handler;
+  regex: RegExp;
+  paramNames: string[];
+}
+
+function defineRoute(method: string, pathname: string, handler: Handler): Route {
+  const { regex, paramNames } = compilePath(pathname);
+  return { method, pathname, handler, regex, paramNames };
+}
+
+function compilePath(pathname: string) {
+  const paramNames: string[] = [];
+  const pattern = pathname
+    .split("/")
+    .map((segment) => {
+      if (segment.startsWith(":")) {
+        paramNames.push(segment.slice(1));
+        return "([^/]+)";
+      }
+      return segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    })
+    .join("/");
+
+  return { regex: new RegExp(`^${pattern}$`), paramNames };
 }
 
 const routes: Route[] = [
-  { method: "GET", pathname: "/api/currencies", handler: listCurrencies },
-  { method: "GET", pathname: "/api/reports/account-balances", handler: accountBalances },
-  { method: "GET", pathname: "/api/reports/petty-cash-pending", handler: pettyCashPendingMatches },
-  { method: "GET", pathname: "/api/reports/loan-balances", handler: loanBalances },
-  { method: "POST", pathname: "/api/documents", handler: createDocument },
-  { method: "POST", pathname: "/api/projects", handler: createProject }
+  defineRoute("GET", "/api/currencies", listCurrencies),
+  defineRoute("GET", "/api/reports/account-balances", accountBalances),
+  defineRoute("GET", "/api/reports/petty-cash-pending", pettyCashPendingMatches),
+  defineRoute("GET", "/api/reports/loan-balances", loanBalances),
+  defineRoute("GET", "/api/documents", listDocuments),
+  defineRoute("GET", "/api/documents/:id", getDocument),
+  defineRoute("POST", "/api/documents", createDocument),
+  defineRoute("POST", "/api/documents/:id/submit", submitDocument),
+  defineRoute("POST", "/api/documents/:id/approve", approveDocument),
+  defineRoute("POST", "/api/documents/:id/reject", rejectDocument),
+  defineRoute("POST", "/api/projects", createProject)
 ];
 
 export async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  const match = routes.find((candidate) => candidate.method === request.method && candidate.pathname === url.pathname);
+  const match = routes
+    .filter((candidate) => candidate.method === request.method)
+    .map((candidate) => ({ candidate, result: candidate.regex.exec(url.pathname) }))
+    .find((candidate) => candidate.result);
   if (!match) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
-  return match.handler({ request, env, params: {} });
+  const params = Object.fromEntries(
+    match.candidate.paramNames.map((name, index) => [name, decodeURIComponent(match.result?.[index + 1] ?? "")])
+  );
+  return match.candidate.handler({ request, env, params });
 }

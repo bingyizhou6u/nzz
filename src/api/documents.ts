@@ -1,5 +1,8 @@
+import { AuditLogRepository } from "../repositories/auditLogRepository";
 import { DocumentRepository } from "../repositories/documentRepository";
+import type { RawDocumentLine } from "../domain/documentLines";
 import type { ActionType, DocumentType } from "../domain/types";
+import { DocumentService } from "../services/documentService";
 import type { Handler } from "../worker/env";
 
 const requiredDocumentFieldsResponse = () =>
@@ -16,6 +19,10 @@ const invalidBusinessDateOrPeriodResponse = () =>
 
 const requiredOriginalDocumentResponse = () =>
   Response.json({ error: "originalDocumentId is required for correction or reversal" }, { status: 400 });
+
+const badRequestResponse = (error: string) => Response.json({ error }, { status: 400 });
+
+const notFoundResponse = () => Response.json({ error: "Document not found" }, { status: 404 });
 
 const documentTypes = new Set<DocumentType>([
   "project_income",
@@ -59,15 +66,60 @@ function isValidPeriod(value: string) {
   return month >= 1 && month <= 12;
 }
 
-export const createDocument: Handler = async ({ request, env }) => {
-  let body: unknown;
+function documentRepository(env: { DB: D1Database }) {
+  return new DocumentRepository(env.DB);
+}
+
+function documentService(env: { DB: D1Database }) {
+  return new DocumentService(documentRepository(env), new AuditLogRepository(env.DB));
+}
+
+async function readObjectBody(request: Request): Promise<Record<string, unknown> | null> {
   try {
-    body = await request.json();
+    const body = await request.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+    return body as Record<string, unknown>;
   } catch {
-    return requiredDocumentFieldsResponse();
+    return null;
+  }
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Request failed";
+}
+
+function requiredString(body: Record<string, unknown>, key: string) {
+  const value = body[key];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${key} is required`);
+  }
+  return value.trim();
+}
+
+export const listDocuments: Handler = async ({ env }) => {
+  const documents = await documentRepository(env).listDocuments();
+  return Response.json({ data: documents });
+};
+
+export const getDocument: Handler = async ({ env, params }) => {
+  const id = params.id;
+  if (!id) {
+    return badRequestResponse("id is required");
   }
 
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
+  const repo = documentRepository(env);
+  const document = await repo.getDocument(id);
+  if (!document) {
+    return notFoundResponse();
+  }
+
+  const lines = await repo.getDocumentLines(id);
+  return Response.json({ data: { document, lines } });
+};
+
+export const createDocument: Handler = async ({ request, env }) => {
+  const body = await readObjectBody(request);
+  if (!body) {
     return requiredDocumentFieldsResponse();
   }
 
@@ -82,20 +134,9 @@ export const createDocument: Handler = async ({ request, env }) => {
     categoryId,
     originalDocumentId,
     summary,
-    createdBy
-  } = body as {
-    documentType?: unknown;
-    actionType?: unknown;
-    businessDate?: unknown;
-    period?: unknown;
-    operatorPersonId?: unknown;
-    projectId?: unknown;
-    merchantId?: unknown;
-    categoryId?: unknown;
-    originalDocumentId?: unknown;
-    summary?: unknown;
-    createdBy?: unknown;
-  };
+    createdBy,
+    lines
+  } = body;
 
   if (
     typeof documentType !== "string" ||
@@ -137,19 +178,77 @@ export const createDocument: Handler = async ({ request, env }) => {
     return requiredOriginalDocumentResponse();
   }
 
-  const repo = new DocumentRepository(env.DB);
-  const document = await repo.createDraft({
-    documentType,
-    actionType: normalizedActionType,
-    businessDate: normalizedBusinessDate,
-    period: normalizedPeriod,
-    operatorPersonId: typeof operatorPersonId === "string" ? operatorPersonId : null,
-    projectId: typeof projectId === "string" ? projectId : null,
-    merchantId: typeof merchantId === "string" ? merchantId : null,
-    categoryId: typeof categoryId === "string" ? categoryId : null,
-    originalDocumentId: normalizedOriginalDocumentId,
-    summary,
-    createdBy
-  });
-  return Response.json({ data: document }, { status: 201 });
+  try {
+    const document = await documentService(env).createDraft({
+      documentType,
+      actionType: normalizedActionType,
+      businessDate: normalizedBusinessDate,
+      period: normalizedPeriod,
+      operatorPersonId: typeof operatorPersonId === "string" ? operatorPersonId : null,
+      projectId: typeof projectId === "string" ? projectId : null,
+      merchantId: typeof merchantId === "string" ? merchantId : null,
+      categoryId: typeof categoryId === "string" ? categoryId : null,
+      originalDocumentId: normalizedOriginalDocumentId,
+      summary,
+      createdBy,
+      lines: lines as RawDocumentLine[]
+    });
+    return Response.json({ data: document }, { status: 201 });
+  } catch (error) {
+    return badRequestResponse(errorMessage(error));
+  }
+};
+
+export const submitDocument: Handler = async ({ request, env, params }) => {
+  if (!params.id) {
+    return badRequestResponse("id is required");
+  }
+
+  const body = await readObjectBody(request);
+  if (!body) {
+    return badRequestResponse("actor is required");
+  }
+
+  try {
+    await documentService(env).submit(params.id, requiredString(body, "actor"));
+    return Response.json({ data: { id: params.id, status: "pending" } });
+  } catch (error) {
+    return badRequestResponse(errorMessage(error));
+  }
+};
+
+export const approveDocument: Handler = async ({ request, env, params }) => {
+  if (!params.id) {
+    return badRequestResponse("id is required");
+  }
+
+  const body = await readObjectBody(request);
+  if (!body) {
+    return badRequestResponse("reviewer is required");
+  }
+
+  try {
+    await documentService(env).approve(params.id, requiredString(body, "reviewer"));
+    return Response.json({ data: { id: params.id, status: "approved" } });
+  } catch (error) {
+    return badRequestResponse(errorMessage(error));
+  }
+};
+
+export const rejectDocument: Handler = async ({ request, env, params }) => {
+  if (!params.id) {
+    return badRequestResponse("id is required");
+  }
+
+  const body = await readObjectBody(request);
+  if (!body) {
+    return badRequestResponse("actor is required");
+  }
+
+  try {
+    await documentService(env).reject(params.id, requiredString(body, "actor"), requiredString(body, "reason"));
+    return Response.json({ data: { id: params.id, status: "rejected" } });
+  } catch (error) {
+    return badRequestResponse(errorMessage(error));
+  }
 };
