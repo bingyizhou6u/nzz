@@ -56,28 +56,58 @@ export class AuditLogRepository {
     return serialized;
   }
 
-  private validateSnapshot(value: unknown, seen: WeakSet<object>) {
+  private validateSnapshot(value: unknown, path: WeakSet<object>) {
+    if (value === null || typeof value === "string" || typeof value === "boolean") return;
+
+    if (typeof value === "number") {
+      if (Number.isFinite(value)) return;
+      throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
+    }
+
     if (value === undefined || typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") {
       throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
     }
 
-    if (value === null || typeof value !== "object") return;
-
-    if (seen.has(value)) {
+    if (typeof value !== "object") {
       throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
     }
-    seen.add(value);
 
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        this.validateSnapshot(item, seen);
-      }
-    } else {
-      for (const item of Object.values(value)) {
-        this.validateSnapshot(item, seen);
-      }
+    if (path.has(value)) {
+      throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
     }
 
-    seen.delete(value);
+    const prototype = Object.getPrototypeOf(value);
+    if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
+      throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
+    }
+
+    if (typeof (value as { toJSON?: unknown }).toJSON !== "undefined" || Object.getOwnPropertySymbols(value).length > 0) {
+      throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
+    }
+
+    path.add(value);
+    if (Array.isArray(value)) {
+      for (const key of Object.getOwnPropertyNames(value)) {
+        if (key !== "length" && !this.isArrayIndex(key)) {
+          throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
+        }
+      }
+      for (const item of value) {
+        this.validateSnapshot(item, path);
+      }
+    } else {
+      for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value))) {
+        if (!descriptor.enumerable || !("value" in descriptor)) {
+          throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
+        }
+        this.validateSnapshot(descriptor.value, path);
+      }
+    }
+    path.delete(value);
+  }
+
+  private isArrayIndex(key: string): boolean {
+    const index = Number(key);
+    return Number.isInteger(index) && index >= 0 && index < 2 ** 32 - 1 && String(index) === key;
   }
 }
