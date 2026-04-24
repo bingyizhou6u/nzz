@@ -17,12 +17,20 @@ import {
   planLoanReductionEffects,
   totalLoanAllocationUsdtCost
 } from "../domain/loanEffects";
+import { planSafeLoanReversalEffects } from "../domain/loanReversal";
 import { entriesForApprovedDocument } from "../domain/posting";
 import { entriesForReversalDocument } from "../domain/reversalPosting";
 import type { Lot } from "../domain/types";
 import type { ActionType, DocumentType } from "../domain/types";
 import type { AuditLogRepository } from "../repositories/auditLogRepository";
-import type { DocumentDetailRow, DocumentLineRow, DocumentRepository, LotRow, PendingCostMatchRow } from "../repositories/documentRepository";
+import type {
+  DocumentDetailRow,
+  DocumentLineRow,
+  DocumentRepository,
+  LoanItemReversalRow,
+  LotRow,
+  PendingCostMatchRow
+} from "../repositories/documentRepository";
 
 export interface CreateDraftRequest {
   documentType: DocumentType;
@@ -61,6 +69,10 @@ type DocumentWorkflowRepository = Pick<
   | "listPendingCostMatchesForDocument"
   | "listLotsByIds"
   | "listLaterMovementLotIds"
+  | "listLoanItemsCreatedByDocument"
+  | "listLoanAllocationsForDocument"
+  | "listLoanItemsByIds"
+  | "listLaterLoanAllocationItemIds"
   | "approveWithPostings"
 >;
 
@@ -250,6 +262,7 @@ export class DocumentService {
     });
 
     const fifoEffects = await this.planFifoReversalEffects(document.id, original, document.business_date);
+    const loanEffects = await this.planLoanReversalEffects(document.id, original, document.business_date);
     const auditLogStatement = this.auditLogs.prepareRecordWhen(
       {
         actor: reviewer,
@@ -289,6 +302,9 @@ export class DocumentService {
       lotMovements: fifoEffects.lotMovements,
       pendingCostCreations: fifoEffects.pendingCostCreations,
       pendingCostUpdates: fifoEffects.pendingCostUpdates,
+      loanItemCreations: loanEffects.loanItemCreations,
+      loanItemUpdates: loanEffects.loanItemUpdates,
+      loanAllocations: loanEffects.loanAllocations,
       auditLogStatement
     });
   }
@@ -343,6 +359,40 @@ export class DocumentService {
         remainingAmountMinor: pendingCost.remaining_amount_minor
       })),
       laterMovementLotIds: laterMovementLotIds.map((row) => row.lot_id)
+    });
+  }
+
+  private async planLoanReversalEffects(reversalDocumentId: string, original: DocumentDetailRow, reversalDate: string) {
+    if (!isLoanDocumentType(original.document_type)) {
+      return emptyLoanPostingEffects();
+    }
+
+    const [createdLoanItems, originalAllocations] = await Promise.all([
+      this.documents.listLoanItemsCreatedByDocument(original.id),
+      this.documents.listLoanAllocationsForDocument(original.id)
+    ]);
+    const allocationLoanItemIds = originalAllocations.map((allocation) => allocation.loan_item_id);
+    const createdLoanItemIds = createdLoanItems.map((item) => item.id);
+    const loanItemIds = uniqueText([...allocationLoanItemIds, ...createdLoanItemIds]);
+    const [affectedLoanItems, laterAllocationLoanItemIds] = await Promise.all([
+      this.documents.listLoanItemsByIds(loanItemIds),
+      this.documents.listLaterLoanAllocationItemIds({ loanItemIds, originalDocumentId: original.id })
+    ]);
+
+    return planSafeLoanReversalEffects({
+      reversalDocumentId,
+      originalDocumentId: original.id,
+      originalDocumentType: original.document_type,
+      reversalDate,
+      createdLoanItems: createdLoanItems.map(mapLoanItemReversalRow),
+      affectedLoanItems: affectedLoanItems.map(mapLoanItemReversalRow),
+      originalAllocations: originalAllocations.map((allocation) => ({
+        loanItemId: allocation.loan_item_id,
+        allocationType: allocation.allocation_type,
+        amountMinor: allocation.amount_minor,
+        usdtCostMinor: allocation.usdt_cost_minor
+      })),
+      laterAllocationLoanItemIds: laterAllocationLoanItemIds.map((row) => row.loan_item_id)
     });
   }
 
@@ -522,7 +572,7 @@ export function firstBorrower(lines: Array<{ borrower_person_id: string | null }
 }
 
 function borrowerForLoanDocument(documentType: DocumentType, lines: DocumentLineRow[]) {
-  if (documentType !== "loan_out" && documentType !== "loan_repayment" && documentType !== "loan_writeoff") return undefined;
+  if (!isLoanDocumentType(documentType)) return undefined;
   const borrowers = lines.map((line) => line.borrower_person_id?.trim() ?? "");
   if (borrowers.some((borrower) => !borrower)) throw new Error(`borrowerPersonId is required for ${documentType}`);
   const uniqueBorrowers = uniqueText(borrowers);
@@ -571,6 +621,10 @@ function isSingleLineFifoDocumentType(documentType: DocumentType) {
   );
 }
 
+function isLoanDocumentType(documentType: DocumentType) {
+  return documentType === "loan_out" || documentType === "loan_repayment" || documentType === "loan_writeoff";
+}
+
 function requireFirstLine(lines: DocumentLineRow[], documentType: DocumentType): DocumentLineRow {
   const line = lines[0];
   if (!line) {
@@ -613,6 +667,16 @@ function mapPendingCostMatchRow(row: PendingCostMatchRow) {
     remainingAmountMinor: row.remaining_amount_minor,
     expenseDate: row.expense_date,
     createdAt: row.created_at
+  };
+}
+
+function mapLoanItemReversalRow(row: LoanItemReversalRow) {
+  return {
+    id: row.id,
+    originalAmountMinor: row.original_amount_minor,
+    remainingAmountMinor: row.remaining_amount_minor,
+    originalUsdtCostMinor: row.original_usdt_cost_minor,
+    remainingUsdtCostMinor: row.remaining_usdt_cost_minor
   };
 }
 

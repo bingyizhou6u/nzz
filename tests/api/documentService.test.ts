@@ -16,6 +16,10 @@ type AtomicDocumentRepoMock = DocumentRepoMock & {
   listPendingCostMatchesForDocument: ReturnType<typeof vi.fn>;
   listLotsByIds: ReturnType<typeof vi.fn>;
   listLaterMovementLotIds: ReturnType<typeof vi.fn>;
+  listLoanItemsCreatedByDocument: ReturnType<typeof vi.fn>;
+  listLoanAllocationsForDocument: ReturnType<typeof vi.fn>;
+  listLoanItemsByIds: ReturnType<typeof vi.fn>;
+  listLaterLoanAllocationItemIds: ReturnType<typeof vi.fn>;
   approveWithPostings: ReturnType<typeof vi.fn>;
 };
 type AtomicAuditRepoMock = AuditRepoMock & {
@@ -108,6 +112,10 @@ function createMocks(overrides: Partial<AtomicDocumentRepoMock> = {}) {
     listPendingCostMatchesForDocument: vi.fn(async () => []),
     listLotsByIds: vi.fn(async () => []),
     listLaterMovementLotIds: vi.fn(async () => []),
+    listLoanItemsCreatedByDocument: vi.fn(async () => []),
+    listLoanAllocationsForDocument: vi.fn(async () => []),
+    listLoanItemsByIds: vi.fn(async () => []),
+    listLaterLoanAllocationItemIds: vi.fn(async () => []),
     approveWithPostings: vi.fn(async () => undefined),
     ...overrides
   } satisfies AtomicDocumentRepoMock;
@@ -1183,6 +1191,130 @@ describe("DocumentService", () => {
         expect.objectContaining({ lotId: "lot_fx", movementType: "fifo_reversal" })
       ]
     }));
+  });
+
+  it("approves safe loan_out reversals with loan item restoration effects", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi
+        .fn()
+        .mockResolvedValueOnce(documentRow({
+          id: "doc_rev",
+          status: "pending",
+          action_type: "reversal",
+          document_type: "loan_out",
+          original_document_id: "doc_loan",
+          business_date: "2026-04-26"
+        }))
+        .mockResolvedValueOnce(documentRow({
+          id: "doc_loan",
+          status: "approved",
+          document_type: "loan_out",
+          action_type: "normal",
+          business_date: "2026-04-25"
+        })),
+      listAccountEntriesForDocument: vi.fn(async () => [
+        { account_id: "acct_aed_cash", currency_code: "AED", amount_minor: -100000 }
+      ]),
+      listLoanEntriesForDocument: vi.fn(async () => [
+        { borrower_person_id: "person_borrower", currency_code: "AED", amount_minor: 100000, usdt_cost_minor: 27000 }
+      ]),
+      listLoanItemsCreatedByDocument: vi.fn(async () => [
+        {
+          id: "loan_item_1",
+          original_amount_minor: 100000,
+          remaining_amount_minor: 100000,
+          original_usdt_cost_minor: 27000,
+          remaining_usdt_cost_minor: 27000
+        }
+      ]),
+      listLoanItemsByIds: vi.fn(async () => [
+        {
+          id: "loan_item_1",
+          original_amount_minor: 100000,
+          remaining_amount_minor: 100000,
+          original_usdt_cost_minor: 27000,
+          remaining_usdt_cost_minor: 27000
+        }
+      ])
+    });
+
+    await service.approve("doc_rev", "reviewer_1");
+
+    expect(repo.listLoanItemsCreatedByDocument).toHaveBeenCalledWith("doc_loan");
+    expect(repo.listLoanAllocationsForDocument).toHaveBeenCalledWith("doc_loan");
+    expect(repo.listLoanItemsByIds).toHaveBeenCalledWith(["loan_item_1"]);
+    expect(repo.listLaterLoanAllocationItemIds).toHaveBeenCalledWith({
+      loanItemIds: ["loan_item_1"],
+      originalDocumentId: "doc_loan"
+    });
+    expect(repo.approveWithPostings).toHaveBeenCalledWith(expect.objectContaining({
+      loanItemUpdates: [
+        {
+          loanItemId: "loan_item_1",
+          amountDeltaMinor: -100000,
+          usdtCostDeltaMinor: -27000,
+          expectedRemainingAmountMinor: 100000,
+          expectedRemainingUsdtCostMinor: 27000
+        }
+      ],
+      loanAllocations: [
+        {
+          loanItemId: "loan_item_1",
+          allocationType: "reversal",
+          amountMinor: 100000,
+          usdtCostMinor: 27000,
+          allocationDate: "2026-04-26"
+        }
+      ]
+    }));
+  });
+
+  it("rejects loan reversals when later loan allocations exist", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi
+        .fn()
+        .mockResolvedValueOnce(documentRow({
+          id: "doc_rev",
+          status: "pending",
+          action_type: "reversal",
+          document_type: "loan_repayment",
+          original_document_id: "doc_repay",
+          business_date: "2026-04-26"
+        }))
+        .mockResolvedValueOnce(documentRow({
+          id: "doc_repay",
+          status: "approved",
+          document_type: "loan_repayment",
+          action_type: "normal"
+        })),
+      listLoanEntriesForDocument: vi.fn(async () => [
+        { borrower_person_id: "person_borrower", currency_code: "AED", amount_minor: -40000, usdt_cost_minor: -10800 }
+      ]),
+      listLoanAllocationsForDocument: vi.fn(async () => [
+        {
+          loan_item_id: "loan_item_1",
+          allocation_type: "repayment",
+          amount_minor: 40000,
+          usdt_cost_minor: 10800,
+          created_at: "2026-04-25T10:00:00.000Z"
+        }
+      ]),
+      listLoanItemsByIds: vi.fn(async () => [
+        {
+          id: "loan_item_1",
+          original_amount_minor: 100000,
+          remaining_amount_minor: 60000,
+          original_usdt_cost_minor: 27000,
+          remaining_usdt_cost_minor: 16200
+        }
+      ]),
+      listLaterLoanAllocationItemIds: vi.fn(async () => [{ loan_item_id: "loan_item_1" }])
+    });
+
+    await expect(service.approve("doc_rev", "reviewer_1")).rejects.toThrow(
+      "Complex loan reversal requires manual review: affected loan items have later allocations"
+    );
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
   });
 
   it("rejects fifo reversals when later lot movements exist", async () => {

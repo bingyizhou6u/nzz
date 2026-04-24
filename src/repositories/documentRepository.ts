@@ -124,6 +124,22 @@ export interface LoanAllocationRow {
   created_at: string;
 }
 
+export interface LoanItemReversalRow {
+  id: string;
+  original_amount_minor: number;
+  remaining_amount_minor: number;
+  original_usdt_cost_minor: number;
+  remaining_usdt_cost_minor: number;
+}
+
+export interface LoanAllocationReversalRow {
+  loan_item_id: string;
+  allocation_type: string;
+  amount_minor: number;
+  usdt_cost_minor: number;
+  created_at: string;
+}
+
 export interface AccountEntryReversalRow {
   account_id: string;
   currency_code: string;
@@ -380,6 +396,75 @@ export class DocumentRepository {
           ORDER BY created_at, id
         `)
         .bind(documentId)
+    );
+  }
+
+  listLoanItemsCreatedByDocument(documentId: string): Promise<LoanItemReversalRow[]> {
+    return all<LoanItemReversalRow>(
+      this.db
+        .prepare(`
+          SELECT
+            id, original_amount_minor, remaining_amount_minor,
+            original_usdt_cost_minor, remaining_usdt_cost_minor
+          FROM loan_items
+          WHERE source_document_id = ?
+          ORDER BY created_at, id
+        `)
+        .bind(documentId)
+    );
+  }
+
+  listLoanAllocationsForDocument(documentId: string): Promise<LoanAllocationReversalRow[]> {
+    return all<LoanAllocationReversalRow>(
+      this.db
+        .prepare(`
+          SELECT loan_item_id, allocation_type, amount_minor, usdt_cost_minor, created_at
+          FROM loan_allocations
+          WHERE document_id = ?
+          ORDER BY created_at, id
+        `)
+        .bind(documentId)
+    );
+  }
+
+  listLoanItemsByIds(ids: string[]): Promise<LoanItemReversalRow[]> {
+    if (ids.length === 0) return Promise.resolve([]);
+    const placeholders = ids.map(() => "?").join(", ");
+    return all<LoanItemReversalRow>(
+      this.db
+        .prepare(`
+          SELECT
+            id, original_amount_minor, remaining_amount_minor,
+            original_usdt_cost_minor, remaining_usdt_cost_minor
+          FROM loan_items
+          WHERE id IN (${placeholders})
+          ORDER BY created_at, id
+        `)
+        .bind(...ids)
+    );
+  }
+
+  listLaterLoanAllocationItemIds(input: {
+    loanItemIds: string[];
+    originalDocumentId: string;
+  }): Promise<Array<{ loan_item_id: string }>> {
+    if (input.loanItemIds.length === 0) return Promise.resolve([]);
+    const placeholders = input.loanItemIds.map(() => "?").join(", ");
+    return all<{ loan_item_id: string }>(
+      this.db
+        .prepare(`
+          SELECT DISTINCT loan_item_id
+          FROM loan_allocations
+          WHERE loan_item_id IN (${placeholders})
+            AND document_id <> ?
+            AND created_at >= (
+              SELECT COALESCE(MAX(created_at), '')
+              FROM loan_allocations
+              WHERE document_id = ?
+            )
+          ORDER BY loan_item_id
+        `)
+        .bind(...input.loanItemIds, input.originalDocumentId, input.originalDocumentId)
     );
   }
 

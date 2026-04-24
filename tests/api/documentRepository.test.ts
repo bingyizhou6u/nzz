@@ -1459,4 +1459,37 @@ describe("DocumentRepository", () => {
       ["lot_a", "lot_b", "doc_original", "doc_original"]
     ]);
   });
+
+  it("lists loan item snapshots and allocations for reversal safety checks", async () => {
+    const sqlStatements: string[] = [];
+    const bindCalls: unknown[][] = [];
+    const repo = new DocumentRepository(
+      mockDb({ allResults: [], onSql: (sql) => sqlStatements.push(sql), onBind: (values) => bindCalls.push(values) })
+    );
+
+    await repo.listLoanItemsCreatedByDocument("doc_original");
+    await repo.listLoanAllocationsForDocument("doc_original");
+    await repo.listLoanItemsByIds(["loan_item_a", "loan_item_b"]);
+    await repo.listLaterLoanAllocationItemIds({
+      loanItemIds: ["loan_item_a", "loan_item_b"],
+      originalDocumentId: "doc_original"
+    });
+
+    const normalizedSql = sqlStatements.join(" ").replace(/\s+/g, " ").toLowerCase();
+    expect(normalizedSql).toContain("from loan_items");
+    expect(normalizedSql).toContain("source_document_id = ?");
+    expect(normalizedSql).toContain("from loan_allocations");
+    expect(normalizedSql).toContain("where document_id = ?");
+    expect(normalizedSql).toContain("where id in (?, ?)");
+    expect(normalizedSql).toContain("select distinct loan_item_id");
+    expect(normalizedSql).toContain("document_id <> ?");
+    expect(normalizedSql).toContain("created_at >= (");
+    expect(normalizedSql).toContain("select coalesce(max(created_at), '') from loan_allocations where document_id = ?");
+    expect(bindCalls).toEqual([
+      ["doc_original"],
+      ["doc_original"],
+      ["loan_item_a", "loan_item_b"],
+      ["loan_item_a", "loan_item_b", "doc_original", "doc_original"]
+    ]);
+  });
 });
