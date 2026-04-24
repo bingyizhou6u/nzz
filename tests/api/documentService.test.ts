@@ -8,6 +8,7 @@ type AtomicDocumentRepoMock = DocumentRepoMock & {
   createDraft: ReturnType<typeof vi.fn>;
   listOpenLotsForAccount: ReturnType<typeof vi.fn>;
   listOpenPendingCostMatches: ReturnType<typeof vi.fn>;
+  listOpenLoanItems: ReturnType<typeof vi.fn>;
   listAccountEntriesForDocument: ReturnType<typeof vi.fn>;
   listLoanEntriesForDocument: ReturnType<typeof vi.fn>;
   listLotMovementsForDocument: ReturnType<typeof vi.fn>;
@@ -99,6 +100,7 @@ function createMocks(overrides: Partial<AtomicDocumentRepoMock> = {}) {
     insertLoanEntries: vi.fn(async () => undefined),
     listOpenLotsForAccount: vi.fn(async () => []),
     listOpenPendingCostMatches: vi.fn(async () => []),
+    listOpenLoanItems: vi.fn(async () => []),
     listAccountEntriesForDocument: vi.fn(async () => []),
     listLoanEntriesForDocument: vi.fn(async () => []),
     listLotMovementsForDocument: vi.fn(async () => []),
@@ -286,6 +288,9 @@ describe("DocumentService", () => {
       lotMovements: [],
       pendingCostCreations: [],
       pendingCostUpdates: [],
+      loanItemCreations: [],
+      loanItemUpdates: [],
+      loanAllocations: [],
       auditLogStatement: { statement: "audit" }
     });
     expect(repo.insertAccountEntries).not.toHaveBeenCalled();
@@ -605,7 +610,204 @@ describe("DocumentService", () => {
     expect(audit.prepareRecordWhen).not.toHaveBeenCalled();
   });
 
-  it("uses the first borrower when approving loan documents", async () => {
+  it("creates loan items when approving loan out", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi.fn(async () =>
+        documentRow({
+          status: "pending",
+          document_type: "loan_out",
+          business_date: "2026-04-25"
+        })
+      ),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({
+          id: "line_1",
+          account_id: "acct_aed",
+          borrower_person_id: "person_borrower",
+          currency_code: "AED",
+          amount_minor: 367000,
+          usdt_amount_minor: 100000
+        })
+      ])
+    });
+
+    await service.approve("doc_1", "reviewer_1");
+
+    expect(repo.listOpenLoanItems).not.toHaveBeenCalled();
+    expect(repo.approveWithPostings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: "doc_1",
+        loanItemCreations: [
+          {
+            clientLoanItemId: "doc_1:loan:1",
+            sourceDocumentId: "doc_1",
+            sourceLineId: "line_1",
+            borrowerPersonId: "person_borrower",
+            currencyCode: "AED",
+            originalAmountMinor: 367000,
+            remainingAmountMinor: 367000,
+            originalUsdtCostMinor: 100000,
+            remainingUsdtCostMinor: 100000,
+            loanDate: "2026-04-25"
+          }
+        ],
+        loanItemUpdates: [],
+        loanAllocations: []
+      })
+    );
+  });
+
+  it("allocates loan repayment to open loan items", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi.fn(async () =>
+        documentRow({
+          id: "doc_repay",
+          status: "pending",
+          document_type: "loan_repayment",
+          business_date: "2026-04-25",
+          original_document_id: "doc_loan"
+        })
+      ),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({
+          account_id: "acct_aed",
+          borrower_person_id: "person_borrower",
+          currency_code: "AED",
+          amount_minor: 100000,
+          usdt_amount_minor: null
+        })
+      ]),
+      listOpenLoanItems: vi.fn(async () => [
+        {
+          id: "loan_item_1",
+          source_document_id: "doc_loan",
+          borrower_person_id: "person_borrower",
+          currency_code: "AED",
+          remaining_amount_minor: 100000,
+          remaining_usdt_cost_minor: 27000,
+          loan_date: "2026-04-01",
+          created_at: "2026-04-01T10:00:00.000Z"
+        }
+      ])
+    });
+
+    await service.approve("doc_repay", "reviewer_1");
+
+    expect(repo.listOpenLoanItems).toHaveBeenCalledWith({
+      borrowerPersonId: "person_borrower",
+      currencyCode: "AED",
+      targetSourceDocumentId: "doc_loan"
+    });
+    expect(repo.approveWithPostings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: "doc_repay",
+        accountEntries: [{ accountId: "acct_aed", currencyCode: "AED", amountMinor: 100000, entryDate: "2026-04-25" }],
+        loanEntries: [
+          {
+            borrowerPersonId: "person_borrower",
+            currencyCode: "AED",
+            amountMinor: -100000,
+            usdtCostMinor: -27000,
+            entryDate: "2026-04-25"
+          }
+        ],
+        loanItemUpdates: [
+          {
+            loanItemId: "loan_item_1",
+            amountDeltaMinor: -100000,
+            usdtCostDeltaMinor: -27000,
+            expectedRemainingAmountMinor: 100000,
+            expectedRemainingUsdtCostMinor: 27000
+          }
+        ],
+        loanAllocations: [
+          {
+            loanItemId: "loan_item_1",
+            allocationType: "repayment",
+            amountMinor: 100000,
+            usdtCostMinor: 27000,
+            allocationDate: "2026-04-25"
+          }
+        ]
+      })
+    );
+  });
+
+  it("approves loan writeoff with loan allocation effects and no account entries", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi.fn(async () =>
+        documentRow({
+          id: "doc_writeoff",
+          status: "pending",
+          document_type: "loan_writeoff",
+          business_date: "2026-04-25",
+          category_id: "cat_bad_debt"
+        })
+      ),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({
+          account_id: null,
+          borrower_person_id: "person_borrower",
+          currency_code: "AED",
+          amount_minor: 25000,
+          usdt_amount_minor: null
+        })
+      ]),
+      listOpenLoanItems: vi.fn(async () => [
+        {
+          id: "loan_item_1",
+          source_document_id: "doc_loan",
+          borrower_person_id: "person_borrower",
+          currency_code: "AED",
+          remaining_amount_minor: 100000,
+          remaining_usdt_cost_minor: 27000,
+          loan_date: "2026-04-01",
+          created_at: "2026-04-01T10:00:00.000Z"
+        }
+      ])
+    });
+
+    await service.approve("doc_writeoff", "reviewer_1");
+
+    expect(repo.approveWithPostings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: "doc_writeoff",
+        accountEntries: [],
+        loanEntries: [
+          {
+            borrowerPersonId: "person_borrower",
+            currencyCode: "AED",
+            amountMinor: -25000,
+            usdtCostMinor: -6750,
+            entryDate: "2026-04-25"
+          }
+        ],
+        loanAllocations: [
+          expect.objectContaining({
+            loanItemId: "loan_item_1",
+            allocationType: "writeoff",
+            amountMinor: 25000,
+            usdtCostMinor: 6750
+          })
+        ]
+      })
+    );
+  });
+
+  it("requires category for loan writeoff approval", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "loan_writeoff", category_id: null })),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({ account_id: null, borrower_person_id: "person_borrower", currency_code: "AED", amount_minor: 10000 })
+      ])
+    });
+
+    await expect(service.approve("doc_writeoff", "reviewer_1")).rejects.toThrow("categoryId is required for loan_writeoff");
+
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
+  });
+
+  it("rejects loan approvals when any line is missing borrower", async () => {
     const { repo, service } = createMocks({
       getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "loan_out" })),
       getDocumentLines: vi.fn(async () => [
@@ -614,27 +816,23 @@ describe("DocumentService", () => {
       ])
     });
 
-    await service.approve("doc_1", "reviewer_1");
+    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("borrowerPersonId is required for loan_out");
 
-    expect(repo.approveWithPostings).toHaveBeenCalledWith({
-      documentId: "doc_1",
-      period: "2026-04",
-      reviewer: "reviewer_1",
-      accountEntries: [
-        { accountId: "acct_usdt", currencyCode: "USDT", amountMinor: -5000, entryDate: "2026-04-24" },
-        { accountId: "acct_usdt", currencyCode: "USDT", amountMinor: -7000, entryDate: "2026-04-24" }
-      ],
-      loanEntries: [
-        { borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 5000, usdtCostMinor: 5000, entryDate: "2026-04-24" },
-        { borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 7000, usdtCostMinor: 7000, entryDate: "2026-04-24" }
-      ],
-      lotCreations: [],
-      lotUpdates: [],
-      lotMovements: [],
-      pendingCostCreations: [],
-      pendingCostUpdates: [],
-      auditLogStatement: { statement: "audit" }
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
+  });
+
+  it("rejects loan approvals with mixed borrowers", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "loan_out" })),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({ borrower_person_id: "person_1", amount_minor: 5000, usdt_amount_minor: 5000 }),
+        lineRow({ id: "line_2", line_no: 2, borrower_person_id: "person_2", amount_minor: 7000, usdt_amount_minor: 7000 })
+      ])
     });
+
+    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("loan_out requires one borrower");
+
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
   });
 
   it("approves non-USDT account transfers with FIFO effects", async () => {

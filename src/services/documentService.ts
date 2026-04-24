@@ -11,6 +11,12 @@ import {
 } from "../domain/fifoEffects";
 import { planSafeFifoReversalEffects } from "../domain/fifoReversal";
 import { assertDocumentTransition, periodFromDate } from "../domain/documentWorkflow";
+import {
+  emptyLoanPostingEffects,
+  planLoanOutEffects,
+  planLoanReductionEffects,
+  totalLoanAllocationUsdtCost
+} from "../domain/loanEffects";
 import { entriesForApprovedDocument } from "../domain/posting";
 import { entriesForReversalDocument } from "../domain/reversalPosting";
 import type { Lot } from "../domain/types";
@@ -46,6 +52,7 @@ type DocumentWorkflowRepository = Pick<
   | "insertAccountEntries"
   | "insertLoanEntries"
   | "listOpenLotsForAccount"
+  | "listOpenLoanItems"
   | "listOpenPendingCostMatches"
   | "listAccountEntriesForDocument"
   | "listLoanEntriesForDocument"
@@ -152,12 +159,13 @@ export class DocumentService {
 
     const lines = await this.documents.getDocumentLines(id);
     assertSingleLineFifoApproval(document.document_type, lines);
+    const borrowerPersonId = borrowerForLoanDocument(document.document_type, lines);
     const posting = entriesForApprovedDocument({
       id: document.id,
       documentType: document.document_type,
       actionType: document.action_type,
       businessDate: document.business_date,
-      borrowerPersonId: firstBorrower(lines),
+      borrowerPersonId,
       lines: lines.map((line) => ({
         accountId: line.account_id ?? "",
         counterpartyAccountId: line.counterparty_account_id,
@@ -168,6 +176,12 @@ export class DocumentService {
       }))
     });
     const fifoEffects = await this.planFifoPostingEffects(document.document_type, document.id, document.business_date, lines);
+    const loanEffects = await this.planLoanPostingEffects(document, lines, borrowerPersonId);
+    const loanEntries = attachLoanAllocationCost(
+      document.document_type,
+      posting.loanEntries,
+      totalLoanAllocationUsdtCost(loanEffects)
+    );
     const auditLogStatement = this.auditLogs.prepareRecordWhen(
       {
         actor: reviewer,
@@ -188,12 +202,15 @@ export class DocumentService {
       period: approvalPeriod,
       reviewer,
       accountEntries: posting.accountEntries,
-      loanEntries: posting.loanEntries,
+      loanEntries,
       lotCreations: fifoEffects.lotCreations,
       lotUpdates: fifoEffects.lotUpdates,
       lotMovements: fifoEffects.lotMovements,
       pendingCostCreations: fifoEffects.pendingCostCreations,
       pendingCostUpdates: fifoEffects.pendingCostUpdates,
+      loanItemCreations: loanEffects.loanItemCreations,
+      loanItemUpdates: loanEffects.loanItemUpdates,
+      loanAllocations: loanEffects.loanAllocations,
       auditLogStatement
     });
   }
@@ -436,6 +453,62 @@ export class DocumentService {
 
     return emptyFifoPostingEffects();
   }
+
+  private async planLoanPostingEffects(
+    document: DocumentDetailRow,
+    lines: DocumentLineRow[],
+    borrowerPersonId: string | undefined
+  ) {
+    if (!borrowerPersonId) return emptyLoanPostingEffects();
+
+    if (document.document_type === "loan_out") {
+      return planLoanOutEffects({
+        documentId: document.id,
+        borrowerPersonId,
+        loanDate: document.business_date,
+        lines: lines.map((line) => ({
+          lineId: line.id,
+          currencyCode: line.currency_code,
+          amountMinor: line.amount_minor,
+          usdtCostMinor: line.usdt_amount_minor
+        }))
+      });
+    }
+
+    if (document.document_type === "loan_repayment" || document.document_type === "loan_writeoff") {
+      assertSingleLineLoanReduction(document.document_type, lines);
+      requireWriteoffCategory(document);
+      const line = requireFirstLine(lines, document.document_type);
+      const currencyCode = requireLineText(line.currency_code, "line currencyCode", document.document_type);
+      const openLoanItems = await this.documents.listOpenLoanItems({
+        borrowerPersonId,
+        currencyCode,
+        targetSourceDocumentId: document.original_document_id
+      });
+
+      return planLoanReductionEffects({
+        documentId: document.id,
+        borrowerPersonId,
+        currencyCode,
+        amountMinor: requirePositiveSafeInteger(line.amount_minor, "line amountMinor", document.document_type),
+        reductionDate: document.business_date,
+        allocationType: document.document_type === "loan_repayment" ? "repayment" : "writeoff",
+        targetSourceDocumentId: document.original_document_id,
+        openLoanItems: openLoanItems.map((item) => ({
+          id: item.id,
+          sourceDocumentId: item.source_document_id,
+          borrowerPersonId: item.borrower_person_id,
+          currencyCode: item.currency_code,
+          remainingAmountMinor: item.remaining_amount_minor,
+          remainingUsdtCostMinor: item.remaining_usdt_cost_minor,
+          loanDate: item.loan_date,
+          createdAt: item.created_at
+        }))
+      });
+    }
+
+    return emptyLoanPostingEffects();
+  }
 }
 
 function nullableText(value: string | null | undefined) {
@@ -446,6 +519,39 @@ function nullableText(value: string | null | undefined) {
 
 export function firstBorrower(lines: Array<{ borrower_person_id: string | null }>) {
   return lines.find((line) => line.borrower_person_id)?.borrower_person_id ?? undefined;
+}
+
+function borrowerForLoanDocument(documentType: DocumentType, lines: DocumentLineRow[]) {
+  if (documentType !== "loan_out" && documentType !== "loan_repayment" && documentType !== "loan_writeoff") return undefined;
+  const borrowers = lines.map((line) => line.borrower_person_id?.trim() ?? "");
+  if (borrowers.some((borrower) => !borrower)) throw new Error(`borrowerPersonId is required for ${documentType}`);
+  const uniqueBorrowers = uniqueText(borrowers);
+  if (uniqueBorrowers.length > 1) throw new Error(`${documentType} requires one borrower`);
+  return uniqueBorrowers[0];
+}
+
+function assertSingleLineLoanReduction(documentType: DocumentType, lines: DocumentLineRow[]) {
+  if (documentType !== "loan_repayment" && documentType !== "loan_writeoff") return;
+  if (lines.length !== 1) {
+    throw new Error(`${documentType} requires exactly one line`);
+  }
+}
+
+function requireWriteoffCategory(document: DocumentDetailRow) {
+  if (document.document_type === "loan_writeoff" && !document.category_id?.trim()) {
+    throw new Error("categoryId is required for loan_writeoff");
+  }
+}
+
+function attachLoanAllocationCost(
+  documentType: DocumentType,
+  loanEntries: Array<{ borrowerPersonId: string; currencyCode: string; amountMinor: number; usdtCostMinor: number | null; entryDate: string }>,
+  allocatedUsdtCostMinor: number
+) {
+  if (documentType !== "loan_repayment" && documentType !== "loan_writeoff") return loanEntries;
+  if (loanEntries.length !== 1) throw new Error(`${documentType} requires exactly one loan entry`);
+  const sign = loanEntries[0].amountMinor < 0 ? -1 : 1;
+  return [{ ...loanEntries[0], usdtCostMinor: sign * allocatedUsdtCostMinor }];
 }
 
 function assertSingleLineFifoApproval(documentType: DocumentType, lines: DocumentLineRow[]) {
