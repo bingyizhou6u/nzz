@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .wrangler/
+.worktrees/
 .env
 .env.*
 !.env.example
