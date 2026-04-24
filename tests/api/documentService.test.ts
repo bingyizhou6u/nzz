@@ -790,7 +790,7 @@ describe("DocumentService", () => {
         { account_id: "acct_usdt_main", currency_code: "USDT", amount_minor: -120000 }
       ]),
       listLoanEntriesForDocument: vi.fn(async () => [
-        { borrower_person_id: "person_borrower", currency_code: "USDT", amount_minor: 120000 }
+        { borrower_person_id: "person_borrower", currency_code: "USDT", amount_minor: 120000, usdt_cost_minor: 120000 }
       ])
     });
 
@@ -824,7 +824,7 @@ describe("DocumentService", () => {
           borrowerPersonId: "person_borrower",
           currencyCode: "USDT",
           amountMinor: -120000,
-          usdtCostMinor: null,
+          usdtCostMinor: -120000,
           entryDate: "2026-04-25"
         }
       ],

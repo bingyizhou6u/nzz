@@ -227,7 +227,8 @@ export class DocumentService {
       originalLoanEntries: originalLoanEntries.map((entry) => ({
         borrowerPersonId: entry.borrower_person_id,
         currencyCode: entry.currency_code,
-        amountMinor: entry.amount_minor
+        amountMinor: entry.amount_minor,
+        usdtCostMinor: entry.usdt_cost_minor
       }))
     });
 

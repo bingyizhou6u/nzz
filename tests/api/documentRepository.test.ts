@@ -301,7 +301,15 @@ describe("DocumentRepository", () => {
       reviewer: "reviewer_1",
       reviewedAt: "2026-04-24T11:00:00.000Z",
       accountEntries: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 10000, entryDate: "2026-04-24" }],
-      loanEntries: [{ borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 10000, entryDate: "2026-04-24" }],
+      loanEntries: [
+        {
+          borrowerPersonId: "person_1",
+          currencyCode: "USDT",
+          amountMinor: 10000,
+          usdtCostMinor: 10000,
+          entryDate: "2026-04-24"
+        }
+      ],
       auditLogStatement
     });
 
@@ -329,6 +337,7 @@ describe("DocumentRepository", () => {
       "doc_1",
       "person_1",
       "USDT",
+      10000,
       10000,
       "2026-04-24",
       expect.any(String),
@@ -1356,8 +1365,8 @@ describe("DocumentRepository", () => {
     const repo = new DocumentRepository(mockDb({ onBatch: (statements) => batchCalls.push(statements) }));
 
     await repo.insertLoanEntries("doc_1", [
-      { borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 10000, entryDate: "2026-04-24" },
-      { borrowerPersonId: "person_2", currencyCode: "USD", amountMinor: -10000, entryDate: "2026-04-24" }
+      { borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 10000, usdtCostMinor: 10000, entryDate: "2026-04-24" },
+      { borrowerPersonId: "person_2", currencyCode: "USD", amountMinor: -10000, usdtCostMinor: null, entryDate: "2026-04-24" }
     ]);
 
     expect(batchCalls).toHaveLength(1);
@@ -1369,6 +1378,7 @@ describe("DocumentRepository", () => {
       "person_1",
       "USDT",
       10000,
+      10000,
       "2026-04-24",
       expect.any(String)
     ]);
@@ -1378,6 +1388,7 @@ describe("DocumentRepository", () => {
       "person_2",
       "USD",
       -10000,
+      null,
       "2026-04-24",
       expect.any(String)
     ]);
@@ -1399,13 +1410,14 @@ describe("DocumentRepository", () => {
   it("lists loan entries by document for reversal posting", async () => {
     let sql = "";
     let boundValues: unknown[] = [];
-    const row = { borrower_person_id: "person_1", currency_code: "USDT", amount_minor: 10000 };
+    const row = { borrower_person_id: "person_1", currency_code: "USDT", amount_minor: 10000, usdt_cost_minor: 10000 };
     const repo = new DocumentRepository(
       mockDb({ allResults: [row], onSql: (value) => (sql = value), onBind: (values) => (boundValues = values) })
     );
 
     await expect(repo.listLoanEntriesForDocument("doc_original")).resolves.toEqual([row]);
     expect(sql.replace(/\s+/g, " ").toLowerCase()).toContain("from loan_entries");
+    expect(sql.replace(/\s+/g, " ").toLowerCase()).toContain("usdt_cost_minor");
     expect(boundValues).toEqual(["doc_original"]);
   });
 

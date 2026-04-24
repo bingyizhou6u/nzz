@@ -33,7 +33,7 @@ export interface ApproveDocumentWithPostingsInput {
   period: string;
   reviewer: string;
   accountEntries: Array<{ accountId: string; currencyCode: string; amountMinor: number; entryDate: string }>;
-  loanEntries: Array<{ borrowerPersonId: string; currencyCode: string; amountMinor: number; entryDate: string }>;
+  loanEntries: LoanEntryInput[];
   lotCreations?: LotCreationEffect[];
   lotUpdates?: LotUpdateEffect[];
   lotMovements?: LotMovementEffect[];
@@ -134,6 +134,15 @@ export interface LoanEntryReversalRow {
   borrower_person_id: string;
   currency_code: string;
   amount_minor: number;
+  usdt_cost_minor: number | null;
+}
+
+export interface LoanEntryInput {
+  borrowerPersonId: string;
+  currencyCode: string;
+  amountMinor: number;
+  usdtCostMinor: number | null;
+  entryDate: string;
 }
 
 export interface LotMovementReversalRow {
@@ -365,7 +374,7 @@ export class DocumentRepository {
     return all<LoanEntryReversalRow>(
       this.db
         .prepare(`
-          SELECT borrower_person_id, currency_code, amount_minor
+          SELECT borrower_person_id, currency_code, amount_minor, usdt_cost_minor
           FROM loan_entries
           WHERE document_id = ?
           ORDER BY created_at, id
@@ -475,16 +484,28 @@ export class DocumentRepository {
 
   async insertLoanEntries(
     documentId: string,
-    entries: Array<{ borrowerPersonId: string; currencyCode: string; amountMinor: number; entryDate: string }>
+    entries: LoanEntryInput[]
   ) {
     await this.runBatch(
       entries.map((entry) =>
         this.db
           .prepare(
-            `INSERT INTO loan_entries (id, document_id, borrower_person_id, currency_code, amount_minor, entry_date, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`
+            `INSERT INTO loan_entries (
+               id, document_id, borrower_person_id, currency_code,
+               amount_minor, usdt_cost_minor, entry_date, created_at
+             )
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
           )
-          .bind(newId("loan_entry"), documentId, entry.borrowerPersonId, entry.currencyCode, entry.amountMinor, entry.entryDate, nowIso())
+          .bind(
+            newId("loan_entry"),
+            documentId,
+            entry.borrowerPersonId,
+            entry.currencyCode,
+            entry.amountMinor,
+            entry.usdtCostMinor,
+            entry.entryDate,
+            nowIso()
+          )
       )
     );
   }
@@ -671,13 +692,16 @@ export class DocumentRepository {
   private prepareConditionalLoanEntry(
     documentId: string,
     period: string,
-    entry: { borrowerPersonId: string; currencyCode: string; amountMinor: number; entryDate: string },
+    entry: LoanEntryInput,
     reversalOriginalDocumentId: string | null = null
   ): D1PreparedStatement {
     return this.db
       .prepare(
-        `INSERT INTO loan_entries (id, document_id, borrower_person_id, currency_code, amount_minor, entry_date, created_at)
-         SELECT ?, ?, ?, ?, ?, ?, ?
+        `INSERT INTO loan_entries (
+           id, document_id, borrower_person_id, currency_code,
+           amount_minor, usdt_cost_minor, entry_date, created_at
+         )
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?
          WHERE ${this.approvalGuardSql(reversalOriginalDocumentId)}`
       )
       .bind(
@@ -686,6 +710,7 @@ export class DocumentRepository {
         entry.borrowerPersonId,
         entry.currencyCode,
         entry.amountMinor,
+        entry.usdtCostMinor,
         entry.entryDate,
         nowIso(),
         ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId)
