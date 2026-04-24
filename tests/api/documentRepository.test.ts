@@ -864,10 +864,38 @@ describe("DocumentRepository", () => {
     const loanItemUpdateStatement = batchCalls[0].find((statement) =>
       statement.sql.replace(/\s+/g, " ").toLowerCase().includes("update loan_items")
     );
+    const loanItemConflictGuardStatement = batchCalls[0].find((statement) =>
+      String(statement.bindings[0]).startsWith("loan_item_conflict_guard_")
+    );
     const loanAllocationStatement = batchCalls[0].find((statement) =>
       statement.sql.replace(/\s+/g, " ").toLowerCase().includes("insert into loan_allocations")
     );
 
+    expect(loanItemConflictGuardStatement).toBeDefined();
+    expect(loanItemConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("insert into account_entries");
+    expect(loanItemConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain(
+      "not exists ( select 1 from loan_items"
+    );
+    expect(loanItemConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("remaining_amount_minor = ?");
+    expect(loanItemConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain(
+      "remaining_usdt_cost_minor = ?"
+    );
+    expect(loanItemConflictGuardStatement?.bindings).toEqual([
+      expect.stringMatching(/^loan_item_conflict_guard_/),
+      "doc_repay",
+      "USDT",
+      expect.any(String),
+      expect.any(String),
+      "doc_repay",
+      "2026-04",
+      "doc_original",
+      "doc_repay",
+      "loan_item_1",
+      10000,
+      2700,
+      -10000,
+      -2700
+    ]);
     expect(loanItemUpdateStatement).toBeDefined();
     expect(loanItemUpdateStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("remaining_amount_minor = ?");
     expect(loanItemUpdateStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("remaining_usdt_cost_minor = ?");
@@ -886,6 +914,9 @@ describe("DocumentRepository", () => {
       "doc_original",
       "doc_repay"
     ]);
+    expect(batchCalls[0].indexOf(loanItemConflictGuardStatement as CapturedStatement)).toBeLessThan(
+      batchCalls[0].indexOf(loanItemUpdateStatement as CapturedStatement)
+    );
     expect(loanAllocationStatement).toBeDefined();
     expect(loanAllocationStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("where exists");
     expect(loanAllocationStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("original_document_id = ?");
@@ -992,6 +1023,105 @@ describe("DocumentRepository", () => {
     expect(normalizedSql).toContain("source_document_id = ?");
     expect(normalizedSql).toContain("order by loan_date, created_at, id");
     expect(boundValues).toEqual(["person_borrower", "AED", "doc_loan"]);
+  });
+
+  it("rejects approval inside the batch when the loan item conflict guard fails", async () => {
+    const repo = new DocumentRepository(
+      mockDb({
+        batchResults: [
+          { success: false, error: "NOT NULL constraint failed: account_entries.account_id" } as unknown as D1Result,
+          { success: true } as D1Result,
+          { success: true } as D1Result,
+          { success: true, meta: { changes: 1 } } as unknown as D1Result
+        ]
+      })
+    );
+
+    await expect(
+      repo.approveWithPostings({
+        documentId: "doc_repay",
+        period: "2026-04",
+        reviewer: "reviewer_1",
+        accountEntries: [],
+        loanEntries: [],
+        loanItemUpdates: [
+          {
+            loanItemId: "loan_item_1",
+            amountDeltaMinor: -10000,
+            usdtCostDeltaMinor: -2700,
+            expectedRemainingAmountMinor: 10000,
+            expectedRemainingUsdtCostMinor: 2700
+          }
+        ],
+        auditLogStatement: {} as D1PreparedStatement
+      })
+    ).rejects.toThrow("Loan item balance changed before approval could be posted");
+  });
+
+  it("surfaces generic D1 errors from the loan item conflict guard", async () => {
+    const repo = new DocumentRepository(
+      mockDb({
+        batchResults: [
+          { success: false, error: "D1_ERROR: no such table: loan_items" } as unknown as D1Result,
+          { success: true } as D1Result,
+          { success: true } as D1Result,
+          { success: true, meta: { changes: 1 } } as unknown as D1Result
+        ]
+      })
+    );
+
+    await expect(
+      repo.approveWithPostings({
+        documentId: "doc_repay",
+        period: "2026-04",
+        reviewer: "reviewer_1",
+        accountEntries: [],
+        loanEntries: [],
+        loanItemUpdates: [
+          {
+            loanItemId: "loan_item_1",
+            amountDeltaMinor: -10000,
+            usdtCostDeltaMinor: -2700,
+            expectedRemainingAmountMinor: 10000,
+            expectedRemainingUsdtCostMinor: 2700
+          }
+        ],
+        auditLogStatement: {} as D1PreparedStatement
+      })
+    ).rejects.toThrow("D1_ERROR: no such table: loan_items");
+  });
+
+  it("rejects approval when a loan item update no longer matches the available balance", async () => {
+    const repo = new DocumentRepository(
+      mockDb({
+        batchResults: [
+          { success: true } as D1Result,
+          { success: true, meta: { changes: 0 } } as unknown as D1Result,
+          { success: true } as D1Result,
+          { success: true, meta: { changes: 1 } } as unknown as D1Result
+        ]
+      })
+    );
+
+    await expect(
+      repo.approveWithPostings({
+        documentId: "doc_repay",
+        period: "2026-04",
+        reviewer: "reviewer_1",
+        accountEntries: [],
+        loanEntries: [],
+        loanItemUpdates: [
+          {
+            loanItemId: "loan_item_1",
+            amountDeltaMinor: -10000,
+            usdtCostDeltaMinor: -2700,
+            expectedRemainingAmountMinor: 10000,
+            expectedRemainingUsdtCostMinor: 2700
+          }
+        ],
+        auditLogStatement: {} as D1PreparedStatement
+      })
+    ).rejects.toThrow("Loan item balance changed before approval could be posted");
   });
 
   it("rejects approval inside the batch when the lot conflict guard fails", async () => {

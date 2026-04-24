@@ -171,6 +171,7 @@ type ApprovalStatementRole =
   | "lot_update"
   | "pending_cost_conflict_guard"
   | "pending_cost_update"
+  | "loan_item_conflict_guard"
   | "loan_item_update"
   | "approval";
 
@@ -524,6 +525,10 @@ export class DocumentRepository {
     }
     for (const loanItemUpdate of input.loanItemUpdates ?? []) {
       addStatement(
+        this.prepareLoanItemConflictGuard(input.documentId, input.period, loanItemUpdate, reversalOriginalDocumentId),
+        "loan_item_conflict_guard"
+      );
+      addStatement(
         this.prepareConditionalLoanItemUpdate(input.documentId, input.period, loanItemUpdate, reversalOriginalDocumentId),
         "loan_item_update"
       );
@@ -750,6 +755,41 @@ export class DocumentRepository {
         update.amountDeltaMinor,
         update.usdtCostDeltaMinor,
         ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId)
+      );
+  }
+
+  private prepareLoanItemConflictGuard(
+    documentId: string,
+    period: string,
+    update: LoanItemUpdateEffect,
+    reversalOriginalDocumentId: string | null = null
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO account_entries (id, document_id, account_id, currency_code, amount_minor, entry_date, created_at)
+         SELECT ?, ?, NULL, ?, 0, ?, ?
+         WHERE ${this.approvalGuardSql(reversalOriginalDocumentId)}
+           AND NOT EXISTS (
+             SELECT 1 FROM loan_items
+             WHERE id = ?
+               AND remaining_amount_minor = ?
+               AND remaining_usdt_cost_minor = ?
+               AND remaining_amount_minor + ? >= 0
+               AND remaining_usdt_cost_minor + ? >= 0
+           )`
+      )
+      .bind(
+        newId("loan_item_conflict_guard"),
+        documentId,
+        "USDT",
+        nowIso(),
+        nowIso(),
+        ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId),
+        update.loanItemId,
+        update.expectedRemainingAmountMinor,
+        update.expectedRemainingUsdtCostMinor,
+        update.amountDeltaMinor,
+        update.usdtCostDeltaMinor
       );
   }
 
@@ -1076,6 +1116,9 @@ export class DocumentRepository {
         }
         if (statementRoles[index] === "pending_cost_conflict_guard" && this.isConflictGuardSentinelError(result.error)) {
           throw new Error("Pending cost balance changed before approval could be posted");
+        }
+        if (statementRoles[index] === "loan_item_conflict_guard" && this.isConflictGuardSentinelError(result.error)) {
+          throw new Error("Loan item balance changed before approval could be posted");
         }
         throw new Error(result.error || "D1 batch write failed");
       }
