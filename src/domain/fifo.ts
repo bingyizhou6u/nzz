@@ -9,9 +9,32 @@ export interface FifoResult {
   unmatchedAmountMinor: number;
 }
 
-export function allocateFifo(lots: Lot[], requestedAmountMinor: number, options: FifoOptions = {}): FifoResult {
-  if (requestedAmountMinor <= 0) {
-    throw new Error("Requested amount must be positive");
+export function allocateFifo(
+  lots: Lot[],
+  requestedAmountMinor: number,
+  currencyCode: string,
+  options: FifoOptions = {}
+): FifoResult {
+  if (!Number.isSafeInteger(requestedAmountMinor) || requestedAmountMinor <= 0) {
+    throw new Error("Requested amount must be a positive safe integer");
+  }
+
+  for (const lot of lots) {
+    if (!lot.id) {
+      throw new Error("Lot id must be non-empty");
+    }
+    if (!lot.lotDate) {
+      throw new Error("Lot date must be non-empty");
+    }
+    if (lot.currencyCode !== currencyCode) {
+      throw new Error("Lot currency does not match requested currency");
+    }
+    if (!Number.isSafeInteger(lot.remainingAmountMinor) || lot.remainingAmountMinor < 0) {
+      throw new Error("Lot remaining amount must be a non-negative safe integer");
+    }
+    if (!Number.isSafeInteger(lot.remainingUsdtCostMinor) || lot.remainingUsdtCostMinor < 0) {
+      throw new Error("Lot remaining USDT cost must be a non-negative safe integer");
+    }
   }
 
   const ordered = [...lots]
