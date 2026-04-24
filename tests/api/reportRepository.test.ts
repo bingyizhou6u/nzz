@@ -173,6 +173,7 @@ describe("ReportRepository", () => {
 
     const normalized = normalizeSql(sql);
     expect(normalized).toContain("from loan_items li");
+    expect(normalized).toContain("li.status in ('open', 'partial')");
     expect(normalized).toContain("li.remaining_amount_minor > 0");
     expect(normalized).toContain("order by li.loan_date, li.created_at, li.id");
   });
@@ -201,5 +202,9 @@ describe("ReportRepository", () => {
     const normalized = normalizeSql(sql);
     expect(normalized).toContain("la.allocation_type = 'writeoff'");
     expect(normalized).toContain("d.document_type = 'loan_writeoff'");
+    expect(normalized).toContain("not exists");
+    expect(normalized).toContain("reversal.original_document_id = d.id");
+    expect(normalized).toContain("reversal.action_type = 'reversal'");
+    expect(normalized).toContain("reversal.status = 'approved'");
   });
 });

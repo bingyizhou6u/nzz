@@ -226,6 +226,7 @@ export class ReportRepository {
         FROM loan_items li
         JOIN documents d ON d.id = li.source_document_id
         WHERE d.status = 'approved'
+          AND li.status IN ('open', 'partial')
           AND li.remaining_amount_minor > 0
         ORDER BY li.loan_date, li.created_at, li.id
       `)
@@ -272,6 +273,13 @@ export class ReportRepository {
         WHERE d.status = 'approved'
           AND d.document_type = 'loan_writeoff'
           AND la.allocation_type = 'writeoff'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM documents reversal
+            WHERE reversal.original_document_id = d.id
+              AND reversal.action_type = 'reversal'
+              AND reversal.status = 'approved'
+          )
         GROUP BY d.id, li.borrower_person_id, d.project_id, d.category_id, li.currency_code, la.allocation_date
         ORDER BY la.allocation_date DESC, d.id
       `)
