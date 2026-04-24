@@ -65,6 +65,7 @@ function mockEnv(
     runResult?: D1Result;
     batchResults?: D1Result[];
     allResults?: unknown[];
+    allResultsQueue?: unknown[][];
     firstResult?: unknown;
     firstResults?: unknown[];
     onBind?: (values: unknown[], sql: string) => void;
@@ -82,7 +83,7 @@ function mockEnv(
             options.onBind?.(values, sql);
             return this;
           },
-          all: async () => ({ success: true, results: options.allResults ?? [] }),
+          all: async () => ({ success: true, results: options.allResultsQueue?.shift() ?? options.allResults ?? [] }),
           first: async () => options.firstResults?.shift() ?? options.firstResult ?? null,
           run: async () => options.runResult ?? ({ success: true } as D1Result)
         } as unknown as PreparedMock;
@@ -400,6 +401,45 @@ describe("documents API", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ data: { id: "doc_1", status: "approved" } });
+  });
+
+  it("routes reversal approval requests using original posting entries", async () => {
+    let batchStatements: PreparedMock[] = [];
+    const response = await route(
+      new Request("https://ledger.test/api/documents/doc_reversal/approve", {
+        method: "POST",
+        body: JSON.stringify({ reviewer: "reviewer_1" })
+      }),
+      mockEnv({
+        firstResults: [
+          documentRow({
+            id: "doc_reversal",
+            status: "pending",
+            action_type: "reversal",
+            business_date: "2026-04-25",
+            period: "2026-04",
+            original_document_id: "doc_original"
+          }),
+          null,
+          documentRow({ id: "doc_original", status: "approved" })
+        ],
+        allResultsQueue: [[{ account_id: "acct_usdt", currency_code: "USDT", amount_minor: 120000 }], []],
+        onBatch: (statements) => {
+          batchStatements = statements;
+        }
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: { id: "doc_reversal", status: "approved" } });
+
+    const accountEntryStatement = batchStatements.find((statement) =>
+      statement.sql.toLowerCase().includes("insert into account_entries")
+    );
+    expect(accountEntryStatement?.bindings[1]).toBe("doc_reversal");
+    expect(accountEntryStatement?.bindings[2]).toBe("acct_usdt");
+    expect(accountEntryStatement?.bindings[4]).toBe(-120000);
+    expect(accountEntryStatement?.bindings[5]).toBe("2026-04-25");
   });
 
   it("routes document rejection requests with path params", async () => {
