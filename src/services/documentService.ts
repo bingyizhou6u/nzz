@@ -134,6 +134,7 @@ export class DocumentService {
     }
 
     const lines = await this.documents.getDocumentLines(id);
+    assertSingleLineFifoApproval(document.document_type, lines);
     const posting = entriesForApprovedDocument({
       id: document.id,
       documentType: document.document_type,
@@ -255,6 +256,17 @@ function nullableText(value: string | null | undefined) {
 
 export function firstBorrower(lines: Array<{ borrower_person_id: string | null }>) {
   return lines.find((line) => line.borrower_person_id)?.borrower_person_id ?? undefined;
+}
+
+function assertSingleLineFifoApproval(documentType: DocumentType, lines: DocumentLineRow[]) {
+  if (!isSingleLineFifoDocumentType(documentType)) return;
+  if (lines.length !== 1) {
+    throw new Error(`${documentType} requires exactly one line`);
+  }
+}
+
+function isSingleLineFifoDocumentType(documentType: DocumentType) {
+  return documentType === "exchange" || documentType === "petty_cash_issue" || documentType === "petty_cash_reimbursement";
 }
 
 function requireFirstLine(lines: DocumentLineRow[], documentType: DocumentType): DocumentLineRow {

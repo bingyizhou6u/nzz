@@ -540,6 +540,35 @@ describe("DocumentService", () => {
     expect(repo.approveWithPostings).not.toHaveBeenCalled();
   });
 
+  it("rejects multi-line FIFO approvals before approval writes", async () => {
+    const { repo, audit, service } = createMocks({
+      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "exchange" })),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({
+          account_id: "acct_aed_reserve",
+          counterparty_account_id: "acct_usdt_main",
+          currency_code: "AED",
+          amount_minor: 367000,
+          usdt_amount_minor: 100000
+        }),
+        lineRow({
+          id: "line_2",
+          line_no: 2,
+          account_id: "acct_aed_reserve",
+          counterparty_account_id: "acct_usdt_main",
+          currency_code: "AED",
+          amount_minor: 100000,
+          usdt_amount_minor: 27248
+        })
+      ])
+    });
+
+    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("exchange requires exactly one line");
+
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
+    expect(audit.prepareRecordWhen).not.toHaveBeenCalled();
+  });
+
   it("uses the first borrower when approving loan documents", async () => {
     const { repo, service } = createMocks({
       getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "loan_out" })),
