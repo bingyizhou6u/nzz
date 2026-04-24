@@ -128,6 +128,35 @@ describe("AuditLogRepository", () => {
     expect(boundValues[5]).toBe(JSON.stringify(["a", 1, null]));
   });
 
+  it("serializes sanitized arrays without inherited toJSON", async () => {
+    let boundValues: unknown[] = [];
+    const repo = new AuditLogRepository(mockDb({ onBind: (values) => (boundValues = values) }));
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Array.prototype, "toJSON");
+
+    try {
+      Object.defineProperty(Array.prototype, "toJSON", {
+        configurable: true,
+        value: () => ["replaced"]
+      });
+
+      await repo.record({
+        actor: "user_1",
+        action: "document.submit",
+        entityType: "document",
+        entityId: "doc_1",
+        before: ["original"]
+      });
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(Array.prototype, "toJSON", originalDescriptor);
+      } else {
+        delete (Array.prototype as { toJSON?: unknown }).toJSON;
+      }
+    }
+
+    expect(boundValues[5]).toBe(`["original"]`);
+  });
+
   it("serializes sanitized proxy descriptor values", async () => {
     let boundValues: unknown[] = [];
     const target = { value: "validated" };

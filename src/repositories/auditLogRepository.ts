@@ -114,6 +114,12 @@ export class AuditLogRepository {
         }
         arraySnapshot[index] = this.toJsonSnapshot(descriptor.value, path);
       }
+      Object.defineProperty(arraySnapshot, "toJSON", {
+        enumerable: false,
+        configurable: true,
+        writable: true,
+        value: null
+      });
       snapshot = arraySnapshot;
     } else {
       const objectSnapshot = Object.create(null) as { [key: string]: JsonSnapshot };
