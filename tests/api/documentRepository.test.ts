@@ -771,6 +771,73 @@ describe("DocumentRepository", () => {
     expect(batchCalls[0].some((statement) => statement.bindings.includes("doc_1:lot:1"))).toBe(false);
   });
 
+  it("batches pending cost applications during guarded approval", async () => {
+    const batchCalls: CapturedStatement[][] = [];
+    const repo = new DocumentRepository(mockDb({ onBatch: (statements) => batchCalls.push(statements) }));
+
+    await repo.approveWithPostings({
+      documentId: "doc_issue",
+      period: "2026-04",
+      reviewer: "reviewer_1",
+      accountEntries: [],
+      loanEntries: [],
+      lotCreations: [
+        {
+          currencyCode: "AED",
+          originalAmountMinor: 120000,
+          remainingAmountMinor: 0,
+          originalUsdtCostMinor: 32400,
+          remainingUsdtCostMinor: 0,
+          clientLotId: "doc_issue:issue:1",
+          sourceDocumentId: "doc_issue",
+          currentAccountId: "acct_staff",
+          currentPersonId: "person_staff",
+          lotDate: "2026-04-25"
+        }
+      ],
+      lotUpdates: [],
+      lotMovements: [],
+      pendingCostCreations: [],
+      pendingCostUpdates: [],
+      pendingCostApplications: [
+        {
+          pendingCostMatchId: "pending_1",
+          lotId: "doc_issue:issue:1",
+          amountMinor: 120000,
+          usdtCostMinor: 32400,
+          applicationDate: "2026-04-25"
+        }
+      ],
+      auditLogStatement: {
+        sql: "INSERT INTO audit_logs (id, entity_id) VALUES (?, ?)",
+        bindings: ["audit_1", "doc_issue"]
+      } as unknown as D1PreparedStatement
+    });
+
+    const statement = batchCalls[0].find((item) =>
+      item.sql.replace(/\s+/g, " ").toLowerCase().includes("insert into pending_cost_applications")
+    );
+    const lotCreationStatement = batchCalls[0].find((item) =>
+      item.sql.replace(/\s+/g, " ").toLowerCase().includes("insert into lots")
+    );
+    const createdLotId = lotCreationStatement?.bindings[0];
+
+    expect(statement).toBeDefined();
+    expect(statement?.bindings).toEqual([
+      expect.stringMatching(/^pending_cost_app_/),
+      "pending_1",
+      "doc_issue",
+      createdLotId,
+      120000,
+      32400,
+      "2026-04-25",
+      expect.any(String),
+      "doc_issue",
+      "2026-04"
+    ]);
+    expect(statement?.bindings).not.toContain("doc_issue:issue:1");
+  });
+
   it("batches loan item creations during guarded approval", async () => {
     const batchCalls: CapturedStatement[][] = [];
     const repo = new DocumentRepository(mockDb({ onBatch: (statements) => batchCalls.push(statements) }));

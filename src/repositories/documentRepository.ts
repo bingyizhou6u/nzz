@@ -5,6 +5,7 @@ import type {
   LotCreationEffect,
   LotMovementEffect,
   LotUpdateEffect,
+  PendingCostApplicationEffect,
   PendingCostCreationEffect,
   PendingCostUpdateEffect
 } from "../domain/fifoEffects";
@@ -39,6 +40,7 @@ export interface ApproveDocumentWithPostingsInput {
   lotMovements?: LotMovementEffect[];
   pendingCostCreations?: PendingCostCreationEffect[];
   pendingCostUpdates?: PendingCostUpdateEffect[];
+  pendingCostApplications?: PendingCostApplicationEffect[];
   loanItemCreations?: LoanItemCreationEffect[];
   loanItemUpdates?: LoanItemUpdateEffect[];
   loanAllocations?: LoanAllocationEffect[];
@@ -692,6 +694,19 @@ export class DocumentRepository {
         "pending_cost_update"
       );
     }
+    for (const pendingCostApplication of input.pendingCostApplications ?? []) {
+      const lotId = createdLotIds.get(pendingCostApplication.lotId) ?? pendingCostApplication.lotId;
+      addStatement(
+        this.prepareConditionalPendingCostApplication(
+          input.documentId,
+          input.period,
+          pendingCostApplication,
+          lotId,
+          reversalOriginalDocumentId
+        ),
+        "write"
+      );
+    }
     addStatement(input.auditLogStatement, "write");
     addStatement(
       this.prepareGuardedApprovalUpdate(
@@ -1118,6 +1133,35 @@ export class DocumentRepository {
         pendingCostUpdate.pendingCostMatchId,
         pendingCostUpdate.expectedRemainingAmountMinor,
         pendingCostUpdate.amountDeltaMinor,
+        ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId)
+      );
+  }
+
+  private prepareConditionalPendingCostApplication(
+    documentId: string,
+    period: string,
+    application: PendingCostApplicationEffect,
+    lotId: string,
+    reversalOriginalDocumentId: string | null = null
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO pending_cost_applications (
+           id, pending_cost_match_id, document_id, lot_id,
+           amount_minor, usdt_cost_minor, application_date, created_at
+         )
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE ${this.approvalGuardSql(reversalOriginalDocumentId)}`
+      )
+      .bind(
+        newId("pending_cost_app"),
+        application.pendingCostMatchId,
+        documentId,
+        lotId,
+        application.amountMinor,
+        application.usdtCostMinor,
+        application.applicationDate,
+        nowIso(),
         ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId)
       );
   }

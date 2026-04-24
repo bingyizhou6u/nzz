@@ -66,7 +66,8 @@ describe("fifoEffects", () => {
         }
       ],
       pendingCostCreations: [],
-      pendingCostUpdates: []
+      pendingCostUpdates: [],
+      pendingCostApplications: []
     });
   });
 
@@ -256,6 +257,40 @@ describe("fifoEffects", () => {
     expect(pendingCostLotIds).toEqual(["doc_issue:issue:1", "doc_issue:issue:2"]);
     expect(pendingCostLotIds).not.toContain("lot_a");
     expect(pendingCostLotIds).not.toContain("lot_b");
+  });
+
+  it("records pending cost application effects when petty cash issue matches pending costs", () => {
+    const result = planPettyCashIssueEffects({
+      documentId: "doc_issue",
+      fromAccountId: "acct_company",
+      toAccountId: "acct_staff",
+      personId: "person_staff",
+      currencyCode: "AED",
+      amountMinor: 200000,
+      businessDate: "2026-04-25",
+      sourceLots: [
+        {
+          id: "lot_a",
+          currencyCode: "AED",
+          remainingAmountMinor: 200000,
+          remainingUsdtCostMinor: 54000,
+          lotDate: "2026-04-01"
+        }
+      ],
+      openPendingMatches: [
+        { id: "pending_old", remainingAmountMinor: 120000, expenseDate: "2026-04-20", createdAt: "2026-04-20T10:00:00.000Z" }
+      ]
+    });
+
+    expect(result.pendingCostApplications).toEqual([
+      {
+        pendingCostMatchId: "pending_old",
+        lotId: "doc_issue:issue:1",
+        amountMinor: 120000,
+        usdtCostMinor: 32400,
+        applicationDate: "2026-04-25"
+      }
+    ]);
   });
 
   it("plans petty cash reimbursement with FIFO consumption and pending cost for unmatched amount", () => {

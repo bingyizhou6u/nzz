@@ -59,6 +59,14 @@ export interface PendingCostUpdateEffect {
   expectedRemainingAmountMinor: number;
 }
 
+export interface PendingCostApplicationEffect {
+  pendingCostMatchId: string;
+  lotId: string;
+  amountMinor: number;
+  usdtCostMinor: number;
+  applicationDate: string;
+}
+
 export interface OpenPendingCostMatch {
   id: string;
   remainingAmountMinor: number;
@@ -72,6 +80,7 @@ export interface FifoPostingEffects {
   lotMovements: LotMovementEffect[];
   pendingCostCreations: PendingCostCreationEffect[];
   pendingCostUpdates: PendingCostUpdateEffect[];
+  pendingCostApplications?: PendingCostApplicationEffect[];
 }
 
 export interface ExchangeLotCreationInput {
@@ -129,7 +138,8 @@ export function emptyFifoPostingEffects(): FifoPostingEffects {
     lotUpdates: [],
     lotMovements: [],
     pendingCostCreations: [],
-    pendingCostUpdates: []
+    pendingCostUpdates: [],
+    pendingCostApplications: []
   };
 }
 
@@ -172,7 +182,8 @@ export function planExchangeLotCreation(input: ExchangeLotCreationInput): FifoPo
       }
     ],
     pendingCostCreations: [],
-    pendingCostUpdates: []
+    pendingCostUpdates: [],
+    pendingCostApplications: []
   };
 }
 
@@ -247,7 +258,8 @@ export function planPettyCashIssueEffects(input: PettyCashIssueEffectsInput): Fi
       ...pendingCostApplication.lotMovements
     ],
     pendingCostCreations: [],
-    pendingCostUpdates: pendingCostApplication.pendingCostUpdates
+    pendingCostUpdates: pendingCostApplication.pendingCostUpdates,
+    pendingCostApplications: pendingCostApplication.pendingCostApplications
   };
 }
 
@@ -288,7 +300,8 @@ export function planPettyCashReimbursementEffects(input: PettyCashReimbursementE
       movementDate: expenseDate
     })),
     pendingCostCreations,
-    pendingCostUpdates: []
+    pendingCostUpdates: [],
+    pendingCostApplications: []
   };
 }
 
@@ -337,7 +350,8 @@ function planLotTransfer(input: {
       movementDate: businessDate
     })),
     pendingCostCreations: [],
-    pendingCostUpdates: []
+    pendingCostUpdates: [],
+    pendingCostApplications: []
   };
 }
 
@@ -403,9 +417,14 @@ function applyPendingCostMatches(input: {
   accountId: string;
   personId: string;
   movementDate: string;
-}): { pendingCostUpdates: PendingCostUpdateEffect[]; lotMovements: LotMovementEffect[] } {
+}): {
+  pendingCostUpdates: PendingCostUpdateEffect[];
+  lotMovements: LotMovementEffect[];
+  pendingCostApplications: PendingCostApplicationEffect[];
+} {
   const pendingCostUpdates: PendingCostUpdateEffect[] = [];
   const lotMovements: LotMovementEffect[] = [];
+  const pendingCostApplications: PendingCostApplicationEffect[] = [];
 
   for (const pendingMatch of sortPendingMatches(input.pendingMatches)) {
     const pendingCostMatchId = requireNonEmpty(pendingMatch.id, "pendingCostMatchId");
@@ -443,6 +462,13 @@ function applyPendingCostMatches(input: {
         usdtCostMinor,
         movementDate: input.movementDate
       });
+      pendingCostApplications.push({
+        pendingCostMatchId,
+        lotId: issuedLot.creation.clientLotId,
+        amountMinor,
+        usdtCostMinor,
+        applicationDate: input.movementDate
+      });
     }
 
     if (matchedAmount > 0) {
@@ -454,7 +480,7 @@ function applyPendingCostMatches(input: {
     }
   }
 
-  return { pendingCostUpdates, lotMovements };
+  return { pendingCostUpdates, lotMovements, pendingCostApplications };
 }
 
 function sortPendingMatches(pendingMatches: OpenPendingCostMatch[]): OpenPendingCostMatch[] {

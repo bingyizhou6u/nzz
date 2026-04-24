@@ -296,6 +296,7 @@ describe("DocumentService", () => {
       lotMovements: [],
       pendingCostCreations: [],
       pendingCostUpdates: [],
+      pendingCostApplications: [],
       loanItemCreations: [],
       loanItemUpdates: [],
       loanAllocations: [],
