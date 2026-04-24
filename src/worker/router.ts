@@ -1,3 +1,4 @@
+import { createDocument } from "../api/documents";
 import { createProject, listCurrencies } from "../api/masterData";
 import type { Env, Handler } from "./env";
 
@@ -9,6 +10,7 @@ interface Route {
 
 const routes: Route[] = [
   { method: "GET", pathname: "/api/currencies", handler: listCurrencies },
+  { method: "POST", pathname: "/api/documents", handler: createDocument },
   { method: "POST", pathname: "/api/projects", handler: createProject }
 ];
 
