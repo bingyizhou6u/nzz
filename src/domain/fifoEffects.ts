@@ -1,7 +1,13 @@
 import { allocateFifo } from "./fifo";
 import type { Lot, LotAllocation } from "./types";
 
-export type LotMovementType = "exchange_in" | "petty_cash_issue" | "petty_cash_reimbursement" | "pending_cost_match";
+export type LotMovementType =
+  | "exchange_in"
+  | "account_transfer"
+  | "petty_cash_issue"
+  | "petty_cash_return"
+  | "petty_cash_reimbursement"
+  | "pending_cost_match";
 
 export interface LotCreationEffect {
   clientLotId: string;
@@ -74,6 +80,20 @@ export interface ExchangeLotCreationInput {
   amountMinor: number;
   usdtCostMinor: number;
   lotDate: string;
+}
+
+export interface AccountTransferEffectsInput {
+  documentId: string;
+  fromAccountId: string;
+  toAccountId: string;
+  currencyCode: string;
+  amountMinor: number;
+  businessDate: string;
+  sourceLots: Lot[];
+}
+
+export interface PettyCashReturnEffectsInput extends AccountTransferEffectsInput {
+  personId: string;
 }
 
 export interface PettyCashIssueEffectsInput {
@@ -153,6 +173,39 @@ export function planExchangeLotCreation(input: ExchangeLotCreationInput): FifoPo
     pendingCostCreations: [],
     pendingCostUpdates: []
   };
+}
+
+export function planAccountTransferEffects(input: AccountTransferEffectsInput): FifoPostingEffects {
+  return planLotTransfer({
+    documentId: input.documentId,
+    fromAccountId: input.fromAccountId,
+    toAccountId: input.toAccountId,
+    fromPersonId: null,
+    toPersonId: null,
+    currencyCode: input.currencyCode,
+    amountMinor: input.amountMinor,
+    businessDate: input.businessDate,
+    sourceLots: input.sourceLots,
+    movementType: "account_transfer",
+    clientLotPrefix: "transfer"
+  });
+}
+
+export function planPettyCashReturnEffects(input: PettyCashReturnEffectsInput): FifoPostingEffects {
+  const personId = requireNonEmpty(input.personId, "personId");
+  return planLotTransfer({
+    documentId: input.documentId,
+    fromAccountId: input.fromAccountId,
+    toAccountId: input.toAccountId,
+    fromPersonId: personId,
+    toPersonId: null,
+    currencyCode: input.currencyCode,
+    amountMinor: input.amountMinor,
+    businessDate: input.businessDate,
+    sourceLots: input.sourceLots,
+    movementType: "petty_cash_return",
+    clientLotPrefix: "return"
+  });
 }
 
 export function planPettyCashIssueEffects(input: PettyCashIssueEffectsInput): FifoPostingEffects {
@@ -235,6 +288,78 @@ export function planPettyCashReimbursementEffects(input: PettyCashReimbursementE
     })),
     pendingCostCreations,
     pendingCostUpdates: []
+  };
+}
+
+function planLotTransfer(input: {
+  documentId: string;
+  fromAccountId: string;
+  toAccountId: string;
+  fromPersonId: string | null;
+  toPersonId: string | null;
+  currencyCode: string;
+  amountMinor: number;
+  businessDate: string;
+  sourceLots: Lot[];
+  movementType: LotMovementType;
+  clientLotPrefix: string;
+}): FifoPostingEffects {
+  const documentId = requireNonEmpty(input.documentId, "documentId");
+  const fromAccountId = requireNonEmpty(input.fromAccountId, "fromAccountId");
+  const toAccountId = requireNonEmpty(input.toAccountId, "toAccountId");
+  const currencyCode = requireNonEmpty(input.currencyCode, "currencyCode");
+  const businessDate = requireNonEmpty(input.businessDate, "businessDate");
+  const allocationResult = allocateFifo(input.sourceLots, input.amountMinor, currencyCode);
+
+  return {
+    lotCreations: allocationResult.allocations.map((allocation, index) =>
+      transferredLotCreation(
+        allocation,
+        `${documentId}:${input.clientLotPrefix}:${index + 1}`,
+        documentId,
+        toAccountId,
+        input.toPersonId,
+        currencyCode,
+        businessDate
+      )
+    ),
+    lotUpdates: lotUpdatesForAllocations(allocationResult.allocations),
+    lotMovements: allocationResult.allocations.map((allocation) => ({
+      lotId: allocation.lotId,
+      movementType: input.movementType,
+      fromAccountId,
+      toAccountId,
+      fromPersonId: input.fromPersonId,
+      toPersonId: input.toPersonId,
+      amountMinor: allocation.amountMinor,
+      usdtCostMinor: allocation.usdtCostMinor,
+      movementDate: businessDate
+    })),
+    pendingCostCreations: [],
+    pendingCostUpdates: []
+  };
+}
+
+function transferredLotCreation(
+  allocation: LotAllocation,
+  clientLotId: string,
+  documentId: string,
+  accountId: string,
+  personId: string | null,
+  currencyCode: string,
+  lotDate: string
+): LotCreationEffect {
+  return {
+    clientLotId,
+    currencyCode,
+    originalAmountMinor: allocation.amountMinor,
+    remainingAmountMinor: allocation.amountMinor,
+    originalUsdtCostMinor: allocation.usdtCostMinor,
+    remainingUsdtCostMinor: allocation.usdtCostMinor,
+    sourceDocumentId: documentId,
+    currentAccountId: accountId,
+    currentPersonId: personId,
+    lotDate
   };
 }
 

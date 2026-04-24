@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  planAccountTransferEffects,
   planExchangeLotCreation,
   planPettyCashIssueEffects,
-  planPettyCashReimbursementEffects
+  planPettyCashReimbursementEffects,
+  planPettyCashReturnEffects
 } from "../../src/domain/fifoEffects";
 import type { Lot } from "../../src/domain/types";
 
@@ -316,6 +318,145 @@ describe("fifoEffects", () => {
         amountMinor: 50000,
         remainingAmountMinor: 50000,
         expenseDate: "2026-04-24"
+      }
+    ]);
+  });
+
+  it("plans account transfer by moving source lots to target account lots", () => {
+    const result = planAccountTransferEffects({
+      documentId: "doc_transfer",
+      fromAccountId: "acct_aed_reserve",
+      toAccountId: "acct_aed_bank",
+      currencyCode: "AED",
+      amountMinor: 200000,
+      businessDate: "2026-04-24",
+      sourceLots: reserveLots
+    });
+
+    expect(result.lotUpdates).toEqual([
+      {
+        lotId: "lot_a",
+        amountDeltaMinor: -150000,
+        usdtCostDeltaMinor: -41000,
+        expectedRemainingAmountMinor: 150000,
+        expectedRemainingUsdtCostMinor: 41000
+      },
+      {
+        lotId: "lot_b",
+        amountDeltaMinor: -50000,
+        usdtCostDeltaMinor: -13650,
+        expectedRemainingAmountMinor: 100000,
+        expectedRemainingUsdtCostMinor: 27300
+      }
+    ]);
+    expect(result.lotCreations).toEqual([
+      {
+        clientLotId: "doc_transfer:transfer:1",
+        currencyCode: "AED",
+        originalAmountMinor: 150000,
+        remainingAmountMinor: 150000,
+        originalUsdtCostMinor: 41000,
+        remainingUsdtCostMinor: 41000,
+        sourceDocumentId: "doc_transfer",
+        currentAccountId: "acct_aed_bank",
+        currentPersonId: null,
+        lotDate: "2026-04-24"
+      },
+      {
+        clientLotId: "doc_transfer:transfer:2",
+        currencyCode: "AED",
+        originalAmountMinor: 50000,
+        remainingAmountMinor: 50000,
+        originalUsdtCostMinor: 13650,
+        remainingUsdtCostMinor: 13650,
+        sourceDocumentId: "doc_transfer",
+        currentAccountId: "acct_aed_bank",
+        currentPersonId: null,
+        lotDate: "2026-04-24"
+      }
+    ]);
+    expect(result.lotMovements).toEqual([
+      {
+        lotId: "lot_a",
+        movementType: "account_transfer",
+        fromAccountId: "acct_aed_reserve",
+        toAccountId: "acct_aed_bank",
+        fromPersonId: null,
+        toPersonId: null,
+        amountMinor: 150000,
+        usdtCostMinor: 41000,
+        movementDate: "2026-04-24"
+      },
+      {
+        lotId: "lot_b",
+        movementType: "account_transfer",
+        fromAccountId: "acct_aed_reserve",
+        toAccountId: "acct_aed_bank",
+        fromPersonId: null,
+        toPersonId: null,
+        amountMinor: 50000,
+        usdtCostMinor: 13650,
+        movementDate: "2026-04-24"
+      }
+    ]);
+  });
+
+  it("plans petty cash return by moving staff lots back to reserve lots", () => {
+    const staffLots = [
+      {
+        id: "staff_lot_a",
+        currencyCode: "AED",
+        remainingAmountMinor: 90000,
+        remainingUsdtCostMinor: 24570,
+        lotDate: "2026-04-23"
+      }
+    ];
+
+    const result = planPettyCashReturnEffects({
+      documentId: "doc_return",
+      fromAccountId: "acct_petty_bob",
+      toAccountId: "acct_aed_reserve",
+      personId: "person_bob",
+      currencyCode: "AED",
+      amountMinor: 80000,
+      businessDate: "2026-04-24",
+      sourceLots: staffLots
+    });
+
+    expect(result.lotUpdates).toEqual([
+      {
+        lotId: "staff_lot_a",
+        amountDeltaMinor: -80000,
+        usdtCostDeltaMinor: -21840,
+        expectedRemainingAmountMinor: 90000,
+        expectedRemainingUsdtCostMinor: 24570
+      }
+    ]);
+    expect(result.lotCreations).toEqual([
+      {
+        clientLotId: "doc_return:return:1",
+        currencyCode: "AED",
+        originalAmountMinor: 80000,
+        remainingAmountMinor: 80000,
+        originalUsdtCostMinor: 21840,
+        remainingUsdtCostMinor: 21840,
+        sourceDocumentId: "doc_return",
+        currentAccountId: "acct_aed_reserve",
+        currentPersonId: null,
+        lotDate: "2026-04-24"
+      }
+    ]);
+    expect(result.lotMovements).toEqual([
+      {
+        lotId: "staff_lot_a",
+        movementType: "petty_cash_return",
+        fromAccountId: "acct_petty_bob",
+        toAccountId: "acct_aed_reserve",
+        fromPersonId: "person_bob",
+        toPersonId: null,
+        amountMinor: 80000,
+        usdtCostMinor: 21840,
+        movementDate: "2026-04-24"
       }
     ]);
   });
