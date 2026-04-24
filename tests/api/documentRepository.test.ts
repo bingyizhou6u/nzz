@@ -114,4 +114,82 @@ describe("DocumentRepository", () => {
 
     expect(first.documentNo).not.toBe(second.documentNo);
   });
+
+  it("creates draft documents with lines", async () => {
+    const sqlStatements: string[] = [];
+    const bindCalls: unknown[][] = [];
+    const repo = new DocumentRepository(
+      mockDb({
+        onSql: (sql) => sqlStatements.push(sql),
+        onBind: (values) => bindCalls.push(values)
+      })
+    );
+
+    const result = await repo.createDraftWithLines({
+      documentType: "project_income",
+      actionType: "normal",
+      businessDate: "2026-04-24",
+      period: "2026-04",
+      summary: "Merchant income",
+      createdBy: "user_1",
+      operatorPersonId: null,
+      projectId: "proj_1",
+      merchantId: "merchant_1",
+      categoryId: "cat_income",
+      originalDocumentId: null,
+      lines: [
+        {
+          lineNo: 1,
+          lineType: "main",
+          accountId: "acct_usdt",
+          counterpartyAccountId: null,
+          personId: null,
+          borrowerPersonId: null,
+          currencyCode: "USDT",
+          amountMinor: 10000,
+          usdtAmountMinor: 10000,
+          exchangeRateText: null,
+          note: null
+        }
+      ]
+    });
+
+    expect(result.status).toBe("draft");
+    expect(sqlStatements.join(" ").toLowerCase()).toContain("insert into document_lines");
+    expect(bindCalls.at(-1)).toEqual([
+      expect.stringMatching(/^line_/),
+      result.id,
+      1,
+      "main",
+      "acct_usdt",
+      null,
+      null,
+      null,
+      "USDT",
+      10000,
+      10000,
+      null,
+      null
+    ]);
+  });
+
+  it("updates document status for workflow actions", async () => {
+    const sqlStatements: string[] = [];
+    const bindCalls: unknown[][] = [];
+    const repo = new DocumentRepository(
+      mockDb({
+        onSql: (sql) => sqlStatements.push(sql),
+        onBind: (values) => bindCalls.push(values)
+      })
+    );
+
+    await repo.markSubmitted("doc_1", "2026-04-24T10:00:00.000Z");
+    await repo.markRejected("doc_1", "Missing attachment");
+
+    const normalizedSql = sqlStatements.join(" ").replace(/\s+/g, " ").toLowerCase();
+    expect(normalizedSql).toContain("status = 'pending'");
+    expect(normalizedSql).toContain("status = 'rejected'");
+    expect(bindCalls[0]).toEqual(["2026-04-24T10:00:00.000Z", "doc_1"]);
+    expect(bindCalls[1]).toEqual(["Missing attachment", "doc_1"]);
+  });
 });
