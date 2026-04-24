@@ -17,4 +17,26 @@ describe("money helpers", () => {
   it("adds integer minor amounts without floating point drift", () => {
     expect(addMinor([10, 20, -5])).toBe(25);
   });
+
+  it("accepts commas and surrounding whitespace", () => {
+    expect(parseMinor(" 1,234.50 ", 2)).toBe(123450);
+  });
+
+  it("rejects fractional precision beyond currency minor units", () => {
+    expect(() => parseMinor("1.999", 2)).toThrow("Too many decimal places");
+    expect(() => parseMinor("1.9", 0)).toThrow("Too many decimal places");
+  });
+
+  it("rejects invalid minor unit metadata", () => {
+    expect(() => parseMinor("1.00", -1)).toThrow("Invalid minor units");
+    expect(() => formatMinor(100, 9)).toThrow("Invalid minor units");
+  });
+
+  it("rejects unsafe integer amounts", () => {
+    expect(() => parseMinor("90071992547409.93", 2)).toThrow("exceeds safe integer range");
+    expect(() => formatMinor(Number.MAX_SAFE_INTEGER + 1, 2)).toThrow(
+      "exceeds safe integer range",
+    );
+    expect(() => addMinor([Number.MAX_SAFE_INTEGER, 1])).toThrow("exceeds safe integer range");
+  });
 });
