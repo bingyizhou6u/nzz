@@ -690,6 +690,10 @@ describe("DocumentService", () => {
     expect(repo.listOpenLotsForAccount).not.toHaveBeenCalled();
     expect(repo.approveWithPostings).toHaveBeenCalledWith(
       expect.objectContaining({
+        accountEntries: [
+          { accountId: "acct_usdt_main", currencyCode: "USDT", amountMinor: -50000, entryDate: "2026-04-24" },
+          { accountId: "acct_usdt_backup", currencyCode: "USDT", amountMinor: 50000, entryDate: "2026-04-24" }
+        ],
         lotCreations: [],
         lotUpdates: [],
         lotMovements: []
