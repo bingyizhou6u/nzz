@@ -344,6 +344,44 @@ describe("DocumentRepository", () => {
     expect(batchCalls[0][3].bindings).toEqual(["reviewer_1", "2026-04-24T11:00:00.000Z", "doc_1", "2026-04"]);
   });
 
+  it("guards reversal approval writes against duplicate approved reversals", async () => {
+    const batchCalls: CapturedStatement[][] = [];
+    const repo = new DocumentRepository(mockDb({ onBatch: (statements) => batchCalls.push(statements) }));
+    const auditLogStatement = {
+      sql: "INSERT INTO audit_logs SELECT ? WHERE EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending')",
+      bindings: ["audit_1", "doc_rev"]
+    } as unknown as D1PreparedStatement;
+    const input = {
+      documentId: "doc_rev",
+      period: "2026-04",
+      reviewer: "reviewer_1",
+      reviewedAt: "2026-04-24T11:00:00.000Z",
+      reversalOriginalDocumentId: "doc_original",
+      accountEntries: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: -10000, entryDate: "2026-04-24" }],
+      loanEntries: [],
+      auditLogStatement
+    };
+
+    await repo.approveWithPostings(input);
+
+    expect(batchCalls).toHaveLength(1);
+    const accountEntryStatement = batchCalls[0].find((statement) =>
+      statement.sql.replace(/\s+/g, " ").toLowerCase().includes("insert into account_entries")
+    );
+    const approvalStatement = batchCalls[0].find((statement) =>
+      statement.sql.replace(/\s+/g, " ").toLowerCase().includes("update documents set status = 'approved'")
+    );
+
+    for (const statement of [accountEntryStatement, approvalStatement]) {
+      const normalizedSql = statement?.sql.replace(/\s+/g, " ").toLowerCase();
+      expect(normalizedSql).toContain("original_document_id = ?");
+      expect(normalizedSql).toContain("action_type = 'reversal'");
+      expect(normalizedSql).toContain("status = 'approved'");
+      expect(statement?.bindings).toContain("doc_original");
+      expect(statement?.bindings).toContain("doc_rev");
+    }
+  });
+
   it("maps transfer lot movements from client lot ids to generated lot ids", async () => {
     const batchCalls: CapturedStatement[][] = [];
     const repo = new DocumentRepository(mockDb({ onBatch: (statements) => batchCalls.push(statements) }));

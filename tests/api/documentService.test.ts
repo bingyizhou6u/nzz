@@ -775,6 +775,7 @@ describe("DocumentService", () => {
           id: "doc_rev",
           status: "pending",
           action_type: "reversal",
+          document_type: "loan_out",
           original_document_id: "doc_original",
           business_date: "2026-04-25"
         }))
@@ -801,6 +802,7 @@ describe("DocumentService", () => {
     expect(repo.approveWithPostings).toHaveBeenCalledWith(expect.objectContaining({
       documentId: "doc_rev",
       period: "2026-04",
+      reversalOriginalDocumentId: "doc_original",
       accountEntries: [
         { accountId: "acct_usdt_main", currencyCode: "USDT", amountMinor: 120000, entryDate: "2026-04-25" }
       ],
@@ -821,6 +823,7 @@ describe("DocumentService", () => {
           id: "doc_rev",
           status: "pending",
           action_type: "reversal",
+          document_type: "exchange",
           original_document_id: "doc_fx",
           business_date: "2026-04-25"
         }))
@@ -893,6 +896,7 @@ describe("DocumentService", () => {
           id: "doc_rev",
           status: "pending",
           action_type: "reversal",
+          document_type: "account_transfer",
           original_document_id: "doc_transfer"
         }))
         .mockResolvedValueOnce(documentRow({
@@ -942,6 +946,30 @@ describe("DocumentService", () => {
     });
 
     await expect(service.approve("doc_rev", "reviewer_1")).rejects.toThrow("Original document must be approved before reversal");
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
+  });
+
+  it("rejects reversals when the document type differs from the original document", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi
+        .fn()
+        .mockResolvedValueOnce(documentRow({
+          id: "doc_rev",
+          status: "pending",
+          action_type: "reversal",
+          document_type: "project_income",
+          original_document_id: "doc_original"
+        }))
+        .mockResolvedValueOnce(documentRow({
+          id: "doc_original",
+          status: "approved",
+          document_type: "loan_out"
+        }))
+    });
+
+    await expect(service.approve("doc_rev", "reviewer_1")).rejects.toThrow(
+      "Reversal document type must match original document type"
+    );
     expect(repo.approveWithPostings).not.toHaveBeenCalled();
   });
 });

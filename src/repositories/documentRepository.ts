@@ -38,6 +38,7 @@ export interface ApproveDocumentWithPostingsInput {
   lotMovements?: LotMovementEffect[];
   pendingCostCreations?: PendingCostCreationEffect[];
   pendingCostUpdates?: PendingCostUpdateEffect[];
+  reversalOriginalDocumentId?: string | null;
   auditLogStatement: D1PreparedStatement;
   reviewedAt?: string;
 }
@@ -432,6 +433,7 @@ export class DocumentRepository {
   }
 
   async approveWithPostings(input: ApproveDocumentWithPostingsInput): Promise<void> {
+    const reversalOriginalDocumentId = input.reversalOriginalDocumentId?.trim() || null;
     const createdLotIds = new Map<string, string>();
     for (const lotCreation of input.lotCreations ?? []) {
       createdLotIds.set(lotCreation.clientLotId, newId("lot"));
@@ -445,39 +447,60 @@ export class DocumentRepository {
     };
 
     for (const entry of input.accountEntries) {
-      addStatement(this.prepareConditionalAccountEntry(input.documentId, input.period, entry), "write");
+      addStatement(this.prepareConditionalAccountEntry(input.documentId, input.period, entry, reversalOriginalDocumentId), "write");
     }
     for (const entry of input.loanEntries) {
-      addStatement(this.prepareConditionalLoanEntry(input.documentId, input.period, entry), "write");
+      addStatement(this.prepareConditionalLoanEntry(input.documentId, input.period, entry, reversalOriginalDocumentId), "write");
     }
     for (const lotCreation of input.lotCreations ?? []) {
       const lotId = createdLotIds.get(lotCreation.clientLotId);
       if (!lotId) {
         throw new Error("Lot creation id was not prepared");
       }
-      addStatement(this.prepareConditionalLotCreation(input.documentId, input.period, lotCreation, lotId), "write");
+      addStatement(
+        this.prepareConditionalLotCreation(input.documentId, input.period, lotCreation, lotId, reversalOriginalDocumentId),
+        "write"
+      );
     }
     for (const lotUpdate of input.lotUpdates ?? []) {
-      addStatement(this.prepareLotConflictGuard(input.documentId, input.period, lotUpdate), "lot_conflict_guard");
-      addStatement(this.prepareConditionalLotUpdate(input.documentId, input.period, lotUpdate), "lot_update");
+      addStatement(
+        this.prepareLotConflictGuard(input.documentId, input.period, lotUpdate, reversalOriginalDocumentId),
+        "lot_conflict_guard"
+      );
+      addStatement(this.prepareConditionalLotUpdate(input.documentId, input.period, lotUpdate, reversalOriginalDocumentId), "lot_update");
     }
     for (const lotMovement of input.lotMovements ?? []) {
       const lotId = createdLotIds.get(lotMovement.lotId) ?? lotMovement.lotId;
-      addStatement(this.prepareConditionalLotMovement(input.documentId, input.period, lotMovement, lotId), "write");
+      addStatement(
+        this.prepareConditionalLotMovement(input.documentId, input.period, lotMovement, lotId, reversalOriginalDocumentId),
+        "write"
+      );
     }
     for (const pendingCostCreation of input.pendingCostCreations ?? []) {
-      addStatement(this.prepareConditionalPendingCostCreation(input.documentId, input.period, pendingCostCreation), "write");
+      addStatement(
+        this.prepareConditionalPendingCostCreation(input.documentId, input.period, pendingCostCreation, reversalOriginalDocumentId),
+        "write"
+      );
     }
     for (const pendingCostUpdate of input.pendingCostUpdates ?? []) {
       addStatement(
-        this.preparePendingCostConflictGuard(input.documentId, input.period, pendingCostUpdate),
+        this.preparePendingCostConflictGuard(input.documentId, input.period, pendingCostUpdate, reversalOriginalDocumentId),
         "pending_cost_conflict_guard"
       );
-      addStatement(this.prepareConditionalPendingCostUpdate(input.documentId, input.period, pendingCostUpdate), "pending_cost_update");
+      addStatement(
+        this.prepareConditionalPendingCostUpdate(input.documentId, input.period, pendingCostUpdate, reversalOriginalDocumentId),
+        "pending_cost_update"
+      );
     }
     addStatement(input.auditLogStatement, "write");
     addStatement(
-      this.prepareGuardedApprovalUpdate(input.documentId, input.period, input.reviewer, input.reviewedAt ?? nowIso()),
+      this.prepareGuardedApprovalUpdate(
+        input.documentId,
+        input.period,
+        input.reviewer,
+        input.reviewedAt ?? nowIso(),
+        reversalOriginalDocumentId
+      ),
       "approval"
     );
 
@@ -527,13 +550,14 @@ export class DocumentRepository {
   private prepareConditionalAccountEntry(
     documentId: string,
     period: string,
-    entry: { accountId: string; currencyCode: string; amountMinor: number; entryDate: string }
+    entry: { accountId: string; currencyCode: string; amountMinor: number; entryDate: string },
+    reversalOriginalDocumentId: string | null = null
   ): D1PreparedStatement {
     return this.db
       .prepare(
         `INSERT INTO account_entries (id, document_id, account_id, currency_code, amount_minor, entry_date, created_at)
          SELECT ?, ?, ?, ?, ?, ?, ?
-         WHERE ${this.approvalGuardSql()}`
+         WHERE ${this.approvalGuardSql(reversalOriginalDocumentId)}`
       )
       .bind(
         newId("acct_entry"),
@@ -543,21 +567,21 @@ export class DocumentRepository {
         entry.amountMinor,
         entry.entryDate,
         nowIso(),
-        documentId,
-        period
+        ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId)
       );
   }
 
   private prepareConditionalLoanEntry(
     documentId: string,
     period: string,
-    entry: { borrowerPersonId: string; currencyCode: string; amountMinor: number; entryDate: string }
+    entry: { borrowerPersonId: string; currencyCode: string; amountMinor: number; entryDate: string },
+    reversalOriginalDocumentId: string | null = null
   ): D1PreparedStatement {
     return this.db
       .prepare(
         `INSERT INTO loan_entries (id, document_id, borrower_person_id, currency_code, amount_minor, entry_date, created_at)
          SELECT ?, ?, ?, ?, ?, ?, ?
-         WHERE ${this.approvalGuardSql()}`
+         WHERE ${this.approvalGuardSql(reversalOriginalDocumentId)}`
       )
       .bind(
         newId("loan_entry"),
@@ -567,8 +591,7 @@ export class DocumentRepository {
         entry.amountMinor,
         entry.entryDate,
         nowIso(),
-        documentId,
-        period
+        ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId)
       );
   }
 
@@ -576,7 +599,8 @@ export class DocumentRepository {
     documentId: string,
     period: string,
     lotCreation: LotCreationEffect,
-    lotId: string
+    lotId: string,
+    reversalOriginalDocumentId: string | null = null
   ): D1PreparedStatement {
     return this.db
       .prepare(
@@ -586,7 +610,7 @@ export class DocumentRepository {
            current_account_id, current_person_id, lot_date, status, created_at
          )
          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-         WHERE ${this.approvalGuardSql()}`
+         WHERE ${this.approvalGuardSql(reversalOriginalDocumentId)}`
       )
       .bind(
         lotId,
@@ -601,15 +625,15 @@ export class DocumentRepository {
         lotCreation.lotDate,
         this.lotStatus(lotCreation.remainingAmountMinor),
         nowIso(),
-        documentId,
-        period
+        ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId)
       );
   }
 
   private prepareConditionalLotUpdate(
     documentId: string,
     period: string,
-    lotUpdate: LotUpdateEffect
+    lotUpdate: LotUpdateEffect,
+    reversalOriginalDocumentId: string | null = null
   ): D1PreparedStatement {
     return this.db
       .prepare(
@@ -622,7 +646,7 @@ export class DocumentRepository {
            AND remaining_usdt_cost_minor = ?
            AND remaining_amount_minor + ? >= 0
            AND remaining_usdt_cost_minor + ? >= 0
-           AND ${this.approvalGuardSql()}`
+           AND ${this.approvalGuardSql(reversalOriginalDocumentId)}`
       )
       .bind(
         lotUpdate.amountDeltaMinor,
@@ -633,21 +657,21 @@ export class DocumentRepository {
         lotUpdate.expectedRemainingUsdtCostMinor,
         lotUpdate.amountDeltaMinor,
         lotUpdate.usdtCostDeltaMinor,
-        documentId,
-        period
+        ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId)
       );
   }
 
   private prepareLotConflictGuard(
     documentId: string,
     period: string,
-    lotUpdate: LotUpdateEffect
+    lotUpdate: LotUpdateEffect,
+    reversalOriginalDocumentId: string | null = null
   ): D1PreparedStatement {
     return this.db
       .prepare(
         `INSERT INTO account_entries (id, document_id, account_id, currency_code, amount_minor, entry_date, created_at)
          SELECT ?, ?, NULL, ?, 0, ?, ?
-         WHERE ${this.approvalGuardSql()}
+         WHERE ${this.approvalGuardSql(reversalOriginalDocumentId)}
            AND NOT EXISTS (
              SELECT 1 FROM lots
              WHERE id = ?
@@ -663,8 +687,7 @@ export class DocumentRepository {
         "USDT",
         nowIso(),
         nowIso(),
-        documentId,
-        period,
+        ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId),
         lotUpdate.lotId,
         lotUpdate.expectedRemainingAmountMinor,
         lotUpdate.expectedRemainingUsdtCostMinor,
@@ -677,7 +700,8 @@ export class DocumentRepository {
     documentId: string,
     period: string,
     lotMovement: LotMovementEffect,
-    lotId: string
+    lotId: string,
+    reversalOriginalDocumentId: string | null = null
   ): D1PreparedStatement {
     return this.db
       .prepare(
@@ -686,7 +710,7 @@ export class DocumentRepository {
            from_person_id, to_person_id, amount_minor, usdt_cost_minor, movement_date, created_at
          )
          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-         WHERE ${this.approvalGuardSql()}`
+         WHERE ${this.approvalGuardSql(reversalOriginalDocumentId)}`
       )
       .bind(
         newId("lot_move"),
@@ -701,15 +725,15 @@ export class DocumentRepository {
         lotMovement.usdtCostMinor,
         lotMovement.movementDate,
         nowIso(),
-        documentId,
-        period
+        ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId)
       );
   }
 
   private prepareConditionalPendingCostCreation(
     documentId: string,
     period: string,
-    pendingCostCreation: PendingCostCreationEffect
+    pendingCostCreation: PendingCostCreationEffect,
+    reversalOriginalDocumentId: string | null = null
   ): D1PreparedStatement {
     return this.db
       .prepare(
@@ -718,7 +742,7 @@ export class DocumentRepository {
            remaining_amount_minor, expense_date, status, created_at
          )
          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-         WHERE ${this.approvalGuardSql()}`
+         WHERE ${this.approvalGuardSql(reversalOriginalDocumentId)}`
       )
       .bind(
         newId("pending_cost"),
@@ -731,15 +755,15 @@ export class DocumentRepository {
         pendingCostCreation.expenseDate,
         this.pendingCostStatus(pendingCostCreation.amountMinor, pendingCostCreation.remainingAmountMinor),
         nowIso(),
-        documentId,
-        period
+        ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId)
       );
   }
 
   private prepareConditionalPendingCostUpdate(
     documentId: string,
     period: string,
-    pendingCostUpdate: PendingCostUpdateEffect
+    pendingCostUpdate: PendingCostUpdateEffect,
+    reversalOriginalDocumentId: string | null = null
   ): D1PreparedStatement {
     return this.db
       .prepare(
@@ -749,7 +773,7 @@ export class DocumentRepository {
          WHERE id = ?
            AND remaining_amount_minor = ?
            AND remaining_amount_minor + ? >= 0
-           AND ${this.approvalGuardSql()}`
+           AND ${this.approvalGuardSql(reversalOriginalDocumentId)}`
       )
       .bind(
         pendingCostUpdate.amountDeltaMinor,
@@ -757,21 +781,21 @@ export class DocumentRepository {
         pendingCostUpdate.pendingCostMatchId,
         pendingCostUpdate.expectedRemainingAmountMinor,
         pendingCostUpdate.amountDeltaMinor,
-        documentId,
-        period
+        ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId)
       );
   }
 
   private preparePendingCostConflictGuard(
     documentId: string,
     period: string,
-    pendingCostUpdate: PendingCostUpdateEffect
+    pendingCostUpdate: PendingCostUpdateEffect,
+    reversalOriginalDocumentId: string | null = null
   ): D1PreparedStatement {
     return this.db
       .prepare(
         `INSERT INTO account_entries (id, document_id, account_id, currency_code, amount_minor, entry_date, created_at)
          SELECT ?, ?, NULL, ?, 0, ?, ?
-         WHERE ${this.approvalGuardSql()}
+         WHERE ${this.approvalGuardSql(reversalOriginalDocumentId)}
            AND NOT EXISTS (
              SELECT 1 FROM pending_cost_matches
              WHERE id = ?
@@ -785,8 +809,7 @@ export class DocumentRepository {
         "USDT",
         nowIso(),
         nowIso(),
-        documentId,
-        period,
+        ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId),
         pendingCostUpdate.pendingCostMatchId,
         pendingCostUpdate.expectedRemainingAmountMinor,
         pendingCostUpdate.amountDeltaMinor
@@ -797,7 +820,8 @@ export class DocumentRepository {
     documentId: string,
     period: string,
     reviewer: string,
-    reviewedAt: string
+    reviewedAt: string,
+    reversalOriginalDocumentId: string | null = null
   ): D1PreparedStatement {
     return this.db
       .prepare(
@@ -805,18 +829,39 @@ export class DocumentRepository {
          SET status = 'approved', reviewed_by = ?, reviewed_at = ?, reject_reason = NULL
          WHERE id = ?
            AND status = 'pending'
-           AND NOT EXISTS (SELECT 1 FROM period_locks WHERE period = ?)`
+           AND NOT EXISTS (SELECT 1 FROM period_locks WHERE period = ?)
+           ${this.duplicateReversalGuardSql(reversalOriginalDocumentId)}`
       )
-      .bind(reviewer, reviewedAt, documentId, period);
+      .bind(reviewer, reviewedAt, documentId, period, ...this.duplicateReversalGuardBindings(documentId, reversalOriginalDocumentId));
   }
 
-  private approvalGuardSql() {
+  private approvalGuardSql(reversalOriginalDocumentId: string | null = null) {
     return `EXISTS (
       SELECT 1 FROM documents
       WHERE id = ?
         AND status = 'pending'
         AND NOT EXISTS (SELECT 1 FROM period_locks WHERE period = ?)
+        ${this.duplicateReversalGuardSql(reversalOriginalDocumentId)}
     )`;
+  }
+
+  private approvalGuardBindings(documentId: string, period: string, reversalOriginalDocumentId: string | null = null): unknown[] {
+    return [documentId, period, ...this.duplicateReversalGuardBindings(documentId, reversalOriginalDocumentId)];
+  }
+
+  private duplicateReversalGuardSql(reversalOriginalDocumentId: string | null) {
+    if (!reversalOriginalDocumentId) return "";
+    return `AND NOT EXISTS (
+      SELECT 1 FROM documents
+      WHERE original_document_id = ?
+        AND action_type = 'reversal'
+        AND status = 'approved'
+        AND id <> ?
+    )`;
+  }
+
+  private duplicateReversalGuardBindings(documentId: string, reversalOriginalDocumentId: string | null): unknown[] {
+    return reversalOriginalDocumentId ? [reversalOriginalDocumentId, documentId] : [];
   }
 
   private lotStatus(remainingAmountMinor: number): "open" | "closed" {

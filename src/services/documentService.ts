@@ -208,6 +208,9 @@ export class DocumentService {
     if (original.status !== "approved") {
       throw new Error("Original document must be approved before reversal");
     }
+    if (document.document_type !== original.document_type) {
+      throw new Error("Reversal document type must match original document type");
+    }
 
     const [originalAccountEntries, originalLoanEntries] = await Promise.all([
       this.documents.listAccountEntriesForDocument(originalDocumentId),
@@ -248,6 +251,7 @@ export class DocumentService {
       documentId: document.id,
       period: approvalPeriod,
       reviewer,
+      reversalOriginalDocumentId: originalDocumentId,
       accountEntries: posting.accountEntries,
       loanEntries: posting.loanEntries,
       lotCreations: fifoEffects.lotCreations,
