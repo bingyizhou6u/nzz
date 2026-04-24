@@ -597,6 +597,7 @@ it("approves with lot and pending cost writes in the guarded batch", async () =>
         remainingAmountMinor: 1000,
         originalUsdtCostMinor: 272,
         remainingUsdtCostMinor: 272,
+        clientLotId: "doc_1:lot:1",
         sourceDocumentId: "doc_1",
         currentAccountId: "acct_aed",
         currentPersonId: null,
@@ -639,6 +640,7 @@ it("approves with lot and pending cost writes in the guarded batch", async () =>
   expect(normalizedSql).toContain("insert into pending_cost_matches");
   expect(normalizedSql).toContain("update pending_cost_matches");
   expect(normalizedSql).toContain("not exists (select 1 from period_locks where period = ?)");
+  expect(batchCalls[0].some((statement) => statement.bindings.includes("doc_1:lot:1"))).toBe(false);
 });
 ```
 
@@ -762,6 +764,23 @@ private approvalGuardSql() {
 Use this condition in account-entry, loan-entry, lot, movement, pending-cost, audit, and final update writes.
 
 Add builders that bind `documentId` and `period` as the last condition bindings for every conditional write.
+
+Lot creations have a domain-level `clientLotId`, not the final database ID. In `approveWithPostings`, create a local map before building statements:
+
+```ts
+const createdLotIds = new Map<string, string>();
+for (const lotCreation of input.lotCreations ?? []) {
+  createdLotIds.set(lotCreation.clientLotId, newId("lot"));
+}
+```
+
+When preparing `INSERT INTO lots`, use the mapped database ID. When preparing `lot_movements`, resolve `movement.lotId` with:
+
+```ts
+const lotId = createdLotIds.get(movement.lotId) ?? movement.lotId;
+```
+
+Do not persist `clientLotId` in D1; it exists only to connect new lots to movements inside the same approval batch.
 
 - [ ] **Step 6: Verify lot update conflicts are detected**
 
