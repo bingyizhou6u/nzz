@@ -9,7 +9,10 @@ import {
 import { createProject, listCurrencies } from "../api/masterData";
 import {
   accountBalances,
+  loanAging,
+  loanAllocations,
   loanBalances,
+  loanWriteoffs,
   lotBalances,
   lotMovements,
   pendingCostMatches,
@@ -51,6 +54,9 @@ const routes: Route[] = [
   defineRoute("GET", "/api/reports/account-balances", accountBalances),
   defineRoute("GET", "/api/reports/petty-cash-pending", pettyCashPendingMatches),
   defineRoute("GET", "/api/reports/loan-balances", loanBalances),
+  defineRoute("GET", "/api/reports/loan-aging", loanAging),
+  defineRoute("GET", "/api/reports/loan-allocations", loanAllocations),
+  defineRoute("GET", "/api/reports/loan-writeoffs", loanWriteoffs),
   defineRoute("GET", "/api/reports/lots", lotBalances),
   defineRoute("GET", "/api/reports/lot-movements", lotMovements),
   defineRoute("GET", "/api/reports/pending-costs", pendingCostMatches),

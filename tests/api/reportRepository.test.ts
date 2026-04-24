@@ -152,4 +152,54 @@ describe("ReportRepository", () => {
     expect(normalized).toContain("pcm.remaining_amount_minor > 0");
     expect(normalized).toContain("order by pcm.expense_date, pcm.created_at");
   });
+
+  it("returns open loan items for aging ordered by oldest loan date", async () => {
+    const rows = [
+      {
+        loan_item_id: "loan_item_1",
+        source_document_id: "doc_loan",
+        borrower_person_id: "person_1",
+        currency_code: "AED",
+        remaining_amount_minor: 100000,
+        remaining_usdt_cost_minor: 27000,
+        loan_date: "2026-04-01",
+        age_days: 24
+      }
+    ];
+    let sql = "";
+    const repo = new ReportRepository(mockDb(rows, (value) => (sql = value)));
+
+    await expect(repo.loanAging()).resolves.toEqual(rows);
+
+    const normalized = normalizeSql(sql);
+    expect(normalized).toContain("from loan_items li");
+    expect(normalized).toContain("li.remaining_amount_minor > 0");
+    expect(normalized).toContain("order by li.loan_date, li.created_at, li.id");
+  });
+
+  it("returns loan allocation detail", async () => {
+    const rows = [{ allocation_id: "loan_alloc_1", document_id: "doc_repay", loan_item_id: "loan_item_1" }];
+    let sql = "";
+    const repo = new ReportRepository(mockDb(rows, (value) => (sql = value)));
+
+    await expect(repo.loanAllocations()).resolves.toEqual(rows);
+
+    const normalized = normalizeSql(sql);
+    expect(normalized).toContain("from loan_allocations la");
+    expect(normalized).toContain("join loan_items li on li.id = la.loan_item_id");
+    expect(normalized).toContain("join documents d on d.id = la.document_id");
+    expect(normalized).toContain("where d.status = 'approved'");
+  });
+
+  it("returns loan writeoff report rows", async () => {
+    const rows = [{ document_id: "doc_writeoff", borrower_person_id: "person_1", usdt_cost_minor: 27000 }];
+    let sql = "";
+    const repo = new ReportRepository(mockDb(rows, (value) => (sql = value)));
+
+    await expect(repo.loanWriteoffs()).resolves.toEqual(rows);
+
+    const normalized = normalizeSql(sql);
+    expect(normalized).toContain("la.allocation_type = 'writeoff'");
+    expect(normalized).toContain("d.document_type = 'loan_writeoff'");
+  });
 });

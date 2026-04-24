@@ -59,6 +59,40 @@ export interface PendingCostRow {
   created_at: string;
 }
 
+export interface LoanAgingRow {
+  loan_item_id: string;
+  source_document_id: string;
+  borrower_person_id: string;
+  currency_code: string;
+  remaining_amount_minor: number;
+  remaining_usdt_cost_minor: number;
+  loan_date: string;
+  age_days: number;
+}
+
+export interface LoanAllocationDetailRow {
+  allocation_id: string;
+  document_id: string;
+  loan_item_id: string;
+  allocation_type: string;
+  borrower_person_id: string;
+  currency_code: string;
+  amount_minor: number;
+  usdt_cost_minor: number;
+  allocation_date: string;
+}
+
+export interface LoanWriteoffRow {
+  document_id: string;
+  borrower_person_id: string;
+  project_id: string | null;
+  category_id: string | null;
+  currency_code: string;
+  amount_minor: number;
+  usdt_cost_minor: number;
+  allocation_date: string;
+}
+
 export class ReportRepository {
   constructor(private readonly db: D1Database) {}
 
@@ -173,6 +207,73 @@ export class ReportRepository {
           AND pcm.status IN ('open', 'partial')
           AND pcm.remaining_amount_minor > 0
         ORDER BY pcm.expense_date, pcm.created_at
+      `)
+    );
+  }
+
+  loanAging(): Promise<LoanAgingRow[]> {
+    return all<LoanAgingRow>(
+      this.db.prepare(`
+        SELECT
+          li.id AS loan_item_id,
+          li.source_document_id AS source_document_id,
+          li.borrower_person_id AS borrower_person_id,
+          li.currency_code AS currency_code,
+          li.remaining_amount_minor AS remaining_amount_minor,
+          li.remaining_usdt_cost_minor AS remaining_usdt_cost_minor,
+          li.loan_date AS loan_date,
+          CAST(julianday('now') - julianday(li.loan_date) AS INTEGER) AS age_days
+        FROM loan_items li
+        JOIN documents d ON d.id = li.source_document_id
+        WHERE d.status = 'approved'
+          AND li.remaining_amount_minor > 0
+        ORDER BY li.loan_date, li.created_at, li.id
+      `)
+    );
+  }
+
+  loanAllocations(): Promise<LoanAllocationDetailRow[]> {
+    return all<LoanAllocationDetailRow>(
+      this.db.prepare(`
+        SELECT
+          la.id AS allocation_id,
+          la.document_id AS document_id,
+          la.loan_item_id AS loan_item_id,
+          la.allocation_type AS allocation_type,
+          li.borrower_person_id AS borrower_person_id,
+          li.currency_code AS currency_code,
+          la.amount_minor AS amount_minor,
+          la.usdt_cost_minor AS usdt_cost_minor,
+          la.allocation_date AS allocation_date
+        FROM loan_allocations la
+        JOIN loan_items li ON li.id = la.loan_item_id
+        JOIN documents d ON d.id = la.document_id
+        WHERE d.status = 'approved'
+        ORDER BY la.allocation_date DESC, la.created_at DESC
+      `)
+    );
+  }
+
+  loanWriteoffs(): Promise<LoanWriteoffRow[]> {
+    return all<LoanWriteoffRow>(
+      this.db.prepare(`
+        SELECT
+          d.id AS document_id,
+          li.borrower_person_id AS borrower_person_id,
+          d.project_id AS project_id,
+          d.category_id AS category_id,
+          li.currency_code AS currency_code,
+          SUM(la.amount_minor) AS amount_minor,
+          SUM(la.usdt_cost_minor) AS usdt_cost_minor,
+          la.allocation_date AS allocation_date
+        FROM loan_allocations la
+        JOIN loan_items li ON li.id = la.loan_item_id
+        JOIN documents d ON d.id = la.document_id
+        WHERE d.status = 'approved'
+          AND d.document_type = 'loan_writeoff'
+          AND la.allocation_type = 'writeoff'
+        GROUP BY d.id, li.borrower_person_id, d.project_id, d.category_id, li.currency_code, la.allocation_date
+        ORDER BY la.allocation_date DESC, d.id
       `)
     );
   }

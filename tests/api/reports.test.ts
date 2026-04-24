@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accountBalances, lotBalances } from "../../src/api/reports";
+import { accountBalances, loanAging, loanAllocations, loanWriteoffs, lotBalances } from "../../src/api/reports";
 import { route } from "../../src/worker/router";
 import type { Env } from "../../src/worker/env";
 
@@ -72,6 +72,23 @@ describe("reports API", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ data: rows });
   });
+
+  it.each([
+    ["loan aging", loanAging, "/api/reports/loan-aging"],
+    ["loan allocations", loanAllocations, "/api/reports/loan-allocations"],
+    ["loan writeoffs", loanWriteoffs, "/api/reports/loan-writeoffs"]
+  ])("returns %s from the handler", async (_label, handler, pathname) => {
+    const rows = [{ id: "row_1" }];
+
+    const response = await handler({
+      request: new Request(`https://ledger.test${pathname}`),
+      env: mockEnv(rows),
+      params: {}
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: rows });
+  });
 });
 
 describe("report routes", () => {
@@ -79,6 +96,9 @@ describe("report routes", () => {
     "/api/reports/account-balances",
     "/api/reports/petty-cash-pending",
     "/api/reports/loan-balances",
+    "/api/reports/loan-aging",
+    "/api/reports/loan-allocations",
+    "/api/reports/loan-writeoffs",
     "/api/reports/lots",
     "/api/reports/lot-movements",
     "/api/reports/pending-costs"
@@ -92,7 +112,10 @@ describe("report routes", () => {
   it.each([
     ["/api/reports/lots", "from lots"],
     ["/api/reports/lot-movements", "from lot_movements"],
-    ["/api/reports/pending-costs", "from pending_cost_matches"]
+    ["/api/reports/pending-costs", "from pending_cost_matches"],
+    ["/api/reports/loan-aging", "from loan_items li"],
+    ["/api/reports/loan-allocations", "from loan_allocations la"],
+    ["/api/reports/loan-writeoffs", "from loan_allocations la"]
   ])("routes GET %s to the expected report query", async (pathname, expectedFrom) => {
     const { env, sql } = mockEnvWithSql();
 

@@ -16,6 +16,21 @@ export const loanBalances: Handler = async ({ env }) => {
   return Response.json({ data: await repo.loanBalances() });
 };
 
+export const loanAging: Handler = async ({ env }) => {
+  const repo = new ReportRepository(env.DB);
+  return Response.json({ data: await repo.loanAging() });
+};
+
+export const loanAllocations: Handler = async ({ env }) => {
+  const repo = new ReportRepository(env.DB);
+  return Response.json({ data: await repo.loanAllocations() });
+};
+
+export const loanWriteoffs: Handler = async ({ env }) => {
+  const repo = new ReportRepository(env.DB);
+  return Response.json({ data: await repo.loanWriteoffs() });
+};
+
 export const lotBalances: Handler = async ({ env }) => {
   const repo = new ReportRepository(env.DB);
   return Response.json({ data: await repo.lotBalances() });
