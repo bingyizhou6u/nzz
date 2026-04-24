@@ -31,6 +31,10 @@ export function normalizeDocumentLines(lines: RawDocumentLine[]): NormalizedDocu
   }
 
   return lines.map((line, index) => {
+    if (!isDocumentLineRecord(line)) {
+      throw new Error("line must be an object");
+    }
+
     const lineType = textOrDefault(line.lineType, "main");
     const accountId = requiredText(line.accountId, "line accountId");
     const currencyCode = requiredText(line.currencyCode, "line currencyCode").toUpperCase();
@@ -50,6 +54,10 @@ export function normalizeDocumentLines(lines: RawDocumentLine[]): NormalizedDocu
       note: optionalText(line.note)
     };
   });
+}
+
+function isDocumentLineRecord(value: unknown): value is RawDocumentLine {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function requiredText(value: unknown, label: string) {
