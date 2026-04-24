@@ -768,7 +768,7 @@ describe("DocumentService", () => {
   });
 
   it("approves reversals from original approved account and loan entries", async () => {
-    const { repo, service } = createMocks({
+    const { repo, audit, service } = createMocks({
       getDocument: vi
         .fn()
         .mockResolvedValueOnce(documentRow({
@@ -799,6 +799,16 @@ describe("DocumentService", () => {
     expect(repo.getDocument).toHaveBeenCalledWith("doc_rev");
     expect(repo.getDocument).toHaveBeenCalledWith("doc_original");
     expect(repo.getDocumentLines).not.toHaveBeenCalled();
+    expect(audit.prepareRecordWhen).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        sql: expect.stringContaining("original_document_id = ?"),
+        bindings: expect.arrayContaining(["doc_original", "doc_rev"])
+      })
+    );
+    const auditCondition = audit.prepareRecordWhen.mock.calls[0]?.[1];
+    expect(auditCondition.sql).toContain("action_type = 'reversal'");
+    expect(auditCondition.sql).toContain("status = 'approved'");
     expect(repo.approveWithPostings).toHaveBeenCalledWith(expect.objectContaining({
       documentId: "doc_rev",
       period: "2026-04",

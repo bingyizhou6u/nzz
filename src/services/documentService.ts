@@ -242,8 +242,20 @@ export class DocumentService {
         after: { status: "approved", originalDocumentId }
       },
       {
-        sql: "EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending' AND NOT EXISTS (SELECT 1 FROM period_locks WHERE period = ?))",
-        bindings: [document.id, approvalPeriod]
+        sql: `EXISTS (
+          SELECT 1 FROM documents
+          WHERE id = ?
+            AND status = 'pending'
+            AND NOT EXISTS (SELECT 1 FROM period_locks WHERE period = ?)
+            AND NOT EXISTS (
+              SELECT 1 FROM documents
+              WHERE original_document_id = ?
+                AND action_type = 'reversal'
+                AND status = 'approved'
+                AND id <> ?
+            )
+        )`,
+        bindings: [document.id, approvalPeriod, originalDocumentId, document.id]
       }
     );
 
