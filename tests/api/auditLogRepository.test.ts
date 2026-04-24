@@ -113,6 +113,21 @@ describe("AuditLogRepository", () => {
     );
   });
 
+  it("serializes normal JSON arrays", async () => {
+    let boundValues: unknown[] = [];
+    const repo = new AuditLogRepository(mockDb({ onBind: (values) => (boundValues = values) }));
+
+    await repo.record({
+      actor: "user_1",
+      action: "document.submit",
+      entityType: "document",
+      entityId: "doc_1",
+      before: ["a", 1, null]
+    });
+
+    expect(boundValues[5]).toBe(JSON.stringify(["a", 1, null]));
+  });
+
   it("rejects snapshots that stringify to undefined", async () => {
     const repo = new AuditLogRepository(mockDb());
 
@@ -179,6 +194,46 @@ describe("AuditLogRepository", () => {
         entityType: "document",
         entityId: "doc_1",
         before: [() => undefined]
+      })
+    ).rejects.toThrow("Audit snapshot must be JSON-serializable");
+  });
+
+  it("rejects array accessor elements", async () => {
+    const repo = new AuditLogRepository(mockDb());
+    const snapshot = ["validated"];
+    let current = "validated";
+    Object.defineProperty(snapshot, "0", {
+      enumerable: true,
+      get() {
+        const value = current;
+        current = "serialized";
+        return value;
+      }
+    });
+
+    await expect(
+      repo.record({
+        actor: "user_1",
+        action: "document.submit",
+        entityType: "document",
+        entityId: "doc_1",
+        before: snapshot
+      })
+    ).rejects.toThrow("Audit snapshot must be JSON-serializable");
+  });
+
+  it("rejects arrays with unexpected own properties", async () => {
+    const repo = new AuditLogRepository(mockDb());
+    const snapshot = ["a", 1, null] as unknown[] & { custom?: string };
+    snapshot.custom = "hidden";
+
+    await expect(
+      repo.record({
+        actor: "user_1",
+        action: "document.submit",
+        entityType: "document",
+        entityId: "doc_1",
+        before: snapshot
       })
     ).rejects.toThrow("Audit snapshot must be JSON-serializable");
   });

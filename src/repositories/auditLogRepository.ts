@@ -87,13 +87,12 @@ export class AuditLogRepository {
 
     path.add(value);
     if (Array.isArray(value)) {
-      for (const key of Object.getOwnPropertyNames(value)) {
-        if (key !== "length" && !this.isArrayIndex(key)) {
+      for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
+        if (key === "length") continue;
+        if (!this.isArrayIndex(key) || !descriptor.enumerable || !("value" in descriptor)) {
           throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
         }
-      }
-      for (const item of value) {
-        this.validateSnapshot(item, path);
+        this.validateSnapshot(descriptor.value, path);
       }
     } else {
       for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value))) {
