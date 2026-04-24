@@ -10,6 +10,8 @@ export interface AuditLogInput {
   reason?: string | null;
 }
 
+const SNAPSHOT_SERIALIZATION_ERROR = "Audit snapshot must be JSON-serializable";
+
 export class AuditLogRepository {
   constructor(private readonly db: D1Database) {}
 
@@ -38,17 +40,44 @@ export class AuditLogRepository {
   private serializeSnapshot(value: unknown): string | null {
     if (value === undefined) return null;
 
+    this.validateSnapshot(value, new WeakSet<object>());
+
     let serialized: string | undefined;
     try {
       serialized = JSON.stringify(value);
     } catch {
-      throw new Error("Audit snapshot must be JSON-serializable");
+      throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
     }
 
     if (serialized === undefined) {
-      throw new Error("Audit snapshot must be JSON-serializable");
+      throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
     }
 
     return serialized;
+  }
+
+  private validateSnapshot(value: unknown, seen: WeakSet<object>) {
+    if (value === undefined || typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") {
+      throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
+    }
+
+    if (value === null || typeof value !== "object") return;
+
+    if (seen.has(value)) {
+      throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
+    }
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        this.validateSnapshot(item, seen);
+      }
+    } else {
+      for (const item of Object.values(value)) {
+        this.validateSnapshot(item, seen);
+      }
+    }
+
+    seen.delete(value);
   }
 }

@@ -104,4 +104,62 @@ describe("AuditLogRepository", () => {
       })
     ).rejects.toThrow("Audit snapshot must be JSON-serializable");
   });
+
+  it("rejects nested functions in snapshots", async () => {
+    const repo = new AuditLogRepository(mockDb());
+
+    await expect(
+      repo.record({
+        actor: "user_1",
+        action: "document.submit",
+        entityType: "document",
+        entityId: "doc_1",
+        before: { value: () => undefined }
+      })
+    ).rejects.toThrow("Audit snapshot must be JSON-serializable");
+  });
+
+  it("rejects nested undefined values in snapshots", async () => {
+    const repo = new AuditLogRepository(mockDb());
+
+    await expect(
+      repo.record({
+        actor: "user_1",
+        action: "document.submit",
+        entityType: "document",
+        entityId: "doc_1",
+        before: { value: undefined }
+      })
+    ).rejects.toThrow("Audit snapshot must be JSON-serializable");
+  });
+
+  it("rejects unsupported array entries in snapshots", async () => {
+    const repo = new AuditLogRepository(mockDb());
+
+    await expect(
+      repo.record({
+        actor: "user_1",
+        action: "document.submit",
+        entityType: "document",
+        entityId: "doc_1",
+        before: [() => undefined]
+      })
+    ).rejects.toThrow("Audit snapshot must be JSON-serializable");
+  });
+
+  it("rejects cyclic snapshot references", async () => {
+    const repo = new AuditLogRepository(mockDb());
+    const snapshot: { self?: unknown } = {};
+    snapshot.self = snapshot;
+
+    await expect(
+      repo.record({
+        actor: "user_1",
+        action: "document.submit",
+        entityType: "document",
+        entityId: "doc_1",
+        before: snapshot
+      })
+    ).rejects.toThrow("Audit snapshot must be JSON-serializable");
+  });
 });
