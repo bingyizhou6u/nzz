@@ -1,10 +1,17 @@
 import { normalizeDocumentLines } from "../domain/documentLines";
 import type { RawDocumentLine } from "../domain/documentLines";
+import {
+  emptyFifoPostingEffects,
+  planExchangeLotCreation,
+  planPettyCashIssueEffects,
+  planPettyCashReimbursementEffects
+} from "../domain/fifoEffects";
 import { assertDocumentTransition, periodFromDate } from "../domain/documentWorkflow";
 import { entriesForApprovedDocument } from "../domain/posting";
+import type { Lot } from "../domain/types";
 import type { ActionType, DocumentType } from "../domain/types";
 import type { AuditLogRepository } from "../repositories/auditLogRepository";
-import type { DocumentRepository } from "../repositories/documentRepository";
+import type { DocumentLineRow, DocumentRepository, LotRow, PendingCostMatchRow } from "../repositories/documentRepository";
 
 export interface CreateDraftRequest {
   documentType: DocumentType;
@@ -33,6 +40,8 @@ type DocumentWorkflowRepository = Pick<
   | "isPeriodLocked"
   | "insertAccountEntries"
   | "insertLoanEntries"
+  | "listOpenLotsForAccount"
+  | "listOpenPendingCostMatches"
   | "approveWithPostings"
 >;
 
@@ -124,8 +133,6 @@ export class DocumentService {
       throw new Error(`Period ${approvalPeriod} is locked`);
     }
 
-    guardPendingFifoApprovalEffects(document.document_type);
-
     const lines = await this.documents.getDocumentLines(id);
     const posting = entriesForApprovedDocument({
       id: document.id,
@@ -135,10 +142,14 @@ export class DocumentService {
       borrowerPersonId: firstBorrower(lines),
       lines: lines.map((line) => ({
         accountId: line.account_id ?? "",
+        counterpartyAccountId: line.counterparty_account_id,
+        personId: line.person_id,
         currencyCode: line.currency_code,
-        amountMinor: line.amount_minor
+        amountMinor: line.amount_minor,
+        usdtAmountMinor: line.usdt_amount_minor
       }))
     });
+    const fifoEffects = await this.planFifoPostingEffects(document.document_type, document.id, document.business_date, lines);
     const auditLogStatement = this.auditLogs.prepareRecordWhen(
       {
         actor: reviewer,
@@ -160,6 +171,11 @@ export class DocumentService {
       reviewer,
       accountEntries: posting.accountEntries,
       loanEntries: posting.loanEntries,
+      lotCreations: fifoEffects.lotCreations,
+      lotUpdates: fifoEffects.lotUpdates,
+      lotMovements: fifoEffects.lotMovements,
+      pendingCostCreations: fifoEffects.pendingCostCreations,
+      pendingCostUpdates: fifoEffects.pendingCostUpdates,
       auditLogStatement
     });
   }
@@ -170,6 +186,64 @@ export class DocumentService {
       throw new Error("Document not found");
     }
     return document;
+  }
+
+  private async planFifoPostingEffects(documentType: DocumentType, documentId: string, businessDate: string, lines: DocumentLineRow[]) {
+    if (documentType === "exchange") {
+      const line = requireFirstLine(lines, documentType);
+      return planExchangeLotCreation({
+        documentId,
+        accountId: requireLineText(line.account_id, "line accountId", documentType),
+        currencyCode: requireLineText(line.currency_code, "line currencyCode", documentType),
+        amountMinor: requirePositiveSafeInteger(line.amount_minor, "line amountMinor", documentType),
+        usdtCostMinor: requirePositiveSafeInteger(line.usdt_amount_minor, "line usdtAmountMinor", documentType),
+        lotDate: businessDate
+      });
+    }
+
+    if (documentType === "petty_cash_issue") {
+      const line = requireFirstLine(lines, documentType);
+      const fromAccountId = requireLineText(line.account_id, "line accountId", documentType);
+      const toAccountId = requireLineText(line.counterparty_account_id, "line counterpartyAccountId", documentType);
+      const personId = requireLineText(line.person_id, "line personId", documentType);
+      const currencyCode = requireLineText(line.currency_code, "line currencyCode", documentType);
+      const [sourceLots, openPendingMatches] = await Promise.all([
+        this.documents.listOpenLotsForAccount({ accountId: fromAccountId, personId: null, currencyCode }),
+        this.documents.listOpenPendingCostMatches({ accountId: toAccountId, personId, currencyCode })
+      ]);
+
+      return planPettyCashIssueEffects({
+        documentId,
+        fromAccountId,
+        toAccountId,
+        personId,
+        currencyCode,
+        amountMinor: requirePositiveSafeInteger(line.amount_minor, "line amountMinor", documentType),
+        businessDate,
+        sourceLots: sourceLots.map(mapLotRow),
+        openPendingMatches: openPendingMatches.map(mapPendingCostMatchRow)
+      });
+    }
+
+    if (documentType === "petty_cash_reimbursement") {
+      const line = requireFirstLine(lines, documentType);
+      const accountId = requireLineText(line.account_id, "line accountId", documentType);
+      const personId = requireLineText(line.person_id, "line personId", documentType);
+      const currencyCode = requireLineText(line.currency_code, "line currencyCode", documentType);
+      const sourceLots = await this.documents.listOpenLotsForAccount({ accountId, personId, currencyCode });
+
+      return planPettyCashReimbursementEffects({
+        documentId,
+        accountId,
+        personId,
+        currencyCode,
+        amountMinor: requirePositiveSafeInteger(line.amount_minor, "line amountMinor", documentType),
+        expenseDate: businessDate,
+        sourceLots: sourceLots.map(mapLotRow)
+      });
+    }
+
+    return emptyFifoPostingEffects();
   }
 }
 
@@ -183,8 +257,47 @@ export function firstBorrower(lines: Array<{ borrower_person_id: string | null }
   return lines.find((line) => line.borrower_person_id)?.borrower_person_id ?? undefined;
 }
 
-function guardPendingFifoApprovalEffects(documentType: DocumentType) {
-  if (documentType === "exchange" || documentType === "petty_cash_issue" || documentType === "petty_cash_reimbursement") {
-    throw new Error(`FIFO approval effects are not implemented for ${documentType}`);
+function requireFirstLine(lines: DocumentLineRow[], documentType: DocumentType): DocumentLineRow {
+  const line = lines[0];
+  if (!line) {
+    throw new Error(`line is required for ${documentType}`);
   }
+  return line;
+}
+
+function requireLineText(value: string | null | undefined, label: string, documentType: DocumentType): string {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) {
+    throw new Error(`${label} is required for ${documentType}`);
+  }
+  return trimmed;
+}
+
+function requirePositiveSafeInteger(value: number | null | undefined, label: string, documentType: DocumentType): number {
+  if (value == null) {
+    throw new Error(`${label} is required for ${documentType}`);
+  }
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${label} must be a positive safe integer for ${documentType}`);
+  }
+  return value;
+}
+
+function mapLotRow(row: LotRow): Lot {
+  return {
+    id: row.id,
+    currencyCode: row.currency_code,
+    remainingAmountMinor: row.remaining_amount_minor,
+    remainingUsdtCostMinor: row.remaining_usdt_cost_minor,
+    lotDate: row.lot_date
+  };
+}
+
+function mapPendingCostMatchRow(row: PendingCostMatchRow) {
+  return {
+    id: row.id,
+    remainingAmountMinor: row.remaining_amount_minor,
+    expenseDate: row.expense_date,
+    createdAt: row.created_at
+  };
 }

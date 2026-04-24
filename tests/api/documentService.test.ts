@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { DocumentService } from "../../src/services/documentService";
-import type { DocumentDetailRow, DocumentLineRow } from "../../src/repositories/documentRepository";
+import type { DocumentDetailRow, DocumentLineRow, LotRow, PendingCostMatchRow } from "../../src/repositories/documentRepository";
 
 type DocumentRepoMock = ConstructorParameters<typeof DocumentService>[0];
 type AuditRepoMock = ConstructorParameters<typeof DocumentService>[1];
 type AtomicDocumentRepoMock = DocumentRepoMock & {
   createDraft: ReturnType<typeof vi.fn>;
+  listOpenLotsForAccount: ReturnType<typeof vi.fn>;
+  listOpenPendingCostMatches: ReturnType<typeof vi.fn>;
   approveWithPostings: ReturnType<typeof vi.fn>;
 };
 type AtomicAuditRepoMock = AuditRepoMock & {
@@ -55,6 +57,27 @@ function lineRow(overrides: Partial<DocumentLineRow> = {}): DocumentLineRow {
   };
 }
 
+function lotRow(overrides: Partial<LotRow> = {}): LotRow {
+  return {
+    id: "lot_a",
+    currency_code: "AED",
+    remaining_amount_minor: 150000,
+    remaining_usdt_cost_minor: 41000,
+    lot_date: "2026-04-20",
+    ...overrides
+  };
+}
+
+function pendingCostMatchRow(overrides: Partial<PendingCostMatchRow> = {}): PendingCostMatchRow {
+  return {
+    id: "pending_old",
+    remaining_amount_minor: 120000,
+    expense_date: "2026-04-22",
+    created_at: "2026-04-22T10:00:00.000Z",
+    ...overrides
+  };
+}
+
 function createMocks(overrides: Partial<AtomicDocumentRepoMock> = {}) {
   const repo = {
     createDraft: vi.fn(async () => ({ id: "doc_1", documentNo: "docno_1", status: "draft" as const })),
@@ -67,6 +90,8 @@ function createMocks(overrides: Partial<AtomicDocumentRepoMock> = {}) {
     isPeriodLocked: vi.fn(async () => null),
     insertAccountEntries: vi.fn(async () => undefined),
     insertLoanEntries: vi.fn(async () => undefined),
+    listOpenLotsForAccount: vi.fn(async () => []),
+    listOpenPendingCostMatches: vi.fn(async () => []),
     approveWithPostings: vi.fn(async () => undefined),
     ...overrides
   } satisfies AtomicDocumentRepoMock;
@@ -242,6 +267,11 @@ describe("DocumentService", () => {
       reviewer: "reviewer_1",
       accountEntries: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 15000, entryDate: "2026-04-24" }],
       loanEntries: [],
+      lotCreations: [],
+      lotUpdates: [],
+      lotMovements: [],
+      pendingCostCreations: [],
+      pendingCostUpdates: [],
       auditLogStatement: { statement: "audit" }
     });
     expect(repo.insertAccountEntries).not.toHaveBeenCalled();
@@ -301,22 +331,214 @@ describe("DocumentService", () => {
     expect(audit.prepareRecordWhen).not.toHaveBeenCalled();
   });
 
-  it.each(["exchange", "petty_cash_issue", "petty_cash_reimbursement"] as const)(
-    "rejects %s approval until FIFO approval effects are implemented",
-    async (documentType) => {
-      const { repo, audit, service } = createMocks({
-        getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: documentType }))
-      });
+  it("approves exchange documents with lot creation effects", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "exchange" })),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({
+          account_id: "acct_aed_reserve",
+          counterparty_account_id: "acct_usdt_main",
+          currency_code: "AED",
+          amount_minor: 367000,
+          usdt_amount_minor: 100000
+        })
+      ])
+    });
 
-      await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow(
-        `FIFO approval effects are not implemented for ${documentType}`
-      );
+    await service.approve("doc_1", "reviewer_1");
 
-      expect(repo.getDocumentLines).not.toHaveBeenCalled();
-      expect(repo.approveWithPostings).not.toHaveBeenCalled();
-      expect(audit.prepareRecordWhen).not.toHaveBeenCalled();
-    }
-  );
+    expect(repo.approveWithPostings).toHaveBeenCalledWith(expect.objectContaining({
+      documentId: "doc_1",
+      accountEntries: [
+        { accountId: "acct_usdt_main", currencyCode: "USDT", amountMinor: -100000, entryDate: "2026-04-24" },
+        { accountId: "acct_aed_reserve", currencyCode: "AED", amountMinor: 367000, entryDate: "2026-04-24" }
+      ],
+      lotCreations: [
+        {
+          clientLotId: "doc_1:lot:1",
+          currencyCode: "AED",
+          originalAmountMinor: 367000,
+          remainingAmountMinor: 367000,
+          originalUsdtCostMinor: 100000,
+          remainingUsdtCostMinor: 100000,
+          sourceDocumentId: "doc_1",
+          currentAccountId: "acct_aed_reserve",
+          currentPersonId: null,
+          lotDate: "2026-04-24"
+        }
+      ],
+      lotMovements: [
+        {
+          lotId: "doc_1:lot:1",
+          movementType: "exchange_in",
+          fromAccountId: null,
+          toAccountId: "acct_aed_reserve",
+          fromPersonId: null,
+          toPersonId: null,
+          amountMinor: 367000,
+          usdtCostMinor: 100000,
+          movementDate: "2026-04-24"
+        }
+      ],
+      pendingCostCreations: [],
+      pendingCostUpdates: []
+    }));
+  });
+
+  it("approves petty cash reimbursements with staff lot reads and pending cost creations for unmatched amount", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "petty_cash_reimbursement" })),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({
+          account_id: "acct_petty_bob",
+          person_id: "person_bob",
+          currency_code: "AED",
+          amount_minor: 215000
+        })
+      ]),
+      listOpenLotsForAccount: vi.fn(async () => [
+        lotRow({ id: "lot_staff", remaining_amount_minor: 150000, remaining_usdt_cost_minor: 41000 })
+      ])
+    });
+
+    await service.approve("doc_1", "reviewer_1");
+
+    expect(repo.listOpenLotsForAccount).toHaveBeenCalledWith({
+      accountId: "acct_petty_bob",
+      personId: "person_bob",
+      currencyCode: "AED"
+    });
+    expect(repo.approveWithPostings).toHaveBeenCalledWith(expect.objectContaining({
+      lotUpdates: [{ lotId: "lot_staff", amountDeltaMinor: -150000, usdtCostDeltaMinor: -41000 }],
+      lotMovements: [
+        {
+          lotId: "lot_staff",
+          movementType: "petty_cash_reimbursement",
+          fromAccountId: "acct_petty_bob",
+          toAccountId: null,
+          fromPersonId: "person_bob",
+          toPersonId: null,
+          amountMinor: 150000,
+          usdtCostMinor: 41000,
+          movementDate: "2026-04-24"
+        }
+      ],
+      pendingCostCreations: [
+        {
+          documentId: "doc_1",
+          personId: "person_bob",
+          accountId: "acct_petty_bob",
+          currencyCode: "AED",
+          amountMinor: 65000,
+          remainingAmountMinor: 65000,
+          expenseDate: "2026-04-24"
+        }
+      ],
+      pendingCostUpdates: []
+    }));
+  });
+
+  it("approves petty cash issues with reserve lots and staff pending cost matches", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "petty_cash_issue" })),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({
+          account_id: "acct_aed_reserve",
+          counterparty_account_id: "acct_petty_bob",
+          person_id: "person_bob",
+          currency_code: "AED",
+          amount_minor: 200000
+        })
+      ]),
+      listOpenLotsForAccount: vi.fn(async () => [
+        lotRow({ id: "lot_a", remaining_amount_minor: 150000, remaining_usdt_cost_minor: 41000, lot_date: "2026-04-20" }),
+        lotRow({ id: "lot_b", remaining_amount_minor: 100000, remaining_usdt_cost_minor: 27300, lot_date: "2026-04-21" })
+      ]),
+      listOpenPendingCostMatches: vi.fn(async () => [
+        pendingCostMatchRow({ id: "pending_old", remaining_amount_minor: 160000 })
+      ])
+    });
+
+    await service.approve("doc_1", "reviewer_1");
+
+    expect(repo.listOpenLotsForAccount).toHaveBeenCalledWith({
+      accountId: "acct_aed_reserve",
+      personId: null,
+      currencyCode: "AED"
+    });
+    expect(repo.listOpenPendingCostMatches).toHaveBeenCalledWith({
+      accountId: "acct_petty_bob",
+      personId: "person_bob",
+      currencyCode: "AED"
+    });
+    expect(repo.approveWithPostings).toHaveBeenCalledWith(expect.objectContaining({
+      lotCreations: [
+        expect.objectContaining({
+          clientLotId: "doc_1:issue:1",
+          remainingAmountMinor: 0,
+          remainingUsdtCostMinor: 0,
+          currentAccountId: "acct_petty_bob",
+          currentPersonId: "person_bob"
+        }),
+        expect.objectContaining({
+          clientLotId: "doc_1:issue:2",
+          remainingAmountMinor: 40000,
+          remainingUsdtCostMinor: 10920,
+          currentAccountId: "acct_petty_bob",
+          currentPersonId: "person_bob"
+        })
+      ],
+      lotUpdates: [
+        { lotId: "lot_a", amountDeltaMinor: -150000, usdtCostDeltaMinor: -41000 },
+        { lotId: "lot_b", amountDeltaMinor: -50000, usdtCostDeltaMinor: -13650 }
+      ],
+      lotMovements: expect.arrayContaining([
+        {
+          lotId: "lot_a",
+          movementType: "petty_cash_issue",
+          fromAccountId: "acct_aed_reserve",
+          toAccountId: "acct_petty_bob",
+          fromPersonId: null,
+          toPersonId: "person_bob",
+          amountMinor: 150000,
+          usdtCostMinor: 41000,
+          movementDate: "2026-04-24"
+        },
+        {
+          lotId: "doc_1:issue:2",
+          movementType: "pending_cost_match",
+          fromAccountId: "acct_petty_bob",
+          toAccountId: null,
+          fromPersonId: "person_bob",
+          toPersonId: null,
+          amountMinor: 10000,
+          usdtCostMinor: 2730,
+          movementDate: "2026-04-24"
+        }
+      ]),
+      pendingCostCreations: [],
+      pendingCostUpdates: [{ pendingCostMatchId: "pending_old", amountDeltaMinor: -160000 }]
+    }));
+  });
+
+  it("rejects exchange approval without a USDT cost before approval writes", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "exchange" })),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({
+          account_id: "acct_aed_reserve",
+          counterparty_account_id: "acct_usdt_main",
+          currency_code: "AED",
+          amount_minor: 367000,
+          usdt_amount_minor: null
+        })
+      ])
+    });
+
+    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("line usdtAmountMinor is required for exchange");
+
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
+  });
 
   it("uses the first borrower when approving loan documents", async () => {
     const { repo, service } = createMocks({
@@ -341,6 +563,11 @@ describe("DocumentService", () => {
         { borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 5000, entryDate: "2026-04-24" },
         { borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 7000, entryDate: "2026-04-24" }
       ],
+      lotCreations: [],
+      lotUpdates: [],
+      lotMovements: [],
+      pendingCostCreations: [],
+      pendingCostUpdates: [],
       auditLogStatement: { statement: "audit" }
     });
   });
