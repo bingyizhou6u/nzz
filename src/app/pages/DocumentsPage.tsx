@@ -1,11 +1,25 @@
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import type { ActionType, DocumentType } from "../../domain/types";
-import { postJson, type ApiEnvelope } from "../api";
+import { getJson, postJson, type ApiEnvelope } from "../api";
 
 interface DocumentResponse {
   id: string;
   documentNo: string;
   status: string;
+}
+
+interface DocumentActionResponse {
+  id: string;
+  status: string;
+}
+
+interface DocumentListItem {
+  id: string;
+  document_no: string;
+  document_type: DocumentType;
+  business_date: string;
+  status: string;
+  summary: string;
 }
 
 interface DocumentForm {
@@ -20,7 +34,13 @@ interface DocumentForm {
   projectId: string;
   merchantId: string;
   categoryId: string;
+  accountId: string;
+  currencyCode: string;
+  amountMajor: string;
+  borrowerPersonId: string;
 }
+
+type WorkflowAction = "submit" | "approve" | "reject";
 
 const documentTypes = [
   "project_income",
@@ -55,6 +75,14 @@ const actionTypeLabels: Record<ActionType, string> = {
   correction: "更正",
   reversal: "冲销",
   repost: "重记"
+};
+
+const statusLabels: Record<string, string> = {
+  draft: "草稿",
+  pending: "待审核",
+  approved: "已审核",
+  rejected: "已退回",
+  void: "已作废"
 };
 
 function padCalendarPart(value: number) {
@@ -98,7 +126,11 @@ function createInitialForm(): DocumentForm {
     operatorPersonId: "",
     projectId: "",
     merchantId: "",
-    categoryId: ""
+    categoryId: "",
+    accountId: "",
+    currencyCode: "AED",
+    amountMajor: "",
+    borrowerPersonId: ""
   };
 }
 
@@ -107,12 +139,103 @@ function optionalString(value: string) {
   return trimmed ? trimmed : undefined;
 }
 
+export function amountMajorToMinor(value: string) {
+  const normalized = value.trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) throw new Error("金额格式必须最多两位小数");
+  const [major, minor = ""] = normalized.split(".");
+  return Number(major) * 100 + Number(minor.padEnd(2, "0"));
+}
+
+export function canSubmitDocument(status: string) {
+  return status === "draft" || status === "rejected";
+}
+
+export function canApproveDocument(status: string) {
+  return status === "pending";
+}
+
+export function buildDocumentPayload(
+  form: DocumentForm & { accountId: string; currencyCode: string; amountMajor: string; borrowerPersonId: string }
+) {
+  const payload: Record<string, unknown> = {
+    documentType: form.documentType,
+    actionType: form.actionType,
+    businessDate: form.businessDate,
+    period: form.period,
+    summary: form.summary.trim(),
+    createdBy: form.createdBy.trim(),
+    lines: [
+      {
+        lineType: "main",
+        accountId: form.accountId.trim(),
+        currencyCode: form.currencyCode.trim().toUpperCase(),
+        amountMinor: amountMajorToMinor(form.amountMajor)
+      }
+    ]
+  };
+
+  for (const [key, value] of Object.entries({
+    originalDocumentId: optionalString(form.originalDocumentId),
+    operatorPersonId: optionalString(form.operatorPersonId),
+    projectId: optionalString(form.projectId),
+    merchantId: optionalString(form.merchantId),
+    categoryId: optionalString(form.categoryId)
+  })) {
+    if (value) payload[key] = value;
+  }
+
+  const borrowerPersonId = form.borrowerPersonId.trim();
+  if (borrowerPersonId) {
+    (payload.lines as Array<Record<string, unknown>>)[0].borrowerPersonId = borrowerPersonId;
+  }
+
+  return payload;
+}
+
 export function DocumentsPage() {
   const initialForm = useMemo(() => createInitialForm(), []);
+  const [documents, setDocuments] = useState<DocumentListItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [form, setForm] = useState<DocumentForm>(initialForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [actionKey, setActionKey] = useState<string | null>(null);
   const [result, setResult] = useState<DocumentResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadDocuments() {
+      setIsLoading(true);
+      setLoadError(null);
+      try {
+        const response = await getJson<ApiEnvelope<DocumentListItem[]>>("/api/documents");
+        if (isCurrent) {
+          setDocuments(response.data);
+        }
+      } catch (loadDocumentsError) {
+        if (isCurrent) {
+          setLoadError(loadDocumentsError instanceof Error ? loadDocumentsError.message : "读取单据失败");
+        }
+      } finally {
+        if (isCurrent) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadDocuments();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [reloadKey]);
+
+  function refreshDocuments() {
+    setReloadKey((value) => value + 1);
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -120,22 +243,8 @@ export function DocumentsPage() {
     setResult(null);
     setError(null);
 
-    const payload = {
-      documentType: form.documentType,
-      actionType: form.actionType,
-      businessDate: form.businessDate,
-      period: form.period,
-      originalDocumentId: optionalString(form.originalDocumentId),
-      summary: form.summary.trim(),
-      createdBy: form.createdBy.trim(),
-      operatorPersonId: optionalString(form.operatorPersonId),
-      projectId: optionalString(form.projectId),
-      merchantId: optionalString(form.merchantId),
-      categoryId: optionalString(form.categoryId)
-    };
-
     try {
-      const response = await postJson<ApiEnvelope<DocumentResponse>>("/api/documents", payload);
+      const response = await postJson<ApiEnvelope<DocumentResponse>>("/api/documents", buildDocumentPayload(form));
       setResult(response.data);
       setForm((current) => ({
         ...initialForm,
@@ -144,8 +253,11 @@ export function DocumentsPage() {
         businessDate: current.businessDate,
         period: current.period,
         originalDocumentId: isOriginalDocumentRequired(current.actionType) ? current.originalDocumentId : "",
-        createdBy: current.createdBy
+        createdBy: current.createdBy,
+        accountId: current.accountId,
+        currencyCode: current.currencyCode
       }));
+      refreshDocuments();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "创建单据失败");
     } finally {
@@ -153,13 +265,137 @@ export function DocumentsPage() {
     }
   }
 
+  async function handleWorkflowAction(document: DocumentListItem, action: WorkflowAction) {
+    const nextActionKey = `${document.id}:${action}`;
+    setActionKey(nextActionKey);
+    setResult(null);
+    setError(null);
+
+    const actor = form.createdBy.trim();
+    const body =
+      action === "approve"
+        ? { reviewer: actor }
+        : action === "reject"
+          ? { actor, reason: "退回修改" }
+          : { actor };
+
+    try {
+      const response = await postJson<ApiEnvelope<DocumentActionResponse>>(
+        `/api/documents/${encodeURIComponent(document.id)}/${action}`,
+        body
+      );
+      setResult({ id: response.data.id, documentNo: document.document_no, status: response.data.status });
+      refreshDocuments();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "单据操作失败");
+    } finally {
+      setActionKey(null);
+    }
+  }
+
   return (
     <div className="page-stack">
       <section className="panel">
         <div className="panel-header">
+          <h2>单据列表</h2>
+          <div className="document-toolbar">
+            <div className="status-slot" role="status" aria-live="polite">
+              {isLoading ? "读取中" : loadError ? "读取失败" : `${documents.length} 条`}
+            </div>
+            <button type="button" className="secondary-button" onClick={refreshDocuments} disabled={isLoading}>
+              重新读取
+            </button>
+          </div>
+        </div>
+
+        {loadError ? <div className="notice error">{loadError}</div> : null}
+
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>单据号</th>
+                <th>类型</th>
+                <th>日期</th>
+                <th>状态</th>
+                <th>摘要</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={6} className="empty-cell">
+                    读取中
+                  </td>
+                </tr>
+              ) : documents.length > 0 ? (
+                documents.map((document) => (
+                  <tr key={document.id}>
+                    <td className="mono">{document.document_no}</td>
+                    <td>{documentTypeLabels[document.document_type] ?? document.document_type}</td>
+                    <td className="mono">{document.business_date}</td>
+                    <td>
+                      <span className={document.status === "approved" ? "tag ok" : "tag muted"}>
+                        {statusLabels[document.status] ?? document.status}
+                      </span>
+                    </td>
+                    <td>{document.summary}</td>
+                    <td>
+                      <div className="inline-actions">
+                        {canSubmitDocument(document.status) ? (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => void handleWorkflowAction(document, "submit")}
+                            disabled={Boolean(actionKey) || isSubmitting}
+                          >
+                            {actionKey === `${document.id}:submit` ? "提交中" : "提交"}
+                          </button>
+                        ) : null}
+                        {canApproveDocument(document.status) ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void handleWorkflowAction(document, "approve")}
+                              disabled={Boolean(actionKey) || isSubmitting}
+                            >
+                              {actionKey === `${document.id}:approve` ? "审核中" : "通过"}
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => void handleWorkflowAction(document, "reject")}
+                              disabled={Boolean(actionKey) || isSubmitting}
+                            >
+                              {actionKey === `${document.id}:reject` ? "退回中" : "退回"}
+                            </button>
+                          </>
+                        ) : null}
+                        {!canSubmitDocument(document.status) && !canApproveDocument(document.status) ? (
+                          <span>无</span>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6} className="empty-cell">
+                    暂无数据
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-header">
           <h2>创建草稿单据</h2>
           <div className="status-slot" role="status" aria-live="polite">
-            {isSubmitting ? "提交中" : error ? "失败" : result ? "完成" : "待提交"}
+            {isSubmitting ? "提交中" : actionKey ? "处理中" : error ? "失败" : result ? "完成" : "待提交"}
           </div>
         </div>
 
@@ -282,6 +518,46 @@ export function DocumentsPage() {
             />
           </label>
 
+          <label>
+            账户ID
+            <input
+              value={form.accountId}
+              onChange={(event) => setForm((current) => ({ ...current, accountId: event.target.value }))}
+              required
+              maxLength={80}
+            />
+          </label>
+
+          <label>
+            币种代码
+            <input
+              value={form.currencyCode}
+              onChange={(event) => setForm((current) => ({ ...current, currencyCode: event.target.value }))}
+              required
+              maxLength={12}
+            />
+          </label>
+
+          <label>
+            金额
+            <input
+              value={form.amountMajor}
+              onChange={(event) => setForm((current) => ({ ...current, amountMajor: event.target.value }))}
+              required
+              inputMode="decimal"
+              maxLength={24}
+            />
+          </label>
+
+          <label>
+            借款人ID
+            <input
+              value={form.borrowerPersonId}
+              onChange={(event) => setForm((current) => ({ ...current, borrowerPersonId: event.target.value }))}
+              maxLength={80}
+            />
+          </label>
+
           <div className="form-actions">
             <button type="submit" disabled={isSubmitting}>
               {isSubmitting ? "提交中" : "创建草稿"}
@@ -294,7 +570,7 @@ export function DocumentsPage() {
             <span className="text-error">{error}</span>
           ) : result ? (
             <span>
-              {result.documentNo} / {result.status}
+              {result.documentNo} / {statusLabels[result.status] ?? result.status}
             </span>
           ) : null}
         </div>
