@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "management-ledger",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-04-24",
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "management-ledger-db",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ]
+}
