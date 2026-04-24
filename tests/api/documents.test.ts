@@ -25,6 +25,7 @@ describe("documents API", () => {
   const requiredDocumentFieldsError = {
     error: "documentType, businessDate, period, summary, and createdBy are required"
   };
+  const invalidDocumentTypeOrActionTypeError = { error: "Invalid document type or action type" };
 
   it("creates draft documents", async () => {
     let boundValues: unknown[] = [];
@@ -46,7 +47,7 @@ describe("documents API", () => {
     expect(response.status).toBe(201);
     const body = (await response.json()) as { data: { id: string; documentNo: string; status: string } };
     expect(body.data.id).toMatch(/^doc_/);
-    expect(body.data.documentNo).toMatch(/^DOC-\d+$/);
+    expect(body.data.documentNo).toMatch(/^docno_/);
     expect(body.data.status).toBe("draft");
     expect(boundValues[3]).toBe("normal");
   });
@@ -69,6 +70,47 @@ describe("documents API", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual(requiredDocumentFieldsError);
+  });
+
+  it("rejects invalid document types", async () => {
+    const response = await createDocument({
+      request: new Request("https://ledger.test/api/documents", {
+        method: "POST",
+        body: JSON.stringify({
+          documentType: "invalid",
+          businessDate: "2026-04-24",
+          period: "2026-04",
+          summary: "Initial income",
+          createdBy: "user_1"
+        })
+      }),
+      env: mockEnv(),
+      params: {}
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual(invalidDocumentTypeOrActionTypeError);
+  });
+
+  it("rejects invalid action types", async () => {
+    const response = await createDocument({
+      request: new Request("https://ledger.test/api/documents", {
+        method: "POST",
+        body: JSON.stringify({
+          documentType: "project_income",
+          actionType: "invalid",
+          businessDate: "2026-04-24",
+          period: "2026-04",
+          summary: "Initial income",
+          createdBy: "user_1"
+        })
+      }),
+      env: mockEnv(),
+      params: {}
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual(invalidDocumentTypeOrActionTypeError);
   });
 
   it("routes document creation requests", async () => {

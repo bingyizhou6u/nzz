@@ -33,7 +33,7 @@ describe("DocumentRepository", () => {
     });
 
     expect(result.id).toMatch(/^doc_/);
-    expect(result.documentNo).toMatch(/^DOC-\d+$/);
+    expect(result.documentNo).toMatch(/^docno_/);
     expect(result.status).toBe("draft");
     expect(boundValues).toEqual([
       result.id,
@@ -67,5 +67,28 @@ describe("DocumentRepository", () => {
         createdBy: "user_1"
       })
     ).rejects.toThrow("insert failed");
+  });
+
+  it("creates unique document numbers", async () => {
+    const repo = new DocumentRepository(mockDb());
+
+    const first = await repo.createDraft({
+      documentType: "manual_adjustment",
+      actionType: "normal",
+      businessDate: "2026-04-24",
+      period: "2026-04",
+      summary: "First",
+      createdBy: "user_1"
+    });
+    const second = await repo.createDraft({
+      documentType: "manual_adjustment",
+      actionType: "normal",
+      businessDate: "2026-04-24",
+      period: "2026-04",
+      summary: "Second",
+      createdBy: "user_1"
+    });
+
+    expect(first.documentNo).not.toBe(second.documentNo);
   });
 });

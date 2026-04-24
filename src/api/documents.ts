@@ -8,6 +8,32 @@ const requiredDocumentFieldsResponse = () =>
     { status: 400 }
   );
 
+const invalidDocumentTypeOrActionTypeResponse = () =>
+  Response.json({ error: "Invalid document type or action type" }, { status: 400 });
+
+const documentTypes = new Set<DocumentType>([
+  "project_income",
+  "exchange",
+  "account_transfer",
+  "petty_cash_issue",
+  "petty_cash_return",
+  "petty_cash_reimbursement",
+  "loan_out",
+  "loan_repayment",
+  "loan_writeoff",
+  "manual_adjustment"
+]);
+
+const actionTypes = new Set<ActionType>(["normal", "correction", "reversal", "repost"]);
+
+function isDocumentType(value: string): value is DocumentType {
+  return documentTypes.has(value as DocumentType);
+}
+
+function isActionType(value: string): value is ActionType {
+  return actionTypes.has(value as ActionType);
+}
+
 export const createDocument: Handler = async ({ request, env }) => {
   let body: unknown;
   try {
@@ -59,10 +85,19 @@ export const createDocument: Handler = async ({ request, env }) => {
     return requiredDocumentFieldsResponse();
   }
 
+  if (!isDocumentType(documentType)) {
+    return invalidDocumentTypeOrActionTypeResponse();
+  }
+
+  const normalizedActionType = typeof actionType === "string" ? actionType : "normal";
+  if (!isActionType(normalizedActionType)) {
+    return invalidDocumentTypeOrActionTypeResponse();
+  }
+
   const repo = new DocumentRepository(env.DB);
   const document = await repo.createDraft({
-    documentType: documentType as DocumentType,
-    actionType: typeof actionType === "string" ? (actionType as ActionType) : "normal",
+    documentType,
+    actionType: normalizedActionType,
     businessDate,
     period,
     operatorPersonId: typeof operatorPersonId === "string" ? operatorPersonId : null,

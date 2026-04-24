@@ -19,7 +19,7 @@ export class DocumentRepository {
 
   async createDraft(input: CreateDocumentInput): Promise<{ id: string; documentNo: string; status: DocumentStatus }> {
     const id = newId("doc");
-    const documentNo = `DOC-${Date.now()}`;
+    const documentNo = newId("docno");
     await run(
       this.db
         .prepare(
