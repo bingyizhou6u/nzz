@@ -806,7 +806,10 @@ describe("DocumentService", () => {
         bindings: expect.arrayContaining(["doc_original", "doc_rev"])
       })
     );
-    const auditCondition = audit.prepareRecordWhen.mock.calls[0]?.[1];
+    const auditCalls = audit.prepareRecordWhen.mock.calls as unknown as Array<
+      [unknown, { sql: string; bindings: unknown[] }]
+    >;
+    const auditCondition = auditCalls[0][1];
     expect(auditCondition.sql).toContain("action_type = 'reversal'");
     expect(auditCondition.sql).toContain("status = 'approved'");
     expect(repo.approveWithPostings).toHaveBeenCalledWith(expect.objectContaining({
