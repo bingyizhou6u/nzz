@@ -19,6 +19,46 @@ export interface LoanBalanceRow {
   balance_minor: number;
 }
 
+export interface LotBalanceRow {
+  id: string;
+  currency_code: string;
+  remaining_amount_minor: number;
+  remaining_usdt_cost_minor: number;
+  source_document_id: string;
+  current_account_id: string;
+  current_person_id: string | null;
+  lot_date: string;
+  status: string;
+}
+
+export interface LotMovementRow {
+  id: string;
+  lot_id: string;
+  document_id: string;
+  movement_type: string;
+  from_account_id: string | null;
+  to_account_id: string | null;
+  from_person_id: string | null;
+  to_person_id: string | null;
+  amount_minor: number;
+  usdt_cost_minor: number;
+  movement_date: string;
+  created_at: string;
+}
+
+export interface PendingCostRow {
+  id: string;
+  document_id: string;
+  person_id: string;
+  account_id: string;
+  currency_code: string;
+  amount_minor: number;
+  remaining_amount_minor: number;
+  expense_date: string;
+  status: string;
+  created_at: string;
+}
+
 export class ReportRepository {
   constructor(private readonly db: D1Database) {}
 
@@ -67,6 +107,69 @@ export class ReportRepository {
         WHERE d.status = 'approved'
         GROUP BY le.borrower_person_id, le.currency_code
         ORDER BY le.borrower_person_id, le.currency_code
+      `)
+    );
+  }
+
+  lotBalances(): Promise<LotBalanceRow[]> {
+    return all<LotBalanceRow>(
+      this.db.prepare(`
+        SELECT
+          id,
+          currency_code,
+          remaining_amount_minor,
+          remaining_usdt_cost_minor,
+          source_document_id,
+          current_account_id,
+          current_person_id,
+          lot_date,
+          status
+        FROM lots
+        WHERE remaining_amount_minor > 0
+        ORDER BY current_account_id, currency_code, lot_date, id
+      `)
+    );
+  }
+
+  lotMovements(): Promise<LotMovementRow[]> {
+    return all<LotMovementRow>(
+      this.db.prepare(`
+        SELECT
+          id,
+          lot_id,
+          document_id,
+          movement_type,
+          from_account_id,
+          to_account_id,
+          from_person_id,
+          to_person_id,
+          amount_minor,
+          usdt_cost_minor,
+          movement_date,
+          created_at
+        FROM lot_movements
+        ORDER BY movement_date DESC, created_at DESC
+      `)
+    );
+  }
+
+  pendingCostMatches(): Promise<PendingCostRow[]> {
+    return all<PendingCostRow>(
+      this.db.prepare(`
+        SELECT
+          id,
+          document_id,
+          person_id,
+          account_id,
+          currency_code,
+          amount_minor,
+          remaining_amount_minor,
+          expense_date,
+          status,
+          created_at
+        FROM pending_cost_matches
+        WHERE remaining_amount_minor > 0
+        ORDER BY expense_date, created_at
       `)
     );
   }

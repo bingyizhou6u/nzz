@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accountBalances } from "../../src/api/reports";
+import { accountBalances, lotBalances } from "../../src/api/reports";
 import { route } from "../../src/worker/router";
 import type { Env } from "../../src/worker/env";
 
@@ -33,13 +33,41 @@ describe("reports API", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ data: rows });
   });
+
+  it("returns lot balances from the handler", async () => {
+    const rows = [
+      {
+        id: "lot_1",
+        currency_code: "AED",
+        remaining_amount_minor: 2500,
+        remaining_usdt_cost_minor: 681,
+        source_document_id: "doc_1",
+        current_account_id: "acct_1",
+        current_person_id: null,
+        lot_date: "2026-04-24",
+        status: "open"
+      }
+    ];
+
+    const response = await lotBalances({
+      request: new Request("https://ledger.test/api/reports/lots"),
+      env: mockEnv(rows),
+      params: {}
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: rows });
+  });
 });
 
 describe("report routes", () => {
   it.each([
     "/api/reports/account-balances",
     "/api/reports/petty-cash-pending",
-    "/api/reports/loan-balances"
+    "/api/reports/loan-balances",
+    "/api/reports/lots",
+    "/api/reports/lot-movements",
+    "/api/reports/pending-costs"
   ])("routes GET %s", async (pathname) => {
     const response = await route(new Request(`https://ledger.test${pathname}`), mockEnv());
 

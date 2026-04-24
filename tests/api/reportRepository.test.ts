@@ -70,4 +70,82 @@ describe("ReportRepository", () => {
     expect(normalized).toContain("group by le.borrower_person_id, le.currency_code");
     expect(normalized).toContain("order by le.borrower_person_id, le.currency_code");
   });
+
+  it("returns open lot balance rows ordered by account, currency, date, and id", async () => {
+    const rows = [
+      {
+        id: "lot_1",
+        currency_code: "AED",
+        remaining_amount_minor: 2500,
+        remaining_usdt_cost_minor: 681,
+        source_document_id: "doc_1",
+        current_account_id: "acct_1",
+        current_person_id: null,
+        lot_date: "2026-04-24",
+        status: "open"
+      }
+    ];
+    let sql = "";
+    const repo = new ReportRepository(mockDb(rows, (value) => (sql = value)));
+
+    await expect(repo.lotBalances()).resolves.toEqual(rows);
+
+    const normalized = normalizeSql(sql);
+    expect(normalized).toContain("from lots");
+    expect(normalized).toContain("where remaining_amount_minor > 0");
+    expect(normalized).toContain("order by current_account_id, currency_code, lot_date, id");
+  });
+
+  it("returns lot movement rows ordered by latest movement and creation time", async () => {
+    const rows = [
+      {
+        id: "movement_1",
+        lot_id: "lot_1",
+        document_id: "doc_1",
+        movement_type: "created",
+        from_account_id: null,
+        to_account_id: "acct_1",
+        from_person_id: null,
+        to_person_id: null,
+        amount_minor: 2500,
+        usdt_cost_minor: 681,
+        movement_date: "2026-04-24",
+        created_at: "2026-04-24T10:00:00Z"
+      }
+    ];
+    let sql = "";
+    const repo = new ReportRepository(mockDb(rows, (value) => (sql = value)));
+
+    await expect(repo.lotMovements()).resolves.toEqual(rows);
+
+    const normalized = normalizeSql(sql);
+    expect(normalized).toContain("from lot_movements");
+    expect(normalized).toContain("order by movement_date desc, created_at desc");
+  });
+
+  it("returns pending cost rows with remaining amounts ordered by expense date and creation time", async () => {
+    const rows = [
+      {
+        id: "pending_1",
+        document_id: "doc_1",
+        person_id: "person_1",
+        account_id: "acct_1",
+        currency_code: "AED",
+        amount_minor: 2500,
+        remaining_amount_minor: 2500,
+        expense_date: "2026-04-24",
+        status: "open",
+        created_at: "2026-04-24T10:00:00Z"
+      }
+    ];
+    let sql = "";
+    const repo = new ReportRepository(mockDb(rows, (value) => (sql = value)));
+
+    await expect(repo.pendingCostMatches()).resolves.toEqual(rows);
+
+    const normalized = normalizeSql(sql);
+    expect(normalized).toContain("from pending_cost_matches");
+    expect(normalized).toContain("where remaining_amount_minor > 0");
+    expect(normalized).toContain("order by expense_date, created_at");
+  });
 });

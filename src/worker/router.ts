@@ -7,7 +7,14 @@ import {
   submitDocument
 } from "../api/documents";
 import { createProject, listCurrencies } from "../api/masterData";
-import { accountBalances, loanBalances, pettyCashPendingMatches } from "../api/reports";
+import {
+  accountBalances,
+  loanBalances,
+  lotBalances,
+  lotMovements,
+  pendingCostMatches,
+  pettyCashPendingMatches
+} from "../api/reports";
 import type { Env, Handler } from "./env";
 
 interface Route {
@@ -44,6 +51,9 @@ const routes: Route[] = [
   defineRoute("GET", "/api/reports/account-balances", accountBalances),
   defineRoute("GET", "/api/reports/petty-cash-pending", pettyCashPendingMatches),
   defineRoute("GET", "/api/reports/loan-balances", loanBalances),
+  defineRoute("GET", "/api/reports/lots", lotBalances),
+  defineRoute("GET", "/api/reports/lot-movements", lotMovements),
+  defineRoute("GET", "/api/reports/pending-costs", pendingCostMatches),
   defineRoute("GET", "/api/documents", listDocuments),
   defineRoute("GET", "/api/documents/:id", getDocument),
   defineRoute("POST", "/api/documents", createDocument),
