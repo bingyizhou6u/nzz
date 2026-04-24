@@ -4,6 +4,7 @@ import type { Lot, LotAllocation } from "./types";
 export type LotMovementType = "exchange_in" | "petty_cash_issue" | "petty_cash_reimbursement" | "pending_cost_match";
 
 export interface LotCreationEffect {
+  clientLotId: string;
   currencyCode: string;
   originalAmountMinor: number;
   remainingAmountMinor: number;
@@ -95,7 +96,6 @@ export interface PettyCashReimbursementEffectsInput {
 }
 
 interface IssuedLotState {
-  lotId: string;
   creation: LotCreationEffect;
 }
 
@@ -116,10 +116,12 @@ export function planExchangeLotCreation(input: ExchangeLotCreationInput): FifoPo
   const amountMinor = requirePositiveSafeInteger(input.amountMinor, "amountMinor");
   const usdtCostMinor = requirePositiveSafeInteger(input.usdtCostMinor, "usdtCostMinor");
   const lotDate = requireNonEmpty(input.lotDate, "lotDate");
+  const clientLotId = `${documentId}:lot:1`;
 
   return {
     lotCreations: [
       {
+        clientLotId,
         currencyCode,
         originalAmountMinor: amountMinor,
         remainingAmountMinor: amountMinor,
@@ -134,7 +136,7 @@ export function planExchangeLotCreation(input: ExchangeLotCreationInput): FifoPo
     lotUpdates: [],
     lotMovements: [
       {
-        lotId: documentId,
+        lotId: clientLotId,
         movementType: "exchange_in",
         fromAccountId: null,
         toAccountId: accountId,
@@ -158,13 +160,10 @@ export function planPettyCashIssueEffects(input: PettyCashIssueEffectsInput): Fi
   const currencyCode = requireNonEmpty(input.currencyCode, "currencyCode");
   const businessDate = requireNonEmpty(input.businessDate, "businessDate");
   const allocationResult = allocateFifo(input.sourceLots, input.amountMinor, currencyCode);
-  const lotCreations = allocationResult.allocations.map((allocation) =>
-    staffLotCreation(allocation, documentId, toAccountId, personId, currencyCode, businessDate)
+  const lotCreations = allocationResult.allocations.map((allocation, index) =>
+    staffLotCreation(allocation, `${documentId}:issue:${index + 1}`, documentId, toAccountId, personId, currencyCode, businessDate)
   );
-  const issuedLots = allocationResult.allocations.map((allocation, index) => ({
-    lotId: allocation.lotId,
-    creation: lotCreations[index]
-  }));
+  const issuedLots = lotCreations.map((creation) => ({ creation }));
   const pendingCostApplication = applyPendingCostMatches({
     pendingMatches: input.openPendingMatches,
     issuedLots,
@@ -238,6 +237,7 @@ export function planPettyCashReimbursementEffects(input: PettyCashReimbursementE
 
 function staffLotCreation(
   allocation: LotAllocation,
+  clientLotId: string,
   documentId: string,
   accountId: string,
   personId: string,
@@ -245,6 +245,7 @@ function staffLotCreation(
   lotDate: string
 ): LotCreationEffect {
   return {
+    clientLotId,
     currencyCode,
     originalAmountMinor: allocation.amountMinor,
     remainingAmountMinor: allocation.amountMinor,
@@ -297,7 +298,7 @@ function applyPendingCostMatches(input: {
       matchedAmount += amountMinor;
 
       lotMovements.push({
-        lotId: issuedLot.lotId,
+        lotId: issuedLot.creation.clientLotId,
         movementType: "pending_cost_match",
         fromAccountId: input.accountId,
         toAccountId: null,

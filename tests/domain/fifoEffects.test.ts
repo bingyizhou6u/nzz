@@ -37,6 +37,7 @@ describe("fifoEffects", () => {
     ).toEqual({
       lotCreations: [
         {
+          clientLotId: "doc_fx:lot:1",
           currencyCode: "AED",
           originalAmountMinor: 367000,
           remainingAmountMinor: 367000,
@@ -51,7 +52,7 @@ describe("fifoEffects", () => {
       lotUpdates: [],
       lotMovements: [
         {
-          lotId: "doc_fx",
+          lotId: "doc_fx:lot:1",
           movementType: "exchange_in",
           fromAccountId: null,
           toAccountId: "acct_aed_reserve",
@@ -86,6 +87,7 @@ describe("fifoEffects", () => {
     ]);
     expect(result.lotCreations).toEqual([
       {
+        clientLotId: "doc_issue:issue:1",
         currencyCode: "AED",
         originalAmountMinor: 150000,
         remainingAmountMinor: 150000,
@@ -97,6 +99,7 @@ describe("fifoEffects", () => {
         lotDate: "2026-04-24"
       },
       {
+        clientLotId: "doc_issue:issue:2",
         currencyCode: "AED",
         originalAmountMinor: 50000,
         remainingAmountMinor: 50000,
@@ -157,9 +160,10 @@ describe("fifoEffects", () => {
     ]);
     expect(result.lotCreations.map((lot) => lot.remainingAmountMinor)).toEqual([0, 0]);
     expect(result.lotCreations.map((lot) => lot.remainingUsdtCostMinor)).toEqual([0, 0]);
+    expect(result.lotCreations.map((lot) => lot.clientLotId)).toEqual(["doc_issue:issue:1", "doc_issue:issue:2"]);
     expect(result.lotMovements.filter((movement) => movement.movementType === "pending_cost_match")).toEqual([
       {
-        lotId: "lot_a",
+        lotId: "doc_issue:issue:1",
         movementType: "pending_cost_match",
         fromAccountId: "acct_petty_bob",
         toAccountId: null,
@@ -170,7 +174,7 @@ describe("fifoEffects", () => {
         movementDate: "2026-04-24"
       },
       {
-        lotId: "lot_a",
+        lotId: "doc_issue:issue:1",
         movementType: "pending_cost_match",
         fromAccountId: "acct_petty_bob",
         toAccountId: null,
@@ -181,7 +185,7 @@ describe("fifoEffects", () => {
         movementDate: "2026-04-24"
       },
       {
-        lotId: "lot_b",
+        lotId: "doc_issue:issue:2",
         movementType: "pending_cost_match",
         fromAccountId: "acct_petty_bob",
         toAccountId: null,
@@ -212,6 +216,30 @@ describe("fifoEffects", () => {
     expect(result.pendingCostUpdates).toEqual([{ pendingCostMatchId: "pending_partial", amountDeltaMinor: -160000 }]);
     expect(result.lotCreations.map((lot) => lot.remainingAmountMinor)).toEqual([0, 40000]);
     expect(result.lotCreations.map((lot) => lot.remainingUsdtCostMinor)).toEqual([0, 10920]);
+  });
+
+  it("uses created staff lot ids instead of source reserve lot ids for pending cost matches", () => {
+    const result = planPettyCashIssueEffects({
+      documentId: "doc_issue",
+      fromAccountId: "acct_aed_reserve",
+      toAccountId: "acct_petty_bob",
+      personId: "person_bob",
+      currencyCode: "AED",
+      amountMinor: 200000,
+      businessDate: "2026-04-24",
+      sourceLots: reserveLots,
+      openPendingMatches: [
+        { id: "pending_partial", remainingAmountMinor: 160000, expenseDate: "2026-04-22", createdAt: "2026-04-22T10:00:00.000Z" }
+      ]
+    });
+
+    const pendingCostLotIds = result.lotMovements
+      .filter((movement) => movement.movementType === "pending_cost_match")
+      .map((movement) => movement.lotId);
+
+    expect(pendingCostLotIds).toEqual(["doc_issue:issue:1", "doc_issue:issue:2"]);
+    expect(pendingCostLotIds).not.toContain("lot_a");
+    expect(pendingCostLotIds).not.toContain("lot_b");
   });
 
   it("plans petty cash reimbursement with FIFO consumption and pending cost for unmatched amount", () => {
