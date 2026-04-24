@@ -19,7 +19,7 @@ export function App() {
       <header className="app-header">
         <div>
           <h1>内部管理会计台账</h1>
-          <p>Phase 1 MVP</p>
+          <p>正式系统 Beta</p>
         </div>
         <nav className="tabs" aria-label="主导航">
           {pages.map((page) => (

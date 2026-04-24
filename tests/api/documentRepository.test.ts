@@ -344,6 +344,84 @@ describe("DocumentRepository", () => {
     expect(batchCalls[0][3].bindings).toEqual(["reviewer_1", "2026-04-24T11:00:00.000Z", "doc_1", "2026-04"]);
   });
 
+  it("maps transfer lot movements from client lot ids to generated lot ids", async () => {
+    const batchCalls: CapturedStatement[][] = [];
+    const repo = new DocumentRepository(mockDb({ onBatch: (statements) => batchCalls.push(statements) }));
+    const auditLogStatement = {
+      sql: "INSERT INTO audit_logs SELECT ? WHERE EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending')",
+      bindings: ["audit_1", "doc_1"]
+    } as unknown as D1PreparedStatement;
+
+    await repo.approveWithPostings({
+      documentId: "doc_1",
+      period: "2026-04",
+      reviewer: "reviewer_1",
+      reviewedAt: "2026-04-24T11:00:00.000Z",
+      accountEntries: [
+        { accountId: "acct_aed_reserve", currencyCode: "AED", amountMinor: -1000, entryDate: "2026-04-24" },
+        { accountId: "acct_aed_bank", currencyCode: "AED", amountMinor: 1000, entryDate: "2026-04-24" }
+      ],
+      loanEntries: [],
+      lotCreations: [
+        {
+          currencyCode: "AED",
+          originalAmountMinor: 1000,
+          remainingAmountMinor: 1000,
+          originalUsdtCostMinor: 272,
+          remainingUsdtCostMinor: 272,
+          clientLotId: "doc_1:transfer:1",
+          sourceDocumentId: "doc_1",
+          currentAccountId: "acct_aed_bank",
+          currentPersonId: null,
+          lotDate: "2026-04-24"
+        }
+      ],
+      lotUpdates: [
+        {
+          lotId: "lot_source",
+          amountDeltaMinor: -1000,
+          usdtCostDeltaMinor: -272,
+          expectedRemainingAmountMinor: 2000,
+          expectedRemainingUsdtCostMinor: 544
+        }
+      ],
+      lotMovements: [
+        {
+          lotId: "doc_1:transfer:1",
+          movementType: "account_transfer",
+          fromAccountId: "acct_aed_reserve",
+          toAccountId: "acct_aed_bank",
+          fromPersonId: null,
+          toPersonId: null,
+          amountMinor: 1000,
+          usdtCostMinor: 272,
+          movementDate: "2026-04-24"
+        }
+      ],
+      auditLogStatement
+    });
+
+    expect(batchCalls).toHaveLength(1);
+    expect(batchCalls[0].some((statement) => statement.sql.toLowerCase().includes("insert into lots"))).toBe(true);
+    expect(batchCalls[0].some((statement) => statement.sql.toLowerCase().includes("insert into lot_movements"))).toBe(
+      true
+    );
+    expect(batchCalls[0].some((statement) => statement.bindings.includes("account_transfer"))).toBe(true);
+
+    const lotCreationStatement = batchCalls[0].find((statement) =>
+      statement.sql.replace(/\s+/g, " ").toLowerCase().includes("insert into lots")
+    );
+    const lotMovementStatement = batchCalls[0].find((statement) =>
+      statement.sql.replace(/\s+/g, " ").toLowerCase().includes("insert into lot_movements")
+    );
+    const createdLotId = lotCreationStatement?.bindings[0];
+
+    expect(createdLotId).toEqual(expect.stringMatching(/^lot_/));
+    expect(lotMovementStatement?.bindings).toContain(createdLotId);
+    expect(lotMovementStatement?.bindings).not.toContain("doc_1:transfer:1");
+    expect(batchCalls[0].some((statement) => statement.bindings.includes("doc_1:transfer:1"))).toBe(false);
+  });
+
   it("lists open lots for an account in fifo order", async () => {
     let sql = "";
     let boundValues: unknown[] = [];
