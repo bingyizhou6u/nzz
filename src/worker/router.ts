@@ -62,8 +62,18 @@ export async function route(request: Request, env: Env): Promise<Response> {
   if (!match) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
-  const params = Object.fromEntries(
-    match.candidate.paramNames.map((name, index) => [name, decodeURIComponent(match.result?.[index + 1] ?? "")])
-  );
+
+  let params: Record<string, string>;
+  try {
+    params = Object.fromEntries(
+      match.candidate.paramNames.map((name, index) => [name, decodeURIComponent(match.result?.[index + 1] ?? "")])
+    );
+  } catch (error) {
+    if (error instanceof URIError) {
+      return Response.json({ error: "Invalid route parameter" }, { status: 400 });
+    }
+    throw error;
+  }
+
   return match.candidate.handler({ request, env, params });
 }

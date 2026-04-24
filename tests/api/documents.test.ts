@@ -66,6 +66,7 @@ function mockEnv(
     batchResults?: D1Result[];
     allResults?: unknown[];
     firstResult?: unknown;
+    firstResults?: unknown[];
     onBind?: (values: unknown[], sql: string) => void;
     onBatch?: (statements: PreparedMock[]) => void;
   } = {}
@@ -82,7 +83,7 @@ function mockEnv(
             return this;
           },
           all: async () => ({ success: true, results: options.allResults ?? [] }),
-          first: async () => options.firstResult ?? null,
+          first: async () => options.firstResults?.shift() ?? options.firstResult ?? null,
           run: async () => options.runResult ?? ({ success: true } as D1Result)
         } as unknown as PreparedMock;
         return statement;
@@ -322,6 +323,49 @@ describe("documents API", () => {
     expect(response.status).toBe(201);
   });
 
+  it("creates header-only draft documents for current UI payloads", async () => {
+    let batchCalled = false;
+    const response = await route(
+      new Request("https://ledger.test/api/documents", {
+        method: "POST",
+        body: JSON.stringify({
+          documentType: "manual_adjustment",
+          businessDate: "2026-04-24",
+          period: "2026-04",
+          summary: "Header-only adjustment",
+          createdBy: "user_1"
+        })
+      }),
+      mockEnv({ onBatch: () => (batchCalled = true) })
+    );
+
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { data: { status: string } };
+    expect(body.data.status).toBe("draft");
+    expect(batchCalled).toBe(false);
+  });
+
+  it("rejects invalid provided document lines", async () => {
+    const response = await createDocument({
+      request: new Request("https://ledger.test/api/documents", {
+        method: "POST",
+        body: JSON.stringify({
+          documentType: "project_income",
+          businessDate: "2026-04-24",
+          period: "2026-04",
+          summary: "Invalid lines",
+          createdBy: "user_1",
+          lines: [{ currencyCode: "USDT", amountMinor: 10000 }]
+        })
+      }),
+      env: mockEnv(),
+      params: {}
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "line accountId is required" });
+  });
+
   it("routes document listing requests", async () => {
     const response = await route(new Request("https://ledger.test/api/documents"), mockEnv({ allResults: [documentRow()] }));
 
@@ -338,7 +382,8 @@ describe("documents API", () => {
       mockEnv({ firstResult: documentRow({ status: "draft" }) })
     );
 
-    expect(response.status).not.toBe(404);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: { id: "doc_1", status: "pending" } });
   });
 
   it("routes document approval requests with path params", async () => {
@@ -347,10 +392,14 @@ describe("documents API", () => {
         method: "POST",
         body: JSON.stringify({ reviewer: "reviewer_1" })
       }),
-      mockEnv({ firstResult: documentRow({ status: "pending" }) })
+      mockEnv({
+        firstResults: [documentRow({ status: "pending" }), null],
+        allResults: [lineRow()]
+      })
     );
 
-    expect(response.status).not.toBe(404);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: { id: "doc_1", status: "approved" } });
   });
 
   it("routes document rejection requests with path params", async () => {
@@ -362,7 +411,21 @@ describe("documents API", () => {
       mockEnv({ firstResult: documentRow({ status: "pending" }) })
     );
 
-    expect(response.status).not.toBe(404);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: { id: "doc_1", status: "rejected" } });
+  });
+
+  it("returns client error for malformed encoded route params", async () => {
+    const response = await route(
+      new Request("https://ledger.test/api/documents/%E0%A4%A/submit", {
+        method: "POST",
+        body: JSON.stringify({ actor: "user_1" })
+      }),
+      mockEnv()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Invalid route parameter" });
   });
 
   it("gets document details with lines when found", async () => {

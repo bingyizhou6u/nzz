@@ -18,11 +18,12 @@ export interface CreateDraftRequest {
   originalDocumentId?: string | null;
   summary: string;
   createdBy: string;
-  lines: RawDocumentLine[];
+  lines?: RawDocumentLine[];
 }
 
 type DocumentWorkflowRepository = Pick<
   DocumentRepository,
+  | "createDraft"
   | "createDraftWithLines"
   | "getDocument"
   | "getDocumentLines"
@@ -44,8 +45,7 @@ export class DocumentService {
   ) {}
 
   async createDraft(input: CreateDraftRequest) {
-    const lines = normalizeDocumentLines(input.lines);
-    const document = await this.documents.createDraftWithLines({
+    const draftInput = {
       documentType: input.documentType,
       actionType: input.actionType ?? "normal",
       businessDate: input.businessDate,
@@ -56,9 +56,16 @@ export class DocumentService {
       categoryId: nullableText(input.categoryId),
       originalDocumentId: nullableText(input.originalDocumentId),
       summary: input.summary,
-      createdBy: input.createdBy,
-      lines
-    });
+      createdBy: input.createdBy
+    };
+
+    const document =
+      Array.isArray(input.lines) && input.lines.length > 0
+        ? await this.documents.createDraftWithLines({
+            ...draftInput,
+            lines: normalizeDocumentLines(input.lines)
+          })
+        : await this.documents.createDraft(draftInput);
 
     await this.auditLogs.record({
       actor: input.createdBy,

@@ -5,6 +5,7 @@ import type { DocumentDetailRow, DocumentLineRow } from "../../src/repositories/
 type DocumentRepoMock = ConstructorParameters<typeof DocumentService>[0];
 type AuditRepoMock = ConstructorParameters<typeof DocumentService>[1];
 type AtomicDocumentRepoMock = DocumentRepoMock & {
+  createDraft: ReturnType<typeof vi.fn>;
   approveWithPostings: ReturnType<typeof vi.fn>;
 };
 type AtomicAuditRepoMock = AuditRepoMock & {
@@ -56,6 +57,7 @@ function lineRow(overrides: Partial<DocumentLineRow> = {}): DocumentLineRow {
 
 function createMocks(overrides: Partial<AtomicDocumentRepoMock> = {}) {
   const repo = {
+    createDraft: vi.fn(async () => ({ id: "doc_1", documentNo: "docno_1", status: "draft" as const })),
     createDraftWithLines: vi.fn(async () => ({ id: "doc_1", documentNo: "docno_1", status: "draft" as const })),
     getDocument: vi.fn(async () => documentRow()),
     getDocumentLines: vi.fn(async () => [lineRow()]),
@@ -77,6 +79,46 @@ function createMocks(overrides: Partial<AtomicDocumentRepoMock> = {}) {
 }
 
 describe("DocumentService", () => {
+  it("creates header-only drafts and audit logs when lines are omitted", async () => {
+    const { repo, audit, service } = createMocks();
+
+    const document = await service.createDraft({
+      documentType: "project_income",
+      businessDate: "2026-04-24",
+      period: "2026-04",
+      operatorPersonId: "",
+      projectId: "  proj_1  ",
+      merchantId: undefined,
+      categoryId: "cat_income",
+      originalDocumentId: " ",
+      summary: "Merchant income",
+      createdBy: "creator_1"
+    });
+
+    expect(document).toEqual({ id: "doc_1", documentNo: "docno_1", status: "draft" });
+    expect(repo.createDraft).toHaveBeenCalledWith({
+      documentType: "project_income",
+      actionType: "normal",
+      businessDate: "2026-04-24",
+      period: "2026-04",
+      operatorPersonId: null,
+      projectId: "proj_1",
+      merchantId: null,
+      categoryId: "cat_income",
+      originalDocumentId: null,
+      summary: "Merchant income",
+      createdBy: "creator_1"
+    });
+    expect(repo.createDraftWithLines).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith({
+      actor: "creator_1",
+      action: "document.create",
+      entityType: "document",
+      entityId: "doc_1",
+      after: { document: { id: "doc_1", documentNo: "docno_1", status: "draft" } }
+    });
+  });
+
   it("creates drafts with normalized lines and audit logs", async () => {
     const { repo, audit, service } = createMocks();
 
@@ -103,6 +145,7 @@ describe("DocumentService", () => {
     });
 
     expect(document).toEqual({ id: "doc_1", documentNo: "docno_1", status: "draft" });
+    expect(repo.createDraft).not.toHaveBeenCalled();
     expect(repo.createDraftWithLines).toHaveBeenCalledWith({
       documentType: "project_income",
       actionType: "normal",
