@@ -27,11 +27,28 @@ export class AuditLogRepository {
           input.action,
           input.entityType,
           input.entityId,
-          input.before === undefined ? null : JSON.stringify(input.before),
-          input.after === undefined ? null : JSON.stringify(input.after),
+          this.serializeSnapshot(input.before),
+          this.serializeSnapshot(input.after),
           input.reason ?? null,
           nowIso()
         )
     );
+  }
+
+  private serializeSnapshot(value: unknown): string | null {
+    if (value === undefined) return null;
+
+    let serialized: string | undefined;
+    try {
+      serialized = JSON.stringify(value);
+    } catch {
+      throw new Error("Audit snapshot must be JSON-serializable");
+    }
+
+    if (serialized === undefined) {
+      throw new Error("Audit snapshot must be JSON-serializable");
+    }
+
+    return serialized;
   }
 }

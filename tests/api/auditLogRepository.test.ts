@@ -45,4 +45,63 @@ describe("AuditLogRepository", () => {
       expect.any(String)
     ]);
   });
+
+  it("binds omitted snapshots and omitted reason as null", async () => {
+    let boundValues: unknown[] = [];
+    const repo = new AuditLogRepository(mockDb({ onBind: (values) => (boundValues = values) }));
+
+    await repo.record({
+      actor: "user_1",
+      action: "document.submit",
+      entityType: "document",
+      entityId: "doc_1"
+    });
+
+    expect(boundValues[5]).toBeNull();
+    expect(boundValues[6]).toBeNull();
+    expect(boundValues[7]).toBeNull();
+  });
+
+  it("binds null reason as null", async () => {
+    let boundValues: unknown[] = [];
+    const repo = new AuditLogRepository(mockDb({ onBind: (values) => (boundValues = values) }));
+
+    await repo.record({
+      actor: "user_1",
+      action: "document.submit",
+      entityType: "document",
+      entityId: "doc_1",
+      reason: null
+    });
+
+    expect(boundValues[7]).toBeNull();
+  });
+
+  it("rejects snapshots that stringify to undefined", async () => {
+    const repo = new AuditLogRepository(mockDb());
+
+    await expect(
+      repo.record({
+        actor: "user_1",
+        action: "document.submit",
+        entityType: "document",
+        entityId: "doc_1",
+        before: () => undefined
+      })
+    ).rejects.toThrow("Audit snapshot must be JSON-serializable");
+  });
+
+  it("rejects snapshots that JSON.stringify cannot serialize", async () => {
+    const repo = new AuditLogRepository(mockDb());
+
+    await expect(
+      repo.record({
+        actor: "user_1",
+        action: "document.submit",
+        entityType: "document",
+        entityId: "doc_1",
+        after: BigInt(1)
+      })
+    ).rejects.toThrow("Audit snapshot must be JSON-serializable");
+  });
 });
