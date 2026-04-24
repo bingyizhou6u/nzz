@@ -27,8 +27,10 @@ export function entriesForApprovedDocument(document: PostingDocument): PostingRe
   if (
     document.documentType !== "project_income" &&
     document.documentType !== "exchange" &&
+    document.documentType !== "account_transfer" &&
     document.documentType !== "petty_cash_issue" &&
     document.documentType !== "petty_cash_reimbursement" &&
+    document.documentType !== "petty_cash_return" &&
     document.documentType !== "loan_out" &&
     document.documentType !== "loan_repayment"
   ) {
@@ -96,6 +98,12 @@ export function entriesForApprovedDocument(document: PostingDocument): PostingRe
       accountEntries.push({ accountId, currencyCode, amountMinor: line.amountMinor, entryDate: document.businessDate });
     }
 
+    if (document.documentType === "account_transfer") {
+      const targetAccountId = requireOptionalText(line.counterpartyAccountId, "line counterpartyAccountId for account_transfer");
+      accountEntries.push({ accountId, currencyCode, amountMinor: -line.amountMinor, entryDate: document.businessDate });
+      accountEntries.push({ accountId: targetAccountId, currencyCode, amountMinor: line.amountMinor, entryDate: document.businessDate });
+    }
+
     if (document.documentType === "petty_cash_issue") {
       const pettyCashAccountId = requireOptionalText(line.counterpartyAccountId, "line counterpartyAccountId for petty_cash_issue");
       requireOptionalText(line.personId, "line personId for petty_cash_issue");
@@ -106,6 +114,13 @@ export function entriesForApprovedDocument(document: PostingDocument): PostingRe
     if (document.documentType === "petty_cash_reimbursement") {
       requireOptionalText(line.personId, "line personId for petty_cash_reimbursement");
       accountEntries.push({ accountId, currencyCode, amountMinor: -line.amountMinor, entryDate: document.businessDate });
+    }
+
+    if (document.documentType === "petty_cash_return") {
+      const targetAccountId = requireOptionalText(line.counterpartyAccountId, "line counterpartyAccountId for petty_cash_return");
+      requireOptionalText(line.personId, "line personId for petty_cash_return");
+      accountEntries.push({ accountId, currencyCode, amountMinor: -line.amountMinor, entryDate: document.businessDate });
+      accountEntries.push({ accountId: targetAccountId, currencyCode, amountMinor: line.amountMinor, entryDate: document.businessDate });
     }
   }
 
