@@ -673,15 +673,19 @@ export class DocumentRepository {
     for (let index = 0; index < results.length; index += 1) {
       const result = results[index];
       if (!result.success) {
-        if (statementRoles[index] === "lot_conflict_guard") {
+        if (statementRoles[index] === "lot_conflict_guard" && this.isConflictGuardSentinelError(result.error)) {
           throw new Error("Lot balance changed before approval could be posted");
         }
-        if (statementRoles[index] === "pending_cost_conflict_guard") {
+        if (statementRoles[index] === "pending_cost_conflict_guard" && this.isConflictGuardSentinelError(result.error)) {
           throw new Error("Pending cost balance changed before approval could be posted");
         }
         throw new Error(result.error || "D1 batch write failed");
       }
     }
     return results;
+  }
+
+  private isConflictGuardSentinelError(error: string | undefined): boolean {
+    return error?.includes("NOT NULL constraint failed: account_entries.account_id") ?? false;
   }
 }

@@ -653,6 +653,31 @@ describe("DocumentRepository", () => {
     ).rejects.toThrow("Lot balance changed before approval could be posted");
   });
 
+  it("surfaces generic D1 errors from the lot conflict guard", async () => {
+    const repo = new DocumentRepository(
+      mockDb({
+        batchResults: [
+          { success: false, error: "D1_ERROR: no such table: lots" } as unknown as D1Result,
+          { success: true } as D1Result,
+          { success: true } as D1Result,
+          { success: true, meta: { changes: 1 } } as unknown as D1Result
+        ]
+      })
+    );
+
+    await expect(
+      repo.approveWithPostings({
+        documentId: "doc_1",
+        period: "2026-04",
+        reviewer: "reviewer_1",
+        accountEntries: [],
+        loanEntries: [],
+        lotUpdates: [{ lotId: "lot_source", amountDeltaMinor: -1000, usdtCostDeltaMinor: -272 }],
+        auditLogStatement: {} as D1PreparedStatement
+      })
+    ).rejects.toThrow("D1_ERROR: no such table: lots");
+  });
+
   it("rejects approval when a lot update no longer matches the available balance", async () => {
     const repo = new DocumentRepository(
       mockDb({
@@ -701,6 +726,31 @@ describe("DocumentRepository", () => {
         auditLogStatement: {} as D1PreparedStatement
       })
     ).rejects.toThrow("Pending cost balance changed before approval could be posted");
+  });
+
+  it("surfaces generic D1 errors from the pending cost conflict guard", async () => {
+    const repo = new DocumentRepository(
+      mockDb({
+        batchResults: [
+          { success: false, error: "D1_ERROR: no such table: pending_cost_matches" } as unknown as D1Result,
+          { success: true } as D1Result,
+          { success: true } as D1Result,
+          { success: true, meta: { changes: 1 } } as unknown as D1Result
+        ]
+      })
+    );
+
+    await expect(
+      repo.approveWithPostings({
+        documentId: "doc_1",
+        period: "2026-04",
+        reviewer: "reviewer_1",
+        accountEntries: [],
+        loanEntries: [],
+        pendingCostUpdates: [{ pendingCostMatchId: "pending_1", amountDeltaMinor: -500 }],
+        auditLogStatement: {} as D1PreparedStatement
+      })
+    ).rejects.toThrow("D1_ERROR: no such table: pending_cost_matches");
   });
 
   it("rejects atomic approval when the guarded status update changes no rows", async () => {
