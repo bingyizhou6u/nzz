@@ -60,7 +60,11 @@ export function planSafeFifoReversalEffects(input: SafeFifoReversalInput): FifoP
     return closeCreatedLots({
       originalDocumentId,
       reversalDate,
-      lots: input.lots.filter((lot) => lot.sourceDocumentId === originalDocumentId)
+      lots: requireExchangeCreatedLots({
+        originalDocumentId,
+        movements: movementsOfType(input.originalMovements, "exchange_in"),
+        lots: input.lots
+      })
     });
   }
 
@@ -85,7 +89,7 @@ export function planSafeFifoReversalEffects(input: SafeFifoReversalInput): FifoP
   const closeEffects = closeCreatedLots({
     originalDocumentId,
     reversalDate,
-    lots: input.lots.filter((lot) => lot.sourceDocumentId === originalDocumentId)
+    lots: requireCreatedLots(input.lots, originalDocumentId)
   });
 
   return {
@@ -129,6 +133,29 @@ function restoreMovementLots(input: {
     pendingCostCreations: [],
     pendingCostUpdates: []
   };
+}
+
+function requireExchangeCreatedLots(input: {
+  originalDocumentId: string;
+  movements: OriginalLotMovement[];
+  lots: ReversalLotSnapshot[];
+}): ReversalLotSnapshot[] {
+  const lotsById = new Map(input.lots.map((lot) => [lot.id, lot]));
+  return input.movements.map((movement) => {
+    const lot = requireLot(lotsById, movement.lotId);
+    if (lot.sourceDocumentId !== input.originalDocumentId) {
+      throw new Error(`Created lot snapshot is required for reversal: ${input.originalDocumentId}`);
+    }
+    return lot;
+  });
+}
+
+function requireCreatedLots(lots: ReversalLotSnapshot[], originalDocumentId: string): ReversalLotSnapshot[] {
+  const createdLots = lots.filter((lot) => lot.sourceDocumentId === originalDocumentId);
+  if (createdLots.length === 0) {
+    throw new Error(`Created lot snapshot is required for reversal: ${originalDocumentId}`);
+  }
+  return createdLots;
 }
 
 function closeCreatedLots(input: {

@@ -67,6 +67,34 @@ describe("planSafeFifoReversalEffects", () => {
     });
   });
 
+  it("rejects exchange reversal when the exchange-created lot snapshot is missing", () => {
+    expect(() =>
+      planSafeFifoReversalEffects({
+        reversalDocumentId: "doc_rev",
+        originalDocumentId: "doc_fx",
+        originalDocumentType: "exchange",
+        reversalDate: "2026-04-25",
+        originalMovements: [
+          {
+            id: "move_fx",
+            lotId: "lot_fx",
+            movementType: "exchange_in",
+            fromAccountId: null,
+            toAccountId: "acct_aed_reserve",
+            fromPersonId: null,
+            toPersonId: null,
+            amountMinor: 367000,
+            usdtCostMinor: 100000,
+            createdAt: "2026-04-24T10:00:00.000Z"
+          }
+        ],
+        lots: [],
+        pendingCosts: [],
+        laterMovementLotIds: []
+      })
+    ).toThrow("Lot snapshot is required for reversal: lot_fx");
+  });
+
   it("restores transfer source lots and closes target lots created by the original transfer", () => {
     const result = planSafeFifoReversalEffects({
       reversalDocumentId: "doc_rev",
@@ -142,6 +170,45 @@ describe("planSafeFifoReversalEffects", () => {
         movementDate: "2026-04-25"
       }
     ]);
+  });
+
+  it("rejects transfer reversal when the original created target lot snapshot is missing", () => {
+    expect(() =>
+      planSafeFifoReversalEffects({
+        reversalDocumentId: "doc_rev",
+        originalDocumentId: "doc_transfer",
+        originalDocumentType: "account_transfer",
+        reversalDate: "2026-04-25",
+        originalMovements: [
+          {
+            id: "move_transfer",
+            lotId: "lot_source",
+            movementType: "account_transfer",
+            fromAccountId: "acct_aed_reserve",
+            toAccountId: "acct_aed_bank",
+            fromPersonId: null,
+            toPersonId: null,
+            amountMinor: 50000,
+            usdtCostMinor: 13650,
+            createdAt: "2026-04-24T10:00:00.000Z"
+          }
+        ],
+        lots: [
+          {
+            id: "lot_source",
+            originalAmountMinor: 100000,
+            remainingAmountMinor: 50000,
+            originalUsdtCostMinor: 27300,
+            remainingUsdtCostMinor: 13650,
+            currentAccountId: "acct_aed_reserve",
+            currentPersonId: null,
+            sourceDocumentId: "doc_fx"
+          }
+        ],
+        pendingCosts: [],
+        laterMovementLotIds: []
+      })
+    ).toThrow("Created lot snapshot is required for reversal: doc_transfer");
   });
 
   it("restores reimbursement-consumed staff lots when no pending cost was created", () => {
