@@ -12,6 +12,8 @@ export interface AuditLogInput {
 
 const SNAPSHOT_SERIALIZATION_ERROR = "Audit snapshot must be JSON-serializable";
 
+type JsonSnapshot = null | string | boolean | number | JsonSnapshot[] | { [key: string]: JsonSnapshot };
+
 export class AuditLogRepository {
   constructor(private readonly db: D1Database) {}
 
@@ -40,11 +42,11 @@ export class AuditLogRepository {
   private serializeSnapshot(value: unknown): string | null {
     if (value === undefined) return null;
 
-    this.validateSnapshot(value, new WeakSet<object>());
+    const snapshot = this.toJsonSnapshot(value, new WeakSet<object>());
 
     let serialized: string | undefined;
     try {
-      serialized = JSON.stringify(value);
+      serialized = JSON.stringify(snapshot);
     } catch {
       throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
     }
@@ -56,11 +58,11 @@ export class AuditLogRepository {
     return serialized;
   }
 
-  private validateSnapshot(value: unknown, path: WeakSet<object>) {
-    if (value === null || typeof value === "string" || typeof value === "boolean") return;
+  private toJsonSnapshot(value: unknown, path: WeakSet<object>): JsonSnapshot {
+    if (value === null || typeof value === "string" || typeof value === "boolean") return value;
 
     if (typeof value === "number") {
-      if (Number.isFinite(value)) return;
+      if (Number.isFinite(value)) return value;
       throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
     }
 
@@ -76,37 +78,86 @@ export class AuditLogRepository {
       throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
     }
 
-    const prototype = Object.getPrototypeOf(value);
+    const prototype = this.getPrototypeOf(value);
     if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
       throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
     }
 
-    if (typeof (value as { toJSON?: unknown }).toJSON !== "undefined" || Object.getOwnPropertySymbols(value).length > 0) {
+    if (this.hasToJson(value) || this.getOwnPropertySymbols(value).length > 0) {
       throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
     }
 
     path.add(value);
+    let snapshot: JsonSnapshot;
     if (Array.isArray(value)) {
-      for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
+      const descriptors = this.getOwnPropertyDescriptors(value);
+      const lengthDescriptor = descriptors.length;
+      if (!lengthDescriptor || !("value" in lengthDescriptor) || typeof lengthDescriptor.value !== "number") {
+        throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
+      }
+      const arraySnapshot: JsonSnapshot[] = [];
+      for (const [key, descriptor] of Object.entries(descriptors)) {
         if (key === "length") continue;
         if (!this.isArrayIndex(key) || !descriptor.enumerable || !("value" in descriptor)) {
           throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
         }
-        this.validateSnapshot(descriptor.value, path);
       }
+      for (let index = 0; index < lengthDescriptor.value; index += 1) {
+        const descriptor = descriptors[String(index)];
+        if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
+          throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
+        }
+        arraySnapshot[index] = this.toJsonSnapshot(descriptor.value, path);
+      }
+      snapshot = arraySnapshot;
     } else {
-      for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value))) {
+      const objectSnapshot: { [key: string]: JsonSnapshot } = {};
+      for (const [key, descriptor] of Object.entries(this.getOwnPropertyDescriptors(value))) {
         if (!descriptor.enumerable || !("value" in descriptor)) {
           throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
         }
-        this.validateSnapshot(descriptor.value, path);
+        objectSnapshot[key] = this.toJsonSnapshot(descriptor.value, path);
       }
+      snapshot = objectSnapshot;
     }
     path.delete(value);
+    return snapshot;
   }
 
   private isArrayIndex(key: string): boolean {
     const index = Number(key);
     return Number.isInteger(index) && index >= 0 && index < 2 ** 32 - 1 && String(index) === key;
+  }
+
+  private getOwnPropertyDescriptors(value: object): PropertyDescriptorMap {
+    try {
+      return Object.getOwnPropertyDescriptors(value);
+    } catch {
+      throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
+    }
+  }
+
+  private getPrototypeOf(value: object): object | null {
+    try {
+      return Object.getPrototypeOf(value);
+    } catch {
+      throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
+    }
+  }
+
+  private hasToJson(value: object): boolean {
+    try {
+      return "toJSON" in value;
+    } catch {
+      throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
+    }
+  }
+
+  private getOwnPropertySymbols(value: object): symbol[] {
+    try {
+      return Object.getOwnPropertySymbols(value);
+    } catch {
+      throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
+    }
   }
 }

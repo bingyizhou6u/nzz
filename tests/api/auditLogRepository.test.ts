@@ -128,6 +128,28 @@ describe("AuditLogRepository", () => {
     expect(boundValues[5]).toBe(JSON.stringify(["a", 1, null]));
   });
 
+  it("serializes sanitized proxy descriptor values", async () => {
+    let boundValues: unknown[] = [];
+    const target = { value: "validated" };
+    const snapshot = new Proxy(target, {
+      get(targetValue, property, receiver) {
+        if (property === "value") return "serialized";
+        return Reflect.get(targetValue, property, receiver);
+      }
+    });
+    const repo = new AuditLogRepository(mockDb({ onBind: (values) => (boundValues = values) }));
+
+    await repo.record({
+      actor: "user_1",
+      action: "document.submit",
+      entityType: "document",
+      entityId: "doc_1",
+      before: snapshot
+    });
+
+    expect(boundValues[5]).toBe(JSON.stringify({ value: "validated" }));
+  });
+
   it("rejects snapshots that stringify to undefined", async () => {
     const repo = new AuditLogRepository(mockDb());
 
@@ -226,6 +248,38 @@ describe("AuditLogRepository", () => {
     const repo = new AuditLogRepository(mockDb());
     const snapshot = ["a", 1, null] as unknown[] & { custom?: string };
     snapshot.custom = "hidden";
+
+    await expect(
+      repo.record({
+        actor: "user_1",
+        action: "document.submit",
+        entityType: "document",
+        entityId: "doc_1",
+        before: snapshot
+      })
+    ).rejects.toThrow("Audit snapshot must be JSON-serializable");
+  });
+
+  it("rejects sparse arrays", async () => {
+    const repo = new AuditLogRepository(mockDb());
+    const snapshot = new Array(1);
+
+    await expect(
+      repo.record({
+        actor: "user_1",
+        action: "document.submit",
+        entityType: "document",
+        entityId: "doc_1",
+        before: snapshot
+      })
+    ).rejects.toThrow("Audit snapshot must be JSON-serializable");
+  });
+
+  it("rejects arrays with inherited numeric values", async () => {
+    const repo = new AuditLogRepository(mockDb());
+    const prototype = { 0: "inherited" };
+    const snapshot = Object.create(prototype) as unknown[];
+    Object.defineProperty(snapshot, "length", { value: 1 });
 
     await expect(
       repo.record({
