@@ -609,8 +609,8 @@ describe("DocumentService", () => {
     const { repo, service } = createMocks({
       getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "loan_out" })),
       getDocumentLines: vi.fn(async () => [
-        lineRow({ borrower_person_id: null, amount_minor: 5000 }),
-        lineRow({ id: "line_2", line_no: 2, borrower_person_id: "person_1", amount_minor: 7000 })
+        lineRow({ borrower_person_id: null, amount_minor: 5000, usdt_amount_minor: 5000 }),
+        lineRow({ id: "line_2", line_no: 2, borrower_person_id: "person_1", amount_minor: 7000, usdt_amount_minor: 7000 })
       ])
     });
 
@@ -625,8 +625,8 @@ describe("DocumentService", () => {
         { accountId: "acct_usdt", currencyCode: "USDT", amountMinor: -7000, entryDate: "2026-04-24" }
       ],
       loanEntries: [
-        { borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 5000, entryDate: "2026-04-24" },
-        { borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 7000, entryDate: "2026-04-24" }
+        { borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 5000, usdtCostMinor: 5000, entryDate: "2026-04-24" },
+        { borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 7000, usdtCostMinor: 7000, entryDate: "2026-04-24" }
       ],
       lotCreations: [],
       lotUpdates: [],
@@ -820,7 +820,13 @@ describe("DocumentService", () => {
         { accountId: "acct_usdt_main", currencyCode: "USDT", amountMinor: 120000, entryDate: "2026-04-25" }
       ],
       loanEntries: [
-        { borrowerPersonId: "person_borrower", currencyCode: "USDT", amountMinor: -120000, entryDate: "2026-04-25" }
+        {
+          borrowerPersonId: "person_borrower",
+          currencyCode: "USDT",
+          amountMinor: -120000,
+          usdtCostMinor: null,
+          entryDate: "2026-04-25"
+        }
       ],
       lotCreations: [],
       lotUpdates: [],
