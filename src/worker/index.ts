@@ -1,7 +1,5 @@
-export interface Env {
-  DB: D1Database;
-  ASSETS: Fetcher;
-}
+import { route } from "./router";
+import type { Env } from "./env";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -12,10 +10,10 @@ export default {
       return Response.json({ ok: true, service: "management-ledger", currencies: row?.count ?? 0 });
     }
 
-    if (!url.pathname.startsWith("/api/")) {
-      return env.ASSETS.fetch(request);
+    if (url.pathname.startsWith("/api/")) {
+      return route(request, env);
     }
 
-    return Response.json({ error: "Not found" }, { status: 404 });
+    return env.ASSETS.fetch(request);
   }
 };
