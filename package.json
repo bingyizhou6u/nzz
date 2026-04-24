@@ -10,6 +10,8 @@
     "cf:dev": "wrangler dev",
     "db:migrate:local": "wrangler d1 migrations apply management-ledger-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply management-ledger-db --remote",
+    "db:seed:local": "wrangler d1 execute management-ledger-db --local --file scripts/seed-demo.sql",
+    "db:seed:remote": "wrangler d1 execute management-ledger-db --remote --file scripts/seed-demo.sql",
     "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
