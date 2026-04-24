@@ -97,6 +97,47 @@ export interface PendingCostMatchRow {
   created_at: string;
 }
 
+export interface AccountEntryReversalRow {
+  account_id: string;
+  currency_code: string;
+  amount_minor: number;
+}
+
+export interface LoanEntryReversalRow {
+  borrower_person_id: string;
+  currency_code: string;
+  amount_minor: number;
+}
+
+export interface LotMovementReversalRow {
+  id: string;
+  lot_id: string;
+  movement_type: string;
+  from_account_id: string | null;
+  to_account_id: string | null;
+  from_person_id: string | null;
+  to_person_id: string | null;
+  amount_minor: number;
+  usdt_cost_minor: number;
+  created_at: string;
+}
+
+export interface LotReversalRow {
+  id: string;
+  original_amount_minor: number;
+  remaining_amount_minor: number;
+  original_usdt_cost_minor: number;
+  remaining_usdt_cost_minor: number;
+  source_document_id: string;
+  current_account_id: string;
+  current_person_id: string | null;
+}
+
+export interface PendingCostReversalRow {
+  id: string;
+  remaining_amount_minor: number;
+}
+
 type ApprovalStatementRole =
   | "write"
   | "lot_conflict_guard"
@@ -246,6 +287,115 @@ export class DocumentRepository {
           ORDER BY expense_date, created_at, id
         `)
         .bind(input.accountId, input.personId, input.currencyCode)
+    );
+  }
+
+  listAccountEntriesForDocument(documentId: string): Promise<AccountEntryReversalRow[]> {
+    return all<AccountEntryReversalRow>(
+      this.db
+        .prepare(`
+          SELECT account_id, currency_code, amount_minor
+          FROM account_entries
+          WHERE document_id = ?
+          ORDER BY created_at, id
+        `)
+        .bind(documentId)
+    );
+  }
+
+  listLoanEntriesForDocument(documentId: string): Promise<LoanEntryReversalRow[]> {
+    return all<LoanEntryReversalRow>(
+      this.db
+        .prepare(`
+          SELECT borrower_person_id, currency_code, amount_minor
+          FROM loan_entries
+          WHERE document_id = ?
+          ORDER BY created_at, id
+        `)
+        .bind(documentId)
+    );
+  }
+
+  listLotMovementsForDocument(documentId: string): Promise<LotMovementReversalRow[]> {
+    return all<LotMovementReversalRow>(
+      this.db
+        .prepare(`
+          SELECT
+            id, lot_id, movement_type, from_account_id, to_account_id,
+            from_person_id, to_person_id, amount_minor, usdt_cost_minor, created_at
+          FROM lot_movements
+          WHERE document_id = ?
+          ORDER BY created_at, id
+        `)
+        .bind(documentId)
+    );
+  }
+
+  listLotsCreatedByDocument(documentId: string): Promise<LotReversalRow[]> {
+    return all<LotReversalRow>(
+      this.db
+        .prepare(`
+          SELECT
+            id, original_amount_minor, remaining_amount_minor,
+            original_usdt_cost_minor, remaining_usdt_cost_minor,
+            source_document_id, current_account_id, current_person_id
+          FROM lots
+          WHERE source_document_id = ?
+          ORDER BY created_at, id
+        `)
+        .bind(documentId)
+    );
+  }
+
+  listPendingCostMatchesForDocument(documentId: string): Promise<PendingCostReversalRow[]> {
+    return all<PendingCostReversalRow>(
+      this.db
+        .prepare(`
+          SELECT id, remaining_amount_minor
+          FROM pending_cost_matches
+          WHERE document_id = ?
+          ORDER BY created_at, id
+        `)
+        .bind(documentId)
+    );
+  }
+
+  listLotsByIds(lotIds: string[]): Promise<LotReversalRow[]> {
+    if (lotIds.length === 0) return Promise.resolve([]);
+    const placeholders = lotIds.map(() => "?").join(", ");
+    return all<LotReversalRow>(
+      this.db
+        .prepare(`
+          SELECT
+            id, original_amount_minor, remaining_amount_minor,
+            original_usdt_cost_minor, remaining_usdt_cost_minor,
+            source_document_id, current_account_id, current_person_id
+          FROM lots
+          WHERE id IN (${placeholders})
+          ORDER BY created_at, id
+        `)
+        .bind(...lotIds)
+    );
+  }
+
+  listLaterMovementLotIds(input: { lotIds: string[]; originalDocumentId: string }): Promise<Array<{ lot_id: string }>> {
+    if (input.lotIds.length === 0) return Promise.resolve([]);
+    const placeholders = input.lotIds.map(() => "?").join(", ");
+    return all<{ lot_id: string }>(
+      this.db
+        .prepare(`
+          SELECT DISTINCT lot_id
+          FROM lot_movements
+          WHERE lot_id IN (${placeholders})
+            AND document_id <> ?
+            AND created_at > (
+              SELECT COALESCE(MAX(created_at), '')
+              FROM lot_movements
+              WHERE document_id = ?
+            )
+          ORDER BY lot_id
+        `)
+        .bind(...input.lotIds, input.originalDocumentId, input.originalDocumentId)
     );
   }
 

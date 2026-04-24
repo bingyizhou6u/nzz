@@ -982,4 +982,68 @@ describe("DocumentRepository", () => {
       expect.any(String)
     ]);
   });
+
+  it("lists account entries by document for reversal posting", async () => {
+    let sql = "";
+    let boundValues: unknown[] = [];
+    const row = { account_id: "acct_usdt", currency_code: "USDT", amount_minor: 10000 };
+    const repo = new DocumentRepository(
+      mockDb({ allResults: [row], onSql: (value) => (sql = value), onBind: (values) => (boundValues = values) })
+    );
+
+    await expect(repo.listAccountEntriesForDocument("doc_original")).resolves.toEqual([row]);
+    expect(sql.replace(/\s+/g, " ").toLowerCase()).toContain("from account_entries");
+    expect(boundValues).toEqual(["doc_original"]);
+  });
+
+  it("lists loan entries by document for reversal posting", async () => {
+    let sql = "";
+    let boundValues: unknown[] = [];
+    const row = { borrower_person_id: "person_1", currency_code: "USDT", amount_minor: 10000 };
+    const repo = new DocumentRepository(
+      mockDb({ allResults: [row], onSql: (value) => (sql = value), onBind: (values) => (boundValues = values) })
+    );
+
+    await expect(repo.listLoanEntriesForDocument("doc_original")).resolves.toEqual([row]);
+    expect(sql.replace(/\s+/g, " ").toLowerCase()).toContain("from loan_entries");
+    expect(boundValues).toEqual(["doc_original"]);
+  });
+
+  it("lists fifo reversal context by original document", async () => {
+    const sqlStatements: string[] = [];
+    const bindCalls: unknown[][] = [];
+    const repo = new DocumentRepository(
+      mockDb({ allResults: [], onSql: (sql) => sqlStatements.push(sql), onBind: (values) => bindCalls.push(values) })
+    );
+
+    await repo.listLotMovementsForDocument("doc_original");
+    await repo.listLotsCreatedByDocument("doc_original");
+    await repo.listPendingCostMatchesForDocument("doc_original");
+
+    const normalizedSql = sqlStatements.join(" ").replace(/\s+/g, " ").toLowerCase();
+    expect(normalizedSql).toContain("from lot_movements");
+    expect(normalizedSql).toContain("from lots");
+    expect(normalizedSql).toContain("from pending_cost_matches");
+    expect(bindCalls).toEqual([["doc_original"], ["doc_original"], ["doc_original"]]);
+  });
+
+  it("lists lot snapshots and later movement conflicts for reversal safety checks", async () => {
+    const sqlStatements: string[] = [];
+    const bindCalls: unknown[][] = [];
+    const repo = new DocumentRepository(
+      mockDb({ allResults: [], onSql: (sql) => sqlStatements.push(sql), onBind: (values) => bindCalls.push(values) })
+    );
+
+    await repo.listLotsByIds(["lot_a", "lot_b"]);
+    await repo.listLaterMovementLotIds({ lotIds: ["lot_a", "lot_b"], originalDocumentId: "doc_original" });
+
+    const normalizedSql = sqlStatements.join(" ").replace(/\s+/g, " ").toLowerCase();
+    expect(normalizedSql).toContain("where id in (?, ?)");
+    expect(normalizedSql).toContain("select distinct lot_id");
+    expect(normalizedSql).toContain("document_id <> ?");
+    expect(bindCalls).toEqual([
+      ["lot_a", "lot_b"],
+      ["lot_a", "lot_b", "doc_original", "doc_original"]
+    ]);
+  });
 });
