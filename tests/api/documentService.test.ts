@@ -807,6 +807,27 @@ describe("DocumentService", () => {
     expect(repo.approveWithPostings).not.toHaveBeenCalled();
   });
 
+  it.each(["loan_repayment", "loan_writeoff"] as const)("rejects multi-line %s approvals", async (documentType) => {
+    const { repo, service } = createMocks({
+      getDocument: vi.fn(async () =>
+        documentRow({
+          status: "pending",
+          document_type: documentType,
+          category_id: documentType === "loan_writeoff" ? "cat_bad_debt" : null
+        })
+      ),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({ borrower_person_id: "person_borrower", currency_code: "AED", amount_minor: 5000 }),
+        lineRow({ id: "line_2", line_no: 2, borrower_person_id: "person_borrower", currency_code: "AED", amount_minor: 7000 })
+      ])
+    });
+
+    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow(`${documentType} requires exactly one line`);
+
+    expect(repo.listOpenLoanItems).not.toHaveBeenCalled();
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
+  });
+
   it("rejects loan approvals when any line is missing borrower", async () => {
     const { repo, service } = createMocks({
       getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "loan_out" })),
@@ -821,6 +842,30 @@ describe("DocumentService", () => {
     expect(repo.approveWithPostings).not.toHaveBeenCalled();
   });
 
+  it.each(["loan_repayment", "loan_writeoff"] as const)(
+    "rejects %s approvals when borrower is missing",
+    async (documentType) => {
+      const { repo, service } = createMocks({
+        getDocument: vi.fn(async () =>
+          documentRow({
+            status: "pending",
+            document_type: documentType,
+            category_id: documentType === "loan_writeoff" ? "cat_bad_debt" : null
+          })
+        ),
+        getDocumentLines: vi.fn(async () => [
+          lineRow({ borrower_person_id: null, currency_code: "AED", amount_minor: 5000 })
+        ])
+      });
+
+      await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow(
+        `borrowerPersonId is required for ${documentType}`
+      );
+
+      expect(repo.approveWithPostings).not.toHaveBeenCalled();
+    }
+  );
+
   it("rejects loan approvals with mixed borrowers", async () => {
     const { repo, service } = createMocks({
       getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "loan_out" })),
@@ -834,6 +879,29 @@ describe("DocumentService", () => {
 
     expect(repo.approveWithPostings).not.toHaveBeenCalled();
   });
+
+  it.each(["loan_repayment", "loan_writeoff"] as const)(
+    "rejects %s approvals with mixed borrowers",
+    async (documentType) => {
+      const { repo, service } = createMocks({
+        getDocument: vi.fn(async () =>
+          documentRow({
+            status: "pending",
+            document_type: documentType,
+            category_id: documentType === "loan_writeoff" ? "cat_bad_debt" : null
+          })
+        ),
+        getDocumentLines: vi.fn(async () => [
+          lineRow({ borrower_person_id: "person_1", currency_code: "AED", amount_minor: 5000 }),
+          lineRow({ id: "line_2", line_no: 2, borrower_person_id: "person_2", currency_code: "AED", amount_minor: 7000 })
+        ])
+      });
+
+      await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow(`${documentType} requires one borrower`);
+
+      expect(repo.approveWithPostings).not.toHaveBeenCalled();
+    }
+  );
 
   it("approves non-USDT account transfers with FIFO effects", async () => {
     const { repo, service } = createMocks({
