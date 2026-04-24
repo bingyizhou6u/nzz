@@ -150,6 +150,41 @@ describe("AuditLogRepository", () => {
     expect(boundValues[5]).toBe(JSON.stringify({ value: "validated" }));
   });
 
+  it("preserves special object keys as data fields", async () => {
+    let boundValues: unknown[] = [];
+    const snapshot = JSON.parse(`{"__proto__":"kept","constructor":"ctor","prototype":"proto"}`);
+    const repo = new AuditLogRepository(mockDb({ onBind: (values) => (boundValues = values) }));
+
+    await repo.record({
+      actor: "user_1",
+      action: "document.submit",
+      entityType: "document",
+      entityId: "doc_1",
+      before: snapshot
+    });
+
+    const parsed = JSON.parse(boundValues[5] as string);
+    expect(parsed.__proto__).toBe("kept");
+    expect(parsed.constructor).toBe("ctor");
+    expect(parsed.prototype).toBe("proto");
+    expect(boundValues[5]).toContain(`"__proto__":"kept"`);
+  });
+
+  it("accepts non-callable toJSON data fields", async () => {
+    let boundValues: unknown[] = [];
+    const repo = new AuditLogRepository(mockDb({ onBind: (values) => (boundValues = values) }));
+
+    await repo.record({
+      actor: "user_1",
+      action: "document.submit",
+      entityType: "document",
+      entityId: "doc_1",
+      before: { toJSON: "literal" }
+    });
+
+    expect(boundValues[5]).toBe(JSON.stringify({ toJSON: "literal" }));
+  });
+
   it("rejects snapshots that stringify to undefined", async () => {
     const repo = new AuditLogRepository(mockDb());
 

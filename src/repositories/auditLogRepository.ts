@@ -83,14 +83,19 @@ export class AuditLogRepository {
       throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
     }
 
-    if (this.hasToJson(value) || this.getOwnPropertySymbols(value).length > 0) {
+    const descriptors = this.getOwnPropertyDescriptors(value);
+    const toJsonDescriptor = descriptors.toJSON;
+    if (
+      (toJsonDescriptor && "value" in toJsonDescriptor && typeof toJsonDescriptor.value === "function") ||
+      (toJsonDescriptor && !("value" in toJsonDescriptor)) ||
+      this.getOwnPropertySymbols(value).length > 0
+    ) {
       throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
     }
 
     path.add(value);
     let snapshot: JsonSnapshot;
     if (Array.isArray(value)) {
-      const descriptors = this.getOwnPropertyDescriptors(value);
       const lengthDescriptor = descriptors.length;
       if (!lengthDescriptor || !("value" in lengthDescriptor) || typeof lengthDescriptor.value !== "number") {
         throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
@@ -111,12 +116,17 @@ export class AuditLogRepository {
       }
       snapshot = arraySnapshot;
     } else {
-      const objectSnapshot: { [key: string]: JsonSnapshot } = {};
-      for (const [key, descriptor] of Object.entries(this.getOwnPropertyDescriptors(value))) {
+      const objectSnapshot = Object.create(null) as { [key: string]: JsonSnapshot };
+      for (const [key, descriptor] of Object.entries(descriptors)) {
         if (!descriptor.enumerable || !("value" in descriptor)) {
           throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
         }
-        objectSnapshot[key] = this.toJsonSnapshot(descriptor.value, path);
+        Object.defineProperty(objectSnapshot, key, {
+          enumerable: true,
+          configurable: true,
+          writable: true,
+          value: this.toJsonSnapshot(descriptor.value, path)
+        });
       }
       snapshot = objectSnapshot;
     }
@@ -140,14 +150,6 @@ export class AuditLogRepository {
   private getPrototypeOf(value: object): object | null {
     try {
       return Object.getPrototypeOf(value);
-    } catch {
-      throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
-    }
-  }
-
-  private hasToJson(value: object): boolean {
-    try {
-      return "toJSON" in value;
     } catch {
       throw new Error(SNAPSHOT_SERIALIZATION_ERROR);
     }
