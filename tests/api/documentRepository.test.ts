@@ -375,9 +375,9 @@ describe("DocumentRepository", () => {
     expect(normalizedSql).toContain("currency_code = ?");
     expect(normalizedSql).toContain("status = 'open'");
     expect(normalizedSql).toContain("remaining_amount_minor > 0");
-    expect(normalizedSql).toContain("current_person_id = ?");
+    expect(normalizedSql).toContain("current_person_id is ?");
     expect(normalizedSql).toContain("order by lot_date, id");
-    expect(boundValues).toEqual(["acct_aed", "AED", "person_1", "person_1"]);
+    expect(boundValues).toEqual(["acct_aed", "AED", "person_1"]);
   });
 
   it("lists open pending cost matches in matching order", async () => {

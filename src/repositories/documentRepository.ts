@@ -221,10 +221,10 @@ export class DocumentRepository {
             AND currency_code = ?
             AND status = 'open'
             AND remaining_amount_minor > 0
-            AND ((? IS NULL AND current_person_id IS NULL) OR current_person_id = ?)
+            AND current_person_id IS ?
           ORDER BY lot_date, id
         `)
-        .bind(input.accountId, input.currencyCode, input.personId ?? null, input.personId ?? null)
+        .bind(input.accountId, input.currencyCode, input.personId ?? null)
     );
   }
 
