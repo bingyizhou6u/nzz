@@ -25,7 +25,7 @@ export interface NormalizedDocumentLine {
   note: string | null;
 }
 
-export function normalizeDocumentLines(lines: RawDocumentLine[]): NormalizedDocumentLine[] {
+export function normalizeDocumentLines(lines: unknown): NormalizedDocumentLine[] {
   if (!Array.isArray(lines) || lines.length === 0) {
     throw new Error("At least one document line is required");
   }
