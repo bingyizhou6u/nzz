@@ -474,10 +474,13 @@ describe("DocumentRepository", () => {
     });
 
     expect(batchCalls).toHaveLength(1);
-    expect(batchCalls[0]).toHaveLength(7);
+    expect(batchCalls[0]).toHaveLength(9);
 
     const lotCreationStatement = batchCalls[0].find((statement) =>
       statement.sql.replace(/\s+/g, " ").toLowerCase().includes("insert into lots")
+    );
+    const lotConflictGuardStatement = batchCalls[0].find((statement) =>
+      String(statement.bindings[0]).startsWith("lot_conflict_guard_")
     );
     const lotUpdateStatement = batchCalls[0].find((statement) =>
       statement.sql.replace(/\s+/g, " ").toLowerCase().includes("update lots")
@@ -488,21 +491,34 @@ describe("DocumentRepository", () => {
     const pendingCreationStatement = batchCalls[0].find((statement) =>
       statement.sql.replace(/\s+/g, " ").toLowerCase().includes("insert into pending_cost_matches")
     );
+    const pendingConflictGuardStatement = batchCalls[0].find((statement) =>
+      String(statement.bindings[0]).startsWith("pending_cost_conflict_guard_")
+    );
     const pendingUpdateStatement = batchCalls[0].find((statement) =>
       statement.sql.replace(/\s+/g, " ").toLowerCase().includes("update pending_cost_matches")
     );
 
     expect(lotCreationStatement).toBeDefined();
+    expect(lotConflictGuardStatement).toBeDefined();
     expect(lotUpdateStatement).toBeDefined();
     expect(lotMovementStatement).toBeDefined();
     expect(pendingCreationStatement).toBeDefined();
+    expect(pendingConflictGuardStatement).toBeDefined();
     expect(pendingUpdateStatement).toBeDefined();
+    expect(batchCalls[0].indexOf(lotConflictGuardStatement as CapturedStatement)).toBeLessThan(
+      batchCalls[0].indexOf(lotUpdateStatement as CapturedStatement)
+    );
+    expect(batchCalls[0].indexOf(pendingConflictGuardStatement as CapturedStatement)).toBeLessThan(
+      batchCalls[0].indexOf(pendingUpdateStatement as CapturedStatement)
+    );
 
     const fifoStatements = [
       lotCreationStatement,
+      lotConflictGuardStatement,
       lotUpdateStatement,
       lotMovementStatement,
       pendingCreationStatement,
+      pendingConflictGuardStatement,
       pendingUpdateStatement
     ];
     for (const statement of fifoStatements) {
@@ -529,6 +545,26 @@ describe("DocumentRepository", () => {
       expect.any(String),
       "doc_1",
       "2026-04"
+    ]);
+    expect(lotConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("insert into account_entries");
+    expect(lotConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("account_id");
+    expect(lotConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("null");
+    expect(lotConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("not exists ( select 1 from lots");
+    expect(lotConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("remaining_amount_minor + ? >= 0");
+    expect(lotConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain(
+      "remaining_usdt_cost_minor + ? >= 0"
+    );
+    expect(lotConflictGuardStatement?.bindings).toEqual([
+      expect.stringMatching(/^lot_conflict_guard_/),
+      "doc_1",
+      "USDT",
+      expect.any(String),
+      expect.any(String),
+      "doc_1",
+      "2026-04",
+      "lot_source",
+      -1000,
+      -272
     ]);
     expect(lotUpdateStatement?.bindings).toEqual([
       -1000,
@@ -570,14 +606,58 @@ describe("DocumentRepository", () => {
       "doc_1",
       "2026-04"
     ]);
+    expect(pendingConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("insert into account_entries");
+    expect(pendingConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain(
+      "not exists ( select 1 from pending_cost_matches"
+    );
+    expect(pendingConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain(
+      "remaining_amount_minor + ? >= 0"
+    );
+    expect(pendingConflictGuardStatement?.bindings).toEqual([
+      expect.stringMatching(/^pending_cost_conflict_guard_/),
+      "doc_1",
+      "USDT",
+      expect.any(String),
+      expect.any(String),
+      "doc_1",
+      "2026-04",
+      "pending_1",
+      -500
+    ]);
     expect(pendingUpdateStatement?.bindings).toEqual([-500, -500, "pending_1", -500, "doc_1", "2026-04"]);
     expect(batchCalls[0].some((statement) => statement.bindings.includes("doc_1:lot:1"))).toBe(false);
+  });
+
+  it("rejects approval inside the batch when the lot conflict guard fails", async () => {
+    const repo = new DocumentRepository(
+      mockDb({
+        batchResults: [
+          { success: false, error: "NOT NULL constraint failed: account_entries.account_id" } as unknown as D1Result,
+          { success: true } as D1Result,
+          { success: true } as D1Result,
+          { success: true, meta: { changes: 1 } } as unknown as D1Result
+        ]
+      })
+    );
+
+    await expect(
+      repo.approveWithPostings({
+        documentId: "doc_1",
+        period: "2026-04",
+        reviewer: "reviewer_1",
+        accountEntries: [],
+        loanEntries: [],
+        lotUpdates: [{ lotId: "lot_source", amountDeltaMinor: -1000, usdtCostDeltaMinor: -272 }],
+        auditLogStatement: {} as D1PreparedStatement
+      })
+    ).rejects.toThrow("Lot balance changed before approval could be posted");
   });
 
   it("rejects approval when a lot update no longer matches the available balance", async () => {
     const repo = new DocumentRepository(
       mockDb({
         batchResults: [
+          { success: true } as D1Result,
           { success: true, meta: { changes: 0 } } as unknown as D1Result,
           { success: true } as D1Result,
           { success: true, meta: { changes: 1 } } as unknown as D1Result
@@ -596,6 +676,31 @@ describe("DocumentRepository", () => {
         auditLogStatement: {} as D1PreparedStatement
       })
     ).rejects.toThrow("Lot balance changed before approval could be posted");
+  });
+
+  it("rejects approval inside the batch when the pending cost conflict guard fails", async () => {
+    const repo = new DocumentRepository(
+      mockDb({
+        batchResults: [
+          { success: false, error: "NOT NULL constraint failed: account_entries.account_id" } as unknown as D1Result,
+          { success: true } as D1Result,
+          { success: true } as D1Result,
+          { success: true, meta: { changes: 1 } } as unknown as D1Result
+        ]
+      })
+    );
+
+    await expect(
+      repo.approveWithPostings({
+        documentId: "doc_1",
+        period: "2026-04",
+        reviewer: "reviewer_1",
+        accountEntries: [],
+        loanEntries: [],
+        pendingCostUpdates: [{ pendingCostMatchId: "pending_1", amountDeltaMinor: -500 }],
+        auditLogStatement: {} as D1PreparedStatement
+      })
+    ).rejects.toThrow("Pending cost balance changed before approval could be posted");
   });
 
   it("rejects atomic approval when the guarded status update changes no rows", async () => {

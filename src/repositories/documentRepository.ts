@@ -97,7 +97,13 @@ export interface PendingCostMatchRow {
   created_at: string;
 }
 
-type ApprovalStatementRole = "write" | "lot_update" | "approval";
+type ApprovalStatementRole =
+  | "write"
+  | "lot_conflict_guard"
+  | "lot_update"
+  | "pending_cost_conflict_guard"
+  | "pending_cost_update"
+  | "approval";
 
 export class DocumentRepository {
   constructor(private readonly db: D1Database) {}
@@ -302,6 +308,7 @@ export class DocumentRepository {
       addStatement(this.prepareConditionalLotCreation(input.documentId, input.period, lotCreation, lotId), "write");
     }
     for (const lotUpdate of input.lotUpdates ?? []) {
+      addStatement(this.prepareLotConflictGuard(input.documentId, input.period, lotUpdate), "lot_conflict_guard");
       addStatement(this.prepareConditionalLotUpdate(input.documentId, input.period, lotUpdate), "lot_update");
     }
     for (const lotMovement of input.lotMovements ?? []) {
@@ -312,7 +319,11 @@ export class DocumentRepository {
       addStatement(this.prepareConditionalPendingCostCreation(input.documentId, input.period, pendingCostCreation), "write");
     }
     for (const pendingCostUpdate of input.pendingCostUpdates ?? []) {
-      addStatement(this.prepareConditionalPendingCostUpdate(input.documentId, input.period, pendingCostUpdate), "write");
+      addStatement(
+        this.preparePendingCostConflictGuard(input.documentId, input.period, pendingCostUpdate),
+        "pending_cost_conflict_guard"
+      );
+      addStatement(this.prepareConditionalPendingCostUpdate(input.documentId, input.period, pendingCostUpdate), "pending_cost_update");
     }
     addStatement(input.auditLogStatement, "write");
     addStatement(
@@ -320,7 +331,7 @@ export class DocumentRepository {
       "approval"
     );
 
-    const results = await this.runBatch(statements);
+    const results = await this.runBatch(statements, statementRoles);
     const approvalResult = results[statementRoles.lastIndexOf("approval")];
     if (approvalResult?.meta?.changes === 0) {
       throw new Error("Document is not pending or period is locked");
@@ -329,6 +340,9 @@ export class DocumentRepository {
     for (let index = 0; index < results.length; index += 1) {
       if (statementRoles[index] === "lot_update" && results[index]?.meta?.changes === 0) {
         throw new Error("Lot balance changed before approval could be posted");
+      }
+      if (statementRoles[index] === "pending_cost_update" && results[index]?.meta?.changes === 0) {
+        throw new Error("Pending cost balance changed before approval could be posted");
       }
     }
   }
@@ -470,6 +484,37 @@ export class DocumentRepository {
       );
   }
 
+  private prepareLotConflictGuard(
+    documentId: string,
+    period: string,
+    lotUpdate: LotUpdateEffect
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO account_entries (id, document_id, account_id, currency_code, amount_minor, entry_date, created_at)
+         SELECT ?, ?, NULL, ?, 0, ?, ?
+         WHERE ${this.approvalGuardSql()}
+           AND NOT EXISTS (
+             SELECT 1 FROM lots
+             WHERE id = ?
+               AND remaining_amount_minor + ? >= 0
+               AND remaining_usdt_cost_minor + ? >= 0
+           )`
+      )
+      .bind(
+        newId("lot_conflict_guard"),
+        documentId,
+        "USDT",
+        nowIso(),
+        nowIso(),
+        documentId,
+        period,
+        lotUpdate.lotId,
+        lotUpdate.amountDeltaMinor,
+        lotUpdate.usdtCostDeltaMinor
+      );
+  }
+
   private prepareConditionalLotMovement(
     documentId: string,
     period: string,
@@ -557,6 +602,35 @@ export class DocumentRepository {
       );
   }
 
+  private preparePendingCostConflictGuard(
+    documentId: string,
+    period: string,
+    pendingCostUpdate: PendingCostUpdateEffect
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO account_entries (id, document_id, account_id, currency_code, amount_minor, entry_date, created_at)
+         SELECT ?, ?, NULL, ?, 0, ?, ?
+         WHERE ${this.approvalGuardSql()}
+           AND NOT EXISTS (
+             SELECT 1 FROM pending_cost_matches
+             WHERE id = ?
+               AND remaining_amount_minor + ? >= 0
+           )`
+      )
+      .bind(
+        newId("pending_cost_conflict_guard"),
+        documentId,
+        "USDT",
+        nowIso(),
+        nowIso(),
+        documentId,
+        period,
+        pendingCostUpdate.pendingCostMatchId,
+        pendingCostUpdate.amountDeltaMinor
+      );
+  }
+
   private prepareGuardedApprovalUpdate(
     documentId: string,
     period: string,
@@ -592,12 +666,19 @@ export class DocumentRepository {
     return remainingAmountMinor < amountMinor ? "partial" : "open";
   }
 
-  private async runBatch(statements: D1PreparedStatement[]): Promise<D1Result[]> {
+  private async runBatch(statements: D1PreparedStatement[], statementRoles: ApprovalStatementRole[] = []): Promise<D1Result[]> {
     if (statements.length === 0) return [];
 
     const results = await this.db.batch(statements);
-    for (const result of results) {
+    for (let index = 0; index < results.length; index += 1) {
+      const result = results[index];
       if (!result.success) {
+        if (statementRoles[index] === "lot_conflict_guard") {
+          throw new Error("Lot balance changed before approval could be posted");
+        }
+        if (statementRoles[index] === "pending_cost_conflict_guard") {
+          throw new Error("Pending cost balance changed before approval could be posted");
+        }
         throw new Error(result.error || "D1 batch write failed");
       }
     }
