@@ -21,6 +21,8 @@ function mockEnv(options: { rows?: unknown[]; runResult?: D1Result } = {}): Env 
 }
 
 describe("master data API", () => {
+  const requiredProjectFieldsError = { error: "code and name are required" };
+
   it("lists currencies", async () => {
     const response = await listCurrencies({
       request: new Request("https://ledger.test/api/currencies"),
@@ -60,7 +62,56 @@ describe("master data API", () => {
     });
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: "code and name are required" });
+    await expect(response.json()).resolves.toEqual(requiredProjectFieldsError);
+  });
+
+  it.each([
+    ["null", JSON.stringify(null)],
+    ["array", JSON.stringify([{ code: "P001", name: "Project One" }])],
+    ["primitive", JSON.stringify("P001")]
+  ])("rejects %s project request bodies", async (_name, body) => {
+    const response = await createProject({
+      request: new Request("https://ledger.test/api/projects", {
+        method: "POST",
+        body
+      }),
+      env: mockEnv(),
+      params: {}
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual(requiredProjectFieldsError);
+  });
+
+  it("rejects malformed project request bodies", async () => {
+    const response = await createProject({
+      request: new Request("https://ledger.test/api/projects", {
+        method: "POST",
+        body: "{"
+      }),
+      env: mockEnv(),
+      params: {}
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual(requiredProjectFieldsError);
+  });
+
+  it.each([
+    ["code", { code: " ", name: "Project One" }],
+    ["name", { code: "P001", name: " " }]
+  ])("requires non-blank project %s", async (_field, body) => {
+    const response = await createProject({
+      request: new Request("https://ledger.test/api/projects", {
+        method: "POST",
+        body: JSON.stringify(body)
+      }),
+      env: mockEnv(),
+      params: {}
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual(requiredProjectFieldsError);
   });
 });
 
