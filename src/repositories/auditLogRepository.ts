@@ -18,25 +18,43 @@ export class AuditLogRepository {
   constructor(private readonly db: D1Database) {}
 
   async record(input: AuditLogInput) {
-    await run(
-      this.db
-        .prepare(
-          `INSERT INTO audit_logs (
-            id, actor, action, entity_type, entity_id, before_json, after_json, reason, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    await run(this.prepareRecord(input));
+  }
+
+  prepareRecord(input: AuditLogInput): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO audit_logs (
+          id, actor, action, entity_type, entity_id, before_json, after_json, reason, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(...this.recordBindings(input));
+  }
+
+  prepareRecordWhen(input: AuditLogInput, condition: { sql: string; bindings: unknown[] }): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO audit_logs (
+          id, actor, action, entity_type, entity_id, before_json, after_json, reason, created_at
         )
-        .bind(
-          newId("audit"),
-          input.actor,
-          input.action,
-          input.entityType,
-          input.entityId,
-          this.serializeSnapshot(input.before),
-          this.serializeSnapshot(input.after),
-          input.reason ?? null,
-          nowIso()
-        )
-    );
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE ${condition.sql}`
+      )
+      .bind(...this.recordBindings(input), ...condition.bindings);
+  }
+
+  private recordBindings(input: AuditLogInput) {
+    return [
+      newId("audit"),
+      input.actor,
+      input.action,
+      input.entityType,
+      input.entityId,
+      this.serializeSnapshot(input.before),
+      this.serializeSnapshot(input.after),
+      input.reason ?? null,
+      nowIso()
+    ];
   }
 
   private serializeSnapshot(value: unknown): string | null {

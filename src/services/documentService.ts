@@ -32,9 +32,10 @@ type DocumentWorkflowRepository = Pick<
   | "isPeriodLocked"
   | "insertAccountEntries"
   | "insertLoanEntries"
+  | "approveWithPostings"
 >;
 
-type DocumentAuditRepository = Pick<AuditLogRepository, "record">;
+type DocumentAuditRepository = Pick<AuditLogRepository, "record" | "prepareRecordWhen">;
 
 export class DocumentService {
   constructor(
@@ -110,9 +111,10 @@ export class DocumentService {
     const document = await this.requireDocument(id);
     assertDocumentTransition(document.status, "approved", "approve");
 
-    const lockedPeriod = await this.documents.isPeriodLocked(periodFromDate(document.business_date));
+    const approvalPeriod = periodFromDate(document.business_date);
+    const lockedPeriod = await this.documents.isPeriodLocked(approvalPeriod);
     if (lockedPeriod) {
-      throw new Error("Period is locked");
+      throw new Error(`Period ${approvalPeriod} is locked`);
     }
 
     const lines = await this.documents.getDocumentLines(id);
@@ -128,17 +130,27 @@ export class DocumentService {
         amountMinor: line.amount_minor
       }))
     });
+    const auditLogStatement = this.auditLogs.prepareRecordWhen(
+      {
+        actor: reviewer,
+        action: "document.approve",
+        entityType: "document",
+        entityId: id,
+        before: { status: document.status },
+        after: { status: "approved" }
+      },
+      {
+        sql: "EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending')",
+        bindings: [id]
+      }
+    );
 
-    await this.documents.insertAccountEntries(id, posting.accountEntries);
-    await this.documents.insertLoanEntries(id, posting.loanEntries);
-    await this.documents.markApproved(id, reviewer);
-    await this.auditLogs.record({
-      actor: reviewer,
-      action: "document.approve",
-      entityType: "document",
-      entityId: id,
-      before: { status: document.status },
-      after: { status: "approved" }
+    await this.documents.approveWithPostings({
+      documentId: id,
+      reviewer,
+      accountEntries: posting.accountEntries,
+      loanEntries: posting.loanEntries,
+      auditLogStatement
     });
   }
 

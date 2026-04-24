@@ -220,6 +220,8 @@ describe("DocumentRepository", () => {
     const normalizedSql = sqlStatements.join(" ").replace(/\s+/g, " ").toLowerCase();
     expect(normalizedSql).toContain("status = 'pending'");
     expect(normalizedSql).toContain("status = 'rejected'");
+    expect(normalizedSql).toContain("status in ('draft', 'rejected')");
+    expect(normalizedSql).toContain("status = 'pending'");
     expect(bindCalls[0]).toEqual(["2026-04-24T10:00:00.000Z", "doc_1"]);
     expect(bindCalls[1]).toEqual(["Missing attachment", "doc_1"]);
   });
@@ -281,7 +283,85 @@ describe("DocumentRepository", () => {
     const normalizedSql = sqlStatements.join(" ").replace(/\s+/g, " ").toLowerCase();
     expect(normalizedSql).toContain("status = 'approved'");
     expect(normalizedSql).toContain("reject_reason = null");
+    expect(normalizedSql).toContain("status = 'pending'");
     expect(boundValues).toEqual(["reviewer_1", "2026-04-24T11:00:00.000Z", "doc_1"]);
+  });
+
+  it("approves with postings in one conditional batch", async () => {
+    const batchCalls: CapturedStatement[][] = [];
+    const repo = new DocumentRepository(mockDb({ onBatch: (statements) => batchCalls.push(statements) }));
+    const auditLogStatement = {
+      sql: "INSERT INTO audit_logs SELECT ? WHERE EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending')",
+      bindings: ["audit_1", "doc_1"]
+    } as unknown as D1PreparedStatement;
+
+    await repo.approveWithPostings({
+      documentId: "doc_1",
+      reviewer: "reviewer_1",
+      reviewedAt: "2026-04-24T11:00:00.000Z",
+      accountEntries: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 10000, entryDate: "2026-04-24" }],
+      loanEntries: [{ borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 10000, entryDate: "2026-04-24" }],
+      auditLogStatement
+    });
+
+    expect(batchCalls).toHaveLength(1);
+    expect(batchCalls[0]).toHaveLength(4);
+    expect(batchCalls[0][0].sql.replace(/\s+/g, " ").toLowerCase()).toContain("insert into account_entries");
+    expect(batchCalls[0][0].sql.replace(/\s+/g, " ").toLowerCase()).toContain(
+      "where exists (select 1 from documents where id = ? and status = 'pending')"
+    );
+    expect(batchCalls[0][0].bindings).toEqual([
+      expect.stringMatching(/^acct_entry_/),
+      "doc_1",
+      "acct_usdt",
+      "USDT",
+      10000,
+      "2026-04-24",
+      expect.any(String),
+      "doc_1"
+    ]);
+    expect(batchCalls[0][1].sql.replace(/\s+/g, " ").toLowerCase()).toContain("insert into loan_entries");
+    expect(batchCalls[0][1].sql.replace(/\s+/g, " ").toLowerCase()).toContain(
+      "where exists (select 1 from documents where id = ? and status = 'pending')"
+    );
+    expect(batchCalls[0][1].bindings).toEqual([
+      expect.stringMatching(/^loan_entry_/),
+      "doc_1",
+      "person_1",
+      "USDT",
+      10000,
+      "2026-04-24",
+      expect.any(String),
+      "doc_1"
+    ]);
+    expect(batchCalls[0][2]).toBe(auditLogStatement);
+    expect(batchCalls[0][3].sql.replace(/\s+/g, " ").toLowerCase()).toContain(
+      "update documents set status = 'approved'"
+    );
+    expect(batchCalls[0][3].sql.replace(/\s+/g, " ").toLowerCase()).toContain("where id = ? and status = 'pending'");
+    expect(batchCalls[0][3].bindings).toEqual(["reviewer_1", "2026-04-24T11:00:00.000Z", "doc_1"]);
+  });
+
+  it("rejects atomic approval when the guarded status update changes no rows", async () => {
+    const repo = new DocumentRepository(
+      mockDb({
+        batchResults: [
+          { success: true } as D1Result,
+          { success: true } as D1Result,
+          { success: true, meta: { changes: 0 } } as unknown as D1Result
+        ]
+      })
+    );
+
+    await expect(
+      repo.approveWithPostings({
+        documentId: "doc_1",
+        reviewer: "reviewer_1",
+        accountEntries: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 10000, entryDate: "2026-04-24" }],
+        loanEntries: [],
+        auditLogStatement: {} as D1PreparedStatement
+      })
+    ).rejects.toThrow("Document is not pending");
   });
 
   it("checks period locks by period", async () => {

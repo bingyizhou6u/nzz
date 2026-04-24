@@ -20,6 +20,15 @@ export interface CreateDocumentWithLinesInput extends CreateDocumentInput {
   lines: NormalizedDocumentLine[];
 }
 
+export interface ApproveDocumentWithPostingsInput {
+  documentId: string;
+  reviewer: string;
+  accountEntries: Array<{ accountId: string; currencyCode: string; amountMinor: number; entryDate: string }>;
+  loanEntries: Array<{ borrowerPersonId: string; currencyCode: string; amountMinor: number; entryDate: string }>;
+  auditLogStatement: D1PreparedStatement;
+  reviewedAt?: string;
+}
+
 export interface DocumentSummaryRow {
   id: string;
   document_no: string;
@@ -129,19 +138,31 @@ export class DocumentRepository {
   async markSubmitted(id: string, submittedAt = nowIso()) {
     await run(
       this.db
-        .prepare(`UPDATE documents SET status = 'pending', submitted_at = ?, reject_reason = NULL WHERE id = ?`)
+        .prepare(
+          `UPDATE documents
+           SET status = 'pending', submitted_at = ?, reject_reason = NULL
+           WHERE id = ? AND status IN ('draft', 'rejected')`
+        )
         .bind(submittedAt, id)
     );
   }
 
   async markRejected(id: string, reason: string) {
-    await run(this.db.prepare(`UPDATE documents SET status = 'rejected', reject_reason = ? WHERE id = ?`).bind(reason, id));
+    await run(
+      this.db
+        .prepare(`UPDATE documents SET status = 'rejected', reject_reason = ? WHERE id = ? AND status = 'pending'`)
+        .bind(reason, id)
+    );
   }
 
   async markApproved(id: string, reviewer: string, reviewedAt = nowIso()) {
     await run(
       this.db
-        .prepare(`UPDATE documents SET status = 'approved', reviewed_by = ?, reviewed_at = ?, reject_reason = NULL WHERE id = ?`)
+        .prepare(
+          `UPDATE documents
+           SET status = 'approved', reviewed_by = ?, reviewed_at = ?, reject_reason = NULL
+           WHERE id = ? AND status = 'pending'`
+        )
         .bind(reviewer, reviewedAt, id)
     );
   }
@@ -182,6 +203,20 @@ export class DocumentRepository {
     );
   }
 
+  async approveWithPostings(input: ApproveDocumentWithPostingsInput): Promise<void> {
+    const results = await this.runBatch([
+      ...input.accountEntries.map((entry) => this.prepareConditionalAccountEntry(input.documentId, entry)),
+      ...input.loanEntries.map((entry) => this.prepareConditionalLoanEntry(input.documentId, entry)),
+      input.auditLogStatement,
+      this.prepareGuardedApprovalUpdate(input.documentId, input.reviewer, input.reviewedAt ?? nowIso())
+    ]);
+
+    const approvalResult = results.at(-1);
+    if (approvalResult?.meta?.changes === 0) {
+      throw new Error("Document is not pending");
+    }
+  }
+
   private prepareDraftInsert(input: CreateDocumentInput, id: string, documentNo: string, createdAt: string): D1PreparedStatement {
     return this.db
       .prepare(
@@ -209,8 +244,62 @@ export class DocumentRepository {
       );
   }
 
-  private async runBatch(statements: D1PreparedStatement[]) {
-    if (statements.length === 0) return;
+  private prepareConditionalAccountEntry(
+    documentId: string,
+    entry: { accountId: string; currencyCode: string; amountMinor: number; entryDate: string }
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO account_entries (id, document_id, account_id, currency_code, amount_minor, entry_date, created_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending')`
+      )
+      .bind(
+        newId("acct_entry"),
+        documentId,
+        entry.accountId,
+        entry.currencyCode,
+        entry.amountMinor,
+        entry.entryDate,
+        nowIso(),
+        documentId
+      );
+  }
+
+  private prepareConditionalLoanEntry(
+    documentId: string,
+    entry: { borrowerPersonId: string; currencyCode: string; amountMinor: number; entryDate: string }
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO loan_entries (id, document_id, borrower_person_id, currency_code, amount_minor, entry_date, created_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending')`
+      )
+      .bind(
+        newId("loan_entry"),
+        documentId,
+        entry.borrowerPersonId,
+        entry.currencyCode,
+        entry.amountMinor,
+        entry.entryDate,
+        nowIso(),
+        documentId
+      );
+  }
+
+  private prepareGuardedApprovalUpdate(documentId: string, reviewer: string, reviewedAt: string): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `UPDATE documents
+         SET status = 'approved', reviewed_by = ?, reviewed_at = ?, reject_reason = NULL
+         WHERE id = ? AND status = 'pending'`
+      )
+      .bind(reviewer, reviewedAt, documentId);
+  }
+
+  private async runBatch(statements: D1PreparedStatement[]): Promise<D1Result[]> {
+    if (statements.length === 0) return [];
 
     const results = await this.db.batch(statements);
     for (const result of results) {
@@ -218,5 +307,6 @@ export class DocumentRepository {
         throw new Error(result.error || "D1 batch write failed");
       }
     }
+    return results;
   }
 }

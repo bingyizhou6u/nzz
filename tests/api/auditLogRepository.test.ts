@@ -17,6 +17,41 @@ function mockDb(options: { onBind?: (values: unknown[]) => void; onSql?: (sql: s
 }
 
 describe("AuditLogRepository", () => {
+  it("prepares conditional audit inserts with audit bindings before condition bindings", () => {
+    let sql = "";
+    let boundValues: unknown[] = [];
+    const repo = new AuditLogRepository(mockDb({ onSql: (value) => (sql = value), onBind: (values) => (boundValues = values) }));
+
+    const statement = repo.prepareRecordWhen(
+      {
+        actor: "reviewer_1",
+        action: "document.approve",
+        entityType: "document",
+        entityId: "doc_1",
+        before: { status: "pending" },
+        after: { status: "approved" }
+      },
+      { sql: "EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending')", bindings: ["doc_1"] }
+    );
+
+    expect(statement).toBeDefined();
+    expect(sql.replace(/\s+/g, " ").toLowerCase()).toContain("insert into audit_logs");
+    expect(sql.replace(/\s+/g, " ").toLowerCase()).toContain("select ?, ?, ?, ?, ?, ?, ?, ?, ?");
+    expect(sql.replace(/\s+/g, " ")).toContain("WHERE EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending')");
+    expect(boundValues).toEqual([
+      expect.stringMatching(/^audit_/),
+      "reviewer_1",
+      "document.approve",
+      "document",
+      "doc_1",
+      JSON.stringify({ status: "pending" }),
+      JSON.stringify({ status: "approved" }),
+      null,
+      expect.any(String),
+      "doc_1"
+    ]);
+  });
+
   it("inserts JSON snapshots for auditable actions", async () => {
     let sql = "";
     let boundValues: unknown[] = [];

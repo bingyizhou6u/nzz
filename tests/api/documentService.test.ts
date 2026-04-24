@@ -4,6 +4,12 @@ import type { DocumentDetailRow, DocumentLineRow } from "../../src/repositories/
 
 type DocumentRepoMock = ConstructorParameters<typeof DocumentService>[0];
 type AuditRepoMock = ConstructorParameters<typeof DocumentService>[1];
+type AtomicDocumentRepoMock = DocumentRepoMock & {
+  approveWithPostings: ReturnType<typeof vi.fn>;
+};
+type AtomicAuditRepoMock = AuditRepoMock & {
+  prepareRecordWhen: ReturnType<typeof vi.fn>;
+};
 
 function documentRow(overrides: Partial<DocumentDetailRow> = {}): DocumentDetailRow {
   return {
@@ -48,7 +54,7 @@ function lineRow(overrides: Partial<DocumentLineRow> = {}): DocumentLineRow {
   };
 }
 
-function createMocks(overrides: Partial<DocumentRepoMock> = {}) {
+function createMocks(overrides: Partial<AtomicDocumentRepoMock> = {}) {
   const repo = {
     createDraftWithLines: vi.fn(async () => ({ id: "doc_1", documentNo: "docno_1", status: "draft" as const })),
     getDocument: vi.fn(async () => documentRow()),
@@ -59,11 +65,13 @@ function createMocks(overrides: Partial<DocumentRepoMock> = {}) {
     isPeriodLocked: vi.fn(async () => null),
     insertAccountEntries: vi.fn(async () => undefined),
     insertLoanEntries: vi.fn(async () => undefined),
+    approveWithPostings: vi.fn(async () => undefined),
     ...overrides
-  } satisfies DocumentRepoMock;
+  } satisfies AtomicDocumentRepoMock;
   const audit = {
-    record: vi.fn(async () => undefined)
-  } satisfies AuditRepoMock;
+    record: vi.fn(async () => undefined),
+    prepareRecordWhen: vi.fn(() => ({ statement: "audit" }) as unknown as D1PreparedStatement)
+  } satisfies AtomicAuditRepoMock;
 
   return { repo, audit, service: new DocumentService(repo, audit) };
 }
@@ -165,39 +173,37 @@ describe("DocumentService", () => {
     });
   });
 
-  it("approves pending project income and writes posting entries", async () => {
-    const calls: string[] = [];
+  it("approves pending project income with one atomic posting write", async () => {
     const { repo, audit, service } = createMocks({
       getDocument: vi.fn(async () => documentRow({ status: "pending" })),
-      getDocumentLines: vi.fn(async () => [lineRow({ amount_minor: 15000 })]),
-      insertAccountEntries: vi.fn(async () => {
-        calls.push("account");
-      }),
-      insertLoanEntries: vi.fn(async () => {
-        calls.push("loan");
-      }),
-      markApproved: vi.fn(async () => {
-        calls.push("approved");
-      })
+      getDocumentLines: vi.fn(async () => [lineRow({ amount_minor: 15000 })])
     });
 
     await service.approve("doc_1", "reviewer_1");
 
     expect(repo.isPeriodLocked).toHaveBeenCalledWith("2026-04");
-    expect(repo.insertAccountEntries).toHaveBeenCalledWith("doc_1", [
-      { accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 15000, entryDate: "2026-04-24" }
-    ]);
-    expect(repo.insertLoanEntries).toHaveBeenCalledWith("doc_1", []);
-    expect(calls).toEqual(["account", "loan", "approved"]);
-    expect(repo.markApproved).toHaveBeenCalledWith("doc_1", "reviewer_1");
-    expect(audit.record).toHaveBeenCalledWith({
+    expect(audit.prepareRecordWhen).toHaveBeenCalledWith({
       actor: "reviewer_1",
       action: "document.approve",
       entityType: "document",
       entityId: "doc_1",
       before: { status: "pending" },
       after: { status: "approved" }
+    }, {
+      sql: "EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending')",
+      bindings: ["doc_1"]
     });
+    expect(repo.approveWithPostings).toHaveBeenCalledWith({
+      documentId: "doc_1",
+      reviewer: "reviewer_1",
+      accountEntries: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 15000, entryDate: "2026-04-24" }],
+      loanEntries: [],
+      auditLogStatement: { statement: "audit" }
+    });
+    expect(repo.insertAccountEntries).not.toHaveBeenCalled();
+    expect(repo.insertLoanEntries).not.toHaveBeenCalled();
+    expect(repo.markApproved).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("rejects approval when the period is locked", async () => {
@@ -206,12 +212,74 @@ describe("DocumentService", () => {
       isPeriodLocked: vi.fn(async () => ({ period: "2026-04" }))
     });
 
-    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("Period is locked");
+    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("Period 2026-04 is locked");
 
     expect(repo.getDocumentLines).not.toHaveBeenCalled();
-    expect(repo.insertAccountEntries).not.toHaveBeenCalled();
-    expect(repo.insertLoanEntries).not.toHaveBeenCalled();
-    expect(repo.markApproved).not.toHaveBeenCalled();
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
+    expect(audit.prepareRecordWhen).not.toHaveBeenCalled();
+  });
+
+  it("rejects approval when the document is not found", async () => {
+    const { repo, service } = createMocks({ getDocument: vi.fn(async () => null) });
+
+    await expect(service.approve("doc_missing", "reviewer_1")).rejects.toThrow("Document not found");
+
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
+  });
+
+  it("rejects approval from invalid statuses before writes", async () => {
+    const { repo, service } = createMocks({ getDocument: vi.fn(async () => documentRow({ status: "draft" })) });
+
+    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("Only pending documents can be approved");
+
+    expect(repo.getDocumentLines).not.toHaveBeenCalled();
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
+  });
+
+  it("rejects blank rejection reasons before writes", async () => {
+    const { repo, audit, service } = createMocks({ getDocument: vi.fn(async () => documentRow({ status: "pending" })) });
+
+    await expect(service.reject("doc_1", "reviewer_1", "   ")).rejects.toThrow("Rejection reason is required");
+
+    expect(repo.markRejected).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsupported posting types before approval writes", async () => {
+    const { repo, audit, service } = createMocks({
+      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "manual_adjustment" })),
+      getDocumentLines: vi.fn(async () => [lineRow()])
+    });
+
+    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("Unsupported documentType: manual_adjustment");
+
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
+    expect(audit.prepareRecordWhen).not.toHaveBeenCalled();
+  });
+
+  it("uses the first borrower when approving loan documents", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "loan_out" })),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({ borrower_person_id: null, amount_minor: 5000 }),
+        lineRow({ id: "line_2", line_no: 2, borrower_person_id: "person_1", amount_minor: 7000 })
+      ])
+    });
+
+    await service.approve("doc_1", "reviewer_1");
+
+    expect(repo.approveWithPostings).toHaveBeenCalledWith({
+      documentId: "doc_1",
+      reviewer: "reviewer_1",
+      accountEntries: [
+        { accountId: "acct_usdt", currencyCode: "USDT", amountMinor: -5000, entryDate: "2026-04-24" },
+        { accountId: "acct_usdt", currencyCode: "USDT", amountMinor: -7000, entryDate: "2026-04-24" }
+      ],
+      loanEntries: [
+        { borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 5000, entryDate: "2026-04-24" },
+        { borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 7000, entryDate: "2026-04-24" }
+      ],
+      auditLogStatement: { statement: "audit" }
+    });
   });
 });
