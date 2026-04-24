@@ -2,8 +2,11 @@ import type { ActionType, DocumentType } from "./types";
 
 interface PostingLine {
   accountId: string;
+  counterpartyAccountId?: string | null;
+  personId?: string | null;
   currencyCode: string;
   amountMinor: number;
+  usdtAmountMinor?: number | null;
 }
 
 interface PostingDocument {
@@ -23,6 +26,9 @@ export interface PostingResult {
 export function entriesForApprovedDocument(document: PostingDocument): PostingResult {
   if (
     document.documentType !== "project_income" &&
+    document.documentType !== "exchange" &&
+    document.documentType !== "petty_cash_issue" &&
+    document.documentType !== "petty_cash_reimbursement" &&
     document.documentType !== "loan_out" &&
     document.documentType !== "loan_repayment"
   ) {
@@ -79,7 +85,48 @@ export function entriesForApprovedDocument(document: PostingDocument): PostingRe
       accountEntries.push({ accountId, currencyCode, amountMinor: accountAmountMinor, entryDate: document.businessDate });
       loanEntries.push({ borrowerPersonId: loanBorrowerPersonId, currencyCode, amountMinor: loanAmountMinor, entryDate: document.businessDate });
     }
+
+    if (document.documentType === "exchange") {
+      const sourceAccountId = requireOptionalText(line.counterpartyAccountId, "line counterpartyAccountId for exchange");
+      const usdtAmountMinor = requirePositiveSafeInteger(line.usdtAmountMinor, "line usdtAmountMinor for exchange");
+      accountEntries.push({ accountId: sourceAccountId, currencyCode: "USDT", amountMinor: -usdtAmountMinor, entryDate: document.businessDate });
+      accountEntries.push({ accountId, currencyCode, amountMinor: line.amountMinor, entryDate: document.businessDate });
+    }
+
+    if (document.documentType === "petty_cash_issue") {
+      const pettyCashAccountId = requireOptionalText(line.counterpartyAccountId, "line counterpartyAccountId for petty_cash_issue");
+      requireOptionalText(line.personId, "line personId for petty_cash_issue");
+      accountEntries.push({ accountId, currencyCode, amountMinor: -line.amountMinor, entryDate: document.businessDate });
+      accountEntries.push({ accountId: pettyCashAccountId, currencyCode, amountMinor: line.amountMinor, entryDate: document.businessDate });
+    }
+
+    if (document.documentType === "petty_cash_reimbursement") {
+      requireOptionalText(line.personId, "line personId for petty_cash_reimbursement");
+      accountEntries.push({ accountId, currencyCode, amountMinor: -line.amountMinor, entryDate: document.businessDate });
+    }
   }
 
   return { accountEntries, loanEntries };
+}
+
+function requireOptionalText(value: string | null | undefined, label: string) {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) throw new Error(requiredMessage(label));
+  return trimmed;
+}
+
+function requirePositiveSafeInteger(value: number | null | undefined, label: string) {
+  if (value == null) {
+    throw new Error(requiredMessage(label));
+  }
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${label} must be a positive safe integer`);
+  }
+  return value;
+}
+
+function requiredMessage(label: string) {
+  const [fieldLabel, contextLabel] = label.split(" for ", 2);
+  if (contextLabel) return `${fieldLabel} is required for ${contextLabel}`;
+  return `${label} is required`;
 }

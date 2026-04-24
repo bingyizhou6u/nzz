@@ -30,12 +30,12 @@ describe("entriesForApprovedDocument", () => {
     expect(() =>
       entriesForApprovedDocument({
         id: "doc_3",
-        documentType: "exchange",
+        documentType: "account_transfer",
         actionType: "normal",
         businessDate: "2026-04-01",
         lines: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 5000 }]
       })
-    ).toThrow("Unsupported documentType: exchange");
+    ).toThrow("Unsupported documentType: account_transfer");
   });
 
   it("throws when supported posting documents have no lines", () => {
@@ -195,5 +195,103 @@ describe("entriesForApprovedDocument", () => {
         lines: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 2500 }]
       })
     ).toThrow("borrowerPersonId is required for loan_repayment");
+  });
+
+  it("posts exchange as USDT out and received currency in", () => {
+    expect(
+      entriesForApprovedDocument({
+        id: "doc_fx",
+        documentType: "exchange",
+        actionType: "normal",
+        businessDate: "2026-04-24",
+        lines: [
+          {
+            accountId: "acct_aed_reserve",
+            counterpartyAccountId: "acct_usdt_main",
+            currencyCode: "AED",
+            amountMinor: 367000,
+            usdtAmountMinor: 100000
+          }
+        ]
+      })
+    ).toEqual({
+      accountEntries: [
+        { accountId: "acct_usdt_main", currencyCode: "USDT", amountMinor: -100000, entryDate: "2026-04-24" },
+        { accountId: "acct_aed_reserve", currencyCode: "AED", amountMinor: 367000, entryDate: "2026-04-24" }
+      ],
+      loanEntries: []
+    });
+  });
+
+  it("posts petty cash issue as reserve out and staff petty cash in", () => {
+    expect(
+      entriesForApprovedDocument({
+        id: "doc_issue",
+        documentType: "petty_cash_issue",
+        actionType: "normal",
+        businessDate: "2026-04-24",
+        lines: [
+          {
+            accountId: "acct_aed_reserve",
+            counterpartyAccountId: "acct_petty_bob",
+            personId: "person_bob",
+            currencyCode: "AED",
+            amountMinor: 200000
+          }
+        ]
+      })
+    ).toEqual({
+      accountEntries: [
+        { accountId: "acct_aed_reserve", currencyCode: "AED", amountMinor: -200000, entryDate: "2026-04-24" },
+        { accountId: "acct_petty_bob", currencyCode: "AED", amountMinor: 200000, entryDate: "2026-04-24" }
+      ],
+      loanEntries: []
+    });
+  });
+
+  it("posts petty cash reimbursement as staff petty cash out", () => {
+    expect(
+      entriesForApprovedDocument({
+        id: "doc_reim",
+        documentType: "petty_cash_reimbursement",
+        actionType: "normal",
+        businessDate: "2026-04-24",
+        lines: [
+          {
+            accountId: "acct_petty_bob",
+            personId: "person_bob",
+            currencyCode: "AED",
+            amountMinor: 215000
+          }
+        ]
+      })
+    ).toEqual({
+      accountEntries: [
+        { accountId: "acct_petty_bob", currencyCode: "AED", amountMinor: -215000, entryDate: "2026-04-24" }
+      ],
+      loanEntries: []
+    });
+  });
+
+  it("requires exchange source account and USDT cost", () => {
+    expect(() =>
+      entriesForApprovedDocument({
+        id: "doc_fx",
+        documentType: "exchange",
+        actionType: "normal",
+        businessDate: "2026-04-24",
+        lines: [{ accountId: "acct_aed", currencyCode: "AED", amountMinor: 1000 }]
+      })
+    ).toThrow("line counterpartyAccountId is required for exchange");
+
+    expect(() =>
+      entriesForApprovedDocument({
+        id: "doc_fx",
+        documentType: "exchange",
+        actionType: "normal",
+        businessDate: "2026-04-24",
+        lines: [{ accountId: "acct_aed", counterpartyAccountId: "acct_usdt", currencyCode: "AED", amountMinor: 1000 }]
+      })
+    ).toThrow("line usdtAmountMinor is required for exchange");
   });
 });
