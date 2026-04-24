@@ -622,4 +622,130 @@ describe("DocumentService", () => {
       auditLogStatement: { statement: "audit" }
     });
   });
+
+  it("approves non-USDT account transfers with FIFO effects", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "account_transfer" })),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({
+          account_id: "acct_aed_reserve",
+          counterparty_account_id: "acct_aed_bank",
+          currency_code: "AED",
+          amount_minor: 50000
+        })
+      ]),
+      listOpenLotsForAccount: vi.fn(async () => [
+        lotRow({ id: "lot_a", remaining_amount_minor: 100000, remaining_usdt_cost_minor: 27300 })
+      ])
+    });
+
+    await service.approve("doc_1", "reviewer_1");
+
+    expect(repo.listOpenLotsForAccount).toHaveBeenCalledWith({
+      accountId: "acct_aed_reserve",
+      personId: null,
+      currencyCode: "AED"
+    });
+    expect(repo.approveWithPostings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountEntries: [
+          { accountId: "acct_aed_reserve", currencyCode: "AED", amountMinor: -50000, entryDate: "2026-04-24" },
+          { accountId: "acct_aed_bank", currencyCode: "AED", amountMinor: 50000, entryDate: "2026-04-24" }
+        ],
+        lotCreations: [
+          expect.objectContaining({
+            clientLotId: "doc_1:transfer:1",
+            currentAccountId: "acct_aed_bank",
+            currentPersonId: null,
+            remainingAmountMinor: 50000
+          })
+        ],
+        lotMovements: [
+          expect.objectContaining({
+            movementType: "account_transfer",
+            fromAccountId: "acct_aed_reserve",
+            toAccountId: "acct_aed_bank",
+            amountMinor: 50000
+          })
+        ]
+      })
+    );
+  });
+
+  it("approves USDT account transfers without FIFO effects", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "account_transfer" })),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({
+          account_id: "acct_usdt_main",
+          counterparty_account_id: "acct_usdt_backup",
+          currency_code: "USDT",
+          amount_minor: 50000
+        })
+      ])
+    });
+
+    await service.approve("doc_1", "reviewer_1");
+
+    expect(repo.listOpenLotsForAccount).not.toHaveBeenCalled();
+    expect(repo.approveWithPostings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lotCreations: [],
+        lotUpdates: [],
+        lotMovements: []
+      })
+    );
+  });
+
+  it("approves petty cash returns with staff FIFO effects", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "petty_cash_return" })),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({
+          account_id: "acct_petty_bob",
+          counterparty_account_id: "acct_aed_reserve",
+          person_id: "person_bob",
+          currency_code: "AED",
+          amount_minor: 80000
+        })
+      ]),
+      listOpenLotsForAccount: vi.fn(async () => [
+        lotRow({ id: "staff_lot_a", remaining_amount_minor: 90000, remaining_usdt_cost_minor: 24570 })
+      ])
+    });
+
+    await service.approve("doc_1", "reviewer_1");
+
+    expect(repo.listOpenLotsForAccount).toHaveBeenCalledWith({
+      accountId: "acct_petty_bob",
+      personId: "person_bob",
+      currencyCode: "AED"
+    });
+    expect(repo.approveWithPostings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountEntries: [
+          { accountId: "acct_petty_bob", currencyCode: "AED", amountMinor: -80000, entryDate: "2026-04-24" },
+          { accountId: "acct_aed_reserve", currencyCode: "AED", amountMinor: 80000, entryDate: "2026-04-24" }
+        ],
+        lotCreations: [
+          expect.objectContaining({
+            clientLotId: "doc_1:return:1",
+            currentAccountId: "acct_aed_reserve",
+            currentPersonId: null,
+            remainingAmountMinor: 80000
+          })
+        ],
+        lotMovements: [
+          expect.objectContaining({
+            movementType: "petty_cash_return",
+            fromAccountId: "acct_petty_bob",
+            toAccountId: "acct_aed_reserve",
+            fromPersonId: "person_bob",
+            toPersonId: null,
+            amountMinor: 80000
+          })
+        ]
+      })
+    );
+  });
 });

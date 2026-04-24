@@ -2,9 +2,11 @@ import { normalizeDocumentLines } from "../domain/documentLines";
 import type { RawDocumentLine } from "../domain/documentLines";
 import {
   emptyFifoPostingEffects,
+  planAccountTransferEffects,
   planExchangeLotCreation,
   planPettyCashIssueEffects,
-  planPettyCashReimbursementEffects
+  planPettyCashReimbursementEffects,
+  planPettyCashReturnEffects
 } from "../domain/fifoEffects";
 import { assertDocumentTransition, periodFromDate } from "../domain/documentWorkflow";
 import { entriesForApprovedDocument } from "../domain/posting";
@@ -202,6 +204,28 @@ export class DocumentService {
       });
     }
 
+    if (documentType === "account_transfer") {
+      const line = requireFirstLine(lines, documentType);
+      const currencyCode = requireLineText(line.currency_code, "line currencyCode", documentType);
+      if (currencyCode === "USDT") {
+        return emptyFifoPostingEffects();
+      }
+
+      const fromAccountId = requireLineText(line.account_id, "line accountId", documentType);
+      const toAccountId = requireLineText(line.counterparty_account_id, "line counterpartyAccountId", documentType);
+      const sourceLots = await this.documents.listOpenLotsForAccount({ accountId: fromAccountId, personId: null, currencyCode });
+
+      return planAccountTransferEffects({
+        documentId,
+        fromAccountId,
+        toAccountId,
+        currencyCode,
+        amountMinor: requirePositiveSafeInteger(line.amount_minor, "line amountMinor", documentType),
+        businessDate,
+        sourceLots: sourceLots.map(mapLotRow)
+      });
+    }
+
     if (documentType === "petty_cash_issue") {
       const line = requireFirstLine(lines, documentType);
       const fromAccountId = requireLineText(line.account_id, "line accountId", documentType);
@@ -223,6 +247,26 @@ export class DocumentService {
         businessDate,
         sourceLots: sourceLots.map(mapLotRow),
         openPendingMatches: openPendingMatches.map(mapPendingCostMatchRow)
+      });
+    }
+
+    if (documentType === "petty_cash_return") {
+      const line = requireFirstLine(lines, documentType);
+      const fromAccountId = requireLineText(line.account_id, "line accountId", documentType);
+      const toAccountId = requireLineText(line.counterparty_account_id, "line counterpartyAccountId", documentType);
+      const personId = requireLineText(line.person_id, "line personId", documentType);
+      const currencyCode = requireLineText(line.currency_code, "line currencyCode", documentType);
+      const sourceLots = await this.documents.listOpenLotsForAccount({ accountId: fromAccountId, personId, currencyCode });
+
+      return planPettyCashReturnEffects({
+        documentId,
+        fromAccountId,
+        toAccountId,
+        personId,
+        currencyCode,
+        amountMinor: requirePositiveSafeInteger(line.amount_minor, "line amountMinor", documentType),
+        businessDate,
+        sourceLots: sourceLots.map(mapLotRow)
       });
     }
 
@@ -266,7 +310,13 @@ function assertSingleLineFifoApproval(documentType: DocumentType, lines: Documen
 }
 
 function isSingleLineFifoDocumentType(documentType: DocumentType) {
-  return documentType === "exchange" || documentType === "petty_cash_issue" || documentType === "petty_cash_reimbursement";
+  return (
+    documentType === "exchange" ||
+    documentType === "account_transfer" ||
+    documentType === "petty_cash_issue" ||
+    documentType === "petty_cash_return" ||
+    documentType === "petty_cash_reimbursement"
+  );
 }
 
 function requireFirstLine(lines: DocumentLineRow[], documentType: DocumentType): DocumentLineRow {
