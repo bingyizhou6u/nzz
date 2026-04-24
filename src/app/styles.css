@@ -52,6 +52,7 @@ select:focus-visible {
 
 .app-shell {
   width: min(1180px, calc(100vw - 32px));
+  min-width: 0;
   margin: 0 auto;
   padding: 24px 0 40px;
 }
@@ -118,16 +119,19 @@ h2 {
 }
 
 main {
+  min-width: 0;
   padding-top: 18px;
 }
 
 .page-stack {
   display: grid;
   gap: 16px;
+  min-width: 0;
 }
 
 .panel {
   width: 100%;
+  min-width: 0;
   border: 1px solid #d9dde3;
   border-radius: 8px;
   background: #ffffff;
@@ -138,6 +142,7 @@ main {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
+  min-width: 0;
   min-height: 54px;
   padding: 14px 16px;
   border-bottom: 1px solid #e5e7eb;
@@ -147,6 +152,7 @@ main {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .status-slot {
@@ -160,6 +166,8 @@ main {
 
 .table-wrap {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
 }
 
@@ -340,6 +348,7 @@ select {
 
   .header-actions {
     width: 100%;
+    flex-wrap: wrap;
     justify-content: space-between;
   }
 
