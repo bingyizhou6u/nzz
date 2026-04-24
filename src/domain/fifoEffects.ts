@@ -7,7 +7,8 @@ export type LotMovementType =
   | "petty_cash_issue"
   | "petty_cash_return"
   | "petty_cash_reimbursement"
-  | "pending_cost_match";
+  | "pending_cost_match"
+  | "fifo_reversal";
 
 export interface LotCreationEffect {
   clientLotId: string;
