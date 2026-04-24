@@ -1041,6 +1041,7 @@ describe("DocumentRepository", () => {
     expect(normalizedSql).toContain("where id in (?, ?)");
     expect(normalizedSql).toContain("select distinct lot_id");
     expect(normalizedSql).toContain("document_id <> ?");
+    expect(normalizedSql).toContain("created_at >= (");
     expect(bindCalls).toEqual([
       ["lot_a", "lot_b"],
       ["lot_a", "lot_b", "doc_original", "doc_original"]

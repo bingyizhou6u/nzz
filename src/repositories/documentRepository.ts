@@ -388,7 +388,7 @@ export class DocumentRepository {
           FROM lot_movements
           WHERE lot_id IN (${placeholders})
             AND document_id <> ?
-            AND created_at > (
+            AND created_at >= (
               SELECT COALESCE(MAX(created_at), '')
               FROM lot_movements
               WHERE document_id = ?
