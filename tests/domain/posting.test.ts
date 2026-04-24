@@ -166,4 +166,34 @@ describe("entriesForApprovedDocument", () => {
     expect(entries.accountEntries).toEqual([{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 2500, entryDate: "2026-04-03" }]);
     expect(entries.loanEntries).toEqual([{ borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: -2500, entryDate: "2026-04-03" }]);
   });
+
+  it("creates opposite-direction entries for loan repayment reversals", () => {
+    const entries = entriesForApprovedDocument({
+      id: "doc_14",
+      documentType: "loan_repayment",
+      actionType: "reversal",
+      businessDate: "2026-04-03",
+      borrowerPersonId: "person_1",
+      lines: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 2500 }]
+    });
+
+    expect(entries.accountEntries).toEqual([{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: -2500, entryDate: "2026-04-03" }]);
+    expect(entries.loanEntries).toEqual([{ borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 2500, entryDate: "2026-04-03" }]);
+  });
+
+  it.each([
+    ["blank", "   "],
+    ["missing", undefined]
+  ] as const)("throws when loan repayment borrower is %s", (_caseName, borrowerPersonId) => {
+    expect(() =>
+      entriesForApprovedDocument({
+        id: "doc_15",
+        documentType: "loan_repayment",
+        actionType: "normal",
+        businessDate: "2026-04-03",
+        borrowerPersonId,
+        lines: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 2500 }]
+      })
+    ).toThrow("borrowerPersonId is required for loan_repayment");
+  });
 });
