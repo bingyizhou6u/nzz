@@ -20,6 +20,8 @@ export interface LotUpdateEffect {
   lotId: string;
   amountDeltaMinor: number;
   usdtCostDeltaMinor: number;
+  expectedRemainingAmountMinor: number;
+  expectedRemainingUsdtCostMinor: number;
 }
 
 export interface LotMovementEffect {
@@ -47,6 +49,7 @@ export interface PendingCostCreationEffect {
 export interface PendingCostUpdateEffect {
   pendingCostMatchId: string;
   amountDeltaMinor: number;
+  expectedRemainingAmountMinor: number;
 }
 
 export interface OpenPendingCostMatch {
@@ -262,7 +265,9 @@ function lotUpdatesForAllocations(allocations: LotAllocation[]): LotUpdateEffect
   return allocations.map((allocation) => ({
     lotId: allocation.lotId,
     amountDeltaMinor: -allocation.amountMinor,
-    usdtCostDeltaMinor: -allocation.usdtCostMinor
+    usdtCostDeltaMinor: -allocation.usdtCostMinor,
+    expectedRemainingAmountMinor: allocation.remainingAmountMinorBefore,
+    expectedRemainingUsdtCostMinor: allocation.remainingUsdtCostMinorBefore
   }));
 }
 
@@ -278,7 +283,11 @@ function applyPendingCostMatches(input: {
 
   for (const pendingMatch of sortPendingMatches(input.pendingMatches)) {
     const pendingCostMatchId = requireNonEmpty(pendingMatch.id, "pendingCostMatchId");
-    let remainingPendingAmount = requirePositiveSafeInteger(pendingMatch.remainingAmountMinor, "pending remainingAmountMinor");
+    const expectedRemainingAmountMinor = requirePositiveSafeInteger(
+      pendingMatch.remainingAmountMinor,
+      "pending remainingAmountMinor"
+    );
+    let remainingPendingAmount = expectedRemainingAmountMinor;
     let matchedAmount = 0;
 
     for (const issuedLot of input.issuedLots) {
@@ -313,7 +322,8 @@ function applyPendingCostMatches(input: {
     if (matchedAmount > 0) {
       pendingCostUpdates.push({
         pendingCostMatchId,
-        amountDeltaMinor: -matchedAmount
+        amountDeltaMinor: -matchedAmount,
+        expectedRemainingAmountMinor
       });
     }
   }

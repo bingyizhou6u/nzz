@@ -409,7 +409,15 @@ describe("DocumentService", () => {
       currencyCode: "AED"
     });
     expect(repo.approveWithPostings).toHaveBeenCalledWith(expect.objectContaining({
-      lotUpdates: [{ lotId: "lot_staff", amountDeltaMinor: -150000, usdtCostDeltaMinor: -41000 }],
+      lotUpdates: [
+        {
+          lotId: "lot_staff",
+          amountDeltaMinor: -150000,
+          usdtCostDeltaMinor: -41000,
+          expectedRemainingAmountMinor: 150000,
+          expectedRemainingUsdtCostMinor: 41000
+        }
+      ],
       lotMovements: [
         {
           lotId: "lot_staff",
@@ -489,8 +497,20 @@ describe("DocumentService", () => {
         })
       ],
       lotUpdates: [
-        { lotId: "lot_a", amountDeltaMinor: -150000, usdtCostDeltaMinor: -41000 },
-        { lotId: "lot_b", amountDeltaMinor: -50000, usdtCostDeltaMinor: -13650 }
+        {
+          lotId: "lot_a",
+          amountDeltaMinor: -150000,
+          usdtCostDeltaMinor: -41000,
+          expectedRemainingAmountMinor: 150000,
+          expectedRemainingUsdtCostMinor: 41000
+        },
+        {
+          lotId: "lot_b",
+          amountDeltaMinor: -50000,
+          usdtCostDeltaMinor: -13650,
+          expectedRemainingAmountMinor: 100000,
+          expectedRemainingUsdtCostMinor: 27300
+        }
       ],
       lotMovements: expect.arrayContaining([
         {
@@ -517,7 +537,9 @@ describe("DocumentService", () => {
         }
       ]),
       pendingCostCreations: [],
-      pendingCostUpdates: [{ pendingCostMatchId: "pending_old", amountDeltaMinor: -160000 }]
+      pendingCostUpdates: [
+        { pendingCostMatchId: "pending_old", amountDeltaMinor: -160000, expectedRemainingAmountMinor: 160000 }
+      ]
     }));
   });
 

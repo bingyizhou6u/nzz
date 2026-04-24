@@ -82,8 +82,20 @@ describe("fifoEffects", () => {
     });
 
     expect(result.lotUpdates).toEqual([
-      { lotId: "lot_a", amountDeltaMinor: -150000, usdtCostDeltaMinor: -41000 },
-      { lotId: "lot_b", amountDeltaMinor: -50000, usdtCostDeltaMinor: -13650 }
+      {
+        lotId: "lot_a",
+        amountDeltaMinor: -150000,
+        usdtCostDeltaMinor: -41000,
+        expectedRemainingAmountMinor: 150000,
+        expectedRemainingUsdtCostMinor: 41000
+      },
+      {
+        lotId: "lot_b",
+        amountDeltaMinor: -50000,
+        usdtCostDeltaMinor: -13650,
+        expectedRemainingAmountMinor: 100000,
+        expectedRemainingUsdtCostMinor: 27300
+      }
     ]);
     expect(result.lotCreations).toEqual([
       {
@@ -155,8 +167,8 @@ describe("fifoEffects", () => {
     });
 
     expect(result.pendingCostUpdates).toEqual([
-      { pendingCostMatchId: "pending_old", amountDeltaMinor: -120000 },
-      { pendingCostMatchId: "pending_new", amountDeltaMinor: -80000 }
+      { pendingCostMatchId: "pending_old", amountDeltaMinor: -120000, expectedRemainingAmountMinor: 120000 },
+      { pendingCostMatchId: "pending_new", amountDeltaMinor: -80000, expectedRemainingAmountMinor: 100000 }
     ]);
     expect(result.lotCreations.map((lot) => lot.remainingAmountMinor)).toEqual([0, 0]);
     expect(result.lotCreations.map((lot) => lot.remainingUsdtCostMinor)).toEqual([0, 0]);
@@ -213,7 +225,9 @@ describe("fifoEffects", () => {
       ]
     });
 
-    expect(result.pendingCostUpdates).toEqual([{ pendingCostMatchId: "pending_partial", amountDeltaMinor: -160000 }]);
+    expect(result.pendingCostUpdates).toEqual([
+      { pendingCostMatchId: "pending_partial", amountDeltaMinor: -160000, expectedRemainingAmountMinor: 160000 }
+    ]);
     expect(result.lotCreations.map((lot) => lot.remainingAmountMinor)).toEqual([0, 40000]);
     expect(result.lotCreations.map((lot) => lot.remainingUsdtCostMinor)).toEqual([0, 10920]);
   });
@@ -254,8 +268,20 @@ describe("fifoEffects", () => {
     });
 
     expect(result.lotUpdates).toEqual([
-      { lotId: "lot_a", amountDeltaMinor: -150000, usdtCostDeltaMinor: -41000 },
-      { lotId: "lot_b", amountDeltaMinor: -100000, usdtCostDeltaMinor: -27300 }
+      {
+        lotId: "lot_a",
+        amountDeltaMinor: -150000,
+        usdtCostDeltaMinor: -41000,
+        expectedRemainingAmountMinor: 150000,
+        expectedRemainingUsdtCostMinor: 41000
+      },
+      {
+        lotId: "lot_b",
+        amountDeltaMinor: -100000,
+        usdtCostDeltaMinor: -27300,
+        expectedRemainingAmountMinor: 100000,
+        expectedRemainingUsdtCostMinor: 27300
+      }
     ]);
     expect(result.lotMovements).toEqual([
       {
@@ -335,8 +361,8 @@ describe("fifoEffects", () => {
     });
 
     expect(result.pendingCostUpdates).toEqual([
-      { pendingCostMatchId: "pending_a", amountDeltaMinor: -1000 },
-      { pendingCostMatchId: "pending_b", amountDeltaMinor: -1000 }
+      { pendingCostMatchId: "pending_a", amountDeltaMinor: -1000, expectedRemainingAmountMinor: 1000 },
+      { pendingCostMatchId: "pending_b", amountDeltaMinor: -1000, expectedRemainingAmountMinor: 1000 }
     ]);
   });
 });

@@ -19,8 +19,20 @@ describe("reimbursePettyCash", () => {
     });
 
     expect(result.allocations).toEqual([
-      { lotId: "lot_1", amountMinor: 365000, usdtCostMinor: 100000 },
-      { lotId: "lot_2", amountMinor: 367000, usdtCostMinor: 100000 }
+      {
+        lotId: "lot_1",
+        amountMinor: 365000,
+        usdtCostMinor: 100000,
+        remainingAmountMinorBefore: 365000,
+        remainingUsdtCostMinorBefore: 100000
+      },
+      {
+        lotId: "lot_2",
+        amountMinor: 367000,
+        usdtCostMinor: 100000,
+        remainingAmountMinorBefore: 367000,
+        remainingUsdtCostMinorBefore: 100000
+      }
     ]);
     expect(result.pendingMatch).toEqual({
       personId: "staff_1",
@@ -42,8 +54,20 @@ describe("reimbursePettyCash", () => {
     });
 
     expect(result.allocations).toEqual([
-      { lotId: "lot_1", amountMinor: 365000, usdtCostMinor: 100000 },
-      { lotId: "lot_2", amountMinor: 35000, usdtCostMinor: 9537 }
+      {
+        lotId: "lot_1",
+        amountMinor: 365000,
+        usdtCostMinor: 100000,
+        remainingAmountMinorBefore: 365000,
+        remainingUsdtCostMinorBefore: 100000
+      },
+      {
+        lotId: "lot_2",
+        amountMinor: 35000,
+        usdtCostMinor: 9537,
+        remainingAmountMinorBefore: 367000,
+        remainingUsdtCostMinorBefore: 100000
+      }
     ]);
     expect(result.pendingMatch).toBeNull();
   });

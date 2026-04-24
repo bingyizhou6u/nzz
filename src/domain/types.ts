@@ -38,4 +38,6 @@ export interface LotAllocation {
   lotId: string;
   amountMinor: number;
   usdtCostMinor: number;
+  remainingAmountMinorBefore: number;
+  remainingUsdtCostMinorBefore: number;
 }

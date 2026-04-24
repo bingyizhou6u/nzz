@@ -444,7 +444,15 @@ describe("DocumentRepository", () => {
           lotDate: "2026-04-24"
         }
       ],
-      lotUpdates: [{ lotId: "lot_source", amountDeltaMinor: -1000, usdtCostDeltaMinor: -272 }],
+      lotUpdates: [
+        {
+          lotId: "lot_source",
+          amountDeltaMinor: -1000,
+          usdtCostDeltaMinor: -272,
+          expectedRemainingAmountMinor: 1000,
+          expectedRemainingUsdtCostMinor: 272
+        }
+      ],
       lotMovements: [
         {
           lotId: "doc_1:lot:1",
@@ -469,7 +477,9 @@ describe("DocumentRepository", () => {
           expenseDate: "2026-04-24"
         }
       ],
-      pendingCostUpdates: [{ pendingCostMatchId: "pending_1", amountDeltaMinor: -500 }],
+      pendingCostUpdates: [
+        { pendingCostMatchId: "pending_1", amountDeltaMinor: -500, expectedRemainingAmountMinor: 500 }
+      ],
       auditLogStatement
     });
 
@@ -550,6 +560,8 @@ describe("DocumentRepository", () => {
     expect(lotConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("account_id");
     expect(lotConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("null");
     expect(lotConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("not exists ( select 1 from lots");
+    expect(lotConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("remaining_amount_minor = ?");
+    expect(lotConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("remaining_usdt_cost_minor = ?");
     expect(lotConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("remaining_amount_minor + ? >= 0");
     expect(lotConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain(
       "remaining_usdt_cost_minor + ? >= 0"
@@ -563,6 +575,8 @@ describe("DocumentRepository", () => {
       "doc_1",
       "2026-04",
       "lot_source",
+      1000,
+      272,
       -1000,
       -272
     ]);
@@ -571,6 +585,8 @@ describe("DocumentRepository", () => {
       -272,
       -1000,
       "lot_source",
+      1000,
+      272,
       -1000,
       -272,
       "doc_1",
@@ -610,6 +626,7 @@ describe("DocumentRepository", () => {
     expect(pendingConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain(
       "not exists ( select 1 from pending_cost_matches"
     );
+    expect(pendingConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("remaining_amount_minor = ?");
     expect(pendingConflictGuardStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain(
       "remaining_amount_minor + ? >= 0"
     );
@@ -622,9 +639,10 @@ describe("DocumentRepository", () => {
       "doc_1",
       "2026-04",
       "pending_1",
+      500,
       -500
     ]);
-    expect(pendingUpdateStatement?.bindings).toEqual([-500, -500, "pending_1", -500, "doc_1", "2026-04"]);
+    expect(pendingUpdateStatement?.bindings).toEqual([-500, -500, "pending_1", 500, -500, "doc_1", "2026-04"]);
     expect(batchCalls[0].some((statement) => statement.bindings.includes("doc_1:lot:1"))).toBe(false);
   });
 
@@ -647,7 +665,15 @@ describe("DocumentRepository", () => {
         reviewer: "reviewer_1",
         accountEntries: [],
         loanEntries: [],
-        lotUpdates: [{ lotId: "lot_source", amountDeltaMinor: -1000, usdtCostDeltaMinor: -272 }],
+        lotUpdates: [
+          {
+            lotId: "lot_source",
+            amountDeltaMinor: -1000,
+            usdtCostDeltaMinor: -272,
+            expectedRemainingAmountMinor: 1000,
+            expectedRemainingUsdtCostMinor: 272
+          }
+        ],
         auditLogStatement: {} as D1PreparedStatement
       })
     ).rejects.toThrow("Lot balance changed before approval could be posted");
@@ -672,7 +698,15 @@ describe("DocumentRepository", () => {
         reviewer: "reviewer_1",
         accountEntries: [],
         loanEntries: [],
-        lotUpdates: [{ lotId: "lot_source", amountDeltaMinor: -1000, usdtCostDeltaMinor: -272 }],
+        lotUpdates: [
+          {
+            lotId: "lot_source",
+            amountDeltaMinor: -1000,
+            usdtCostDeltaMinor: -272,
+            expectedRemainingAmountMinor: 1000,
+            expectedRemainingUsdtCostMinor: 272
+          }
+        ],
         auditLogStatement: {} as D1PreparedStatement
       })
     ).rejects.toThrow("D1_ERROR: no such table: lots");
@@ -697,7 +731,15 @@ describe("DocumentRepository", () => {
         reviewer: "reviewer_1",
         accountEntries: [],
         loanEntries: [],
-        lotUpdates: [{ lotId: "lot_source", amountDeltaMinor: -1000, usdtCostDeltaMinor: -272 }],
+        lotUpdates: [
+          {
+            lotId: "lot_source",
+            amountDeltaMinor: -1000,
+            usdtCostDeltaMinor: -272,
+            expectedRemainingAmountMinor: 1000,
+            expectedRemainingUsdtCostMinor: 272
+          }
+        ],
         auditLogStatement: {} as D1PreparedStatement
       })
     ).rejects.toThrow("Lot balance changed before approval could be posted");
@@ -722,7 +764,9 @@ describe("DocumentRepository", () => {
         reviewer: "reviewer_1",
         accountEntries: [],
         loanEntries: [],
-        pendingCostUpdates: [{ pendingCostMatchId: "pending_1", amountDeltaMinor: -500 }],
+        pendingCostUpdates: [
+          { pendingCostMatchId: "pending_1", amountDeltaMinor: -500, expectedRemainingAmountMinor: 500 }
+        ],
         auditLogStatement: {} as D1PreparedStatement
       })
     ).rejects.toThrow("Pending cost balance changed before approval could be posted");
@@ -747,7 +791,9 @@ describe("DocumentRepository", () => {
         reviewer: "reviewer_1",
         accountEntries: [],
         loanEntries: [],
-        pendingCostUpdates: [{ pendingCostMatchId: "pending_1", amountDeltaMinor: -500 }],
+        pendingCostUpdates: [
+          { pendingCostMatchId: "pending_1", amountDeltaMinor: -500, expectedRemainingAmountMinor: 500 }
+        ],
         auditLogStatement: {} as D1PreparedStatement
       })
     ).rejects.toThrow("D1_ERROR: no such table: pending_cost_matches");

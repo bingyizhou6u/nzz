@@ -88,7 +88,7 @@ export class ReportRepository {
           SUM(pcm.remaining_amount_minor) AS remaining_amount_minor
         FROM pending_cost_matches pcm
         JOIN documents d ON d.id = pcm.document_id
-        WHERE pcm.status = 'open' AND d.status = 'approved'
+        WHERE pcm.status IN ('open', 'partial') AND d.status = 'approved'
         GROUP BY pcm.person_id, pcm.account_id, pcm.currency_code
         ORDER BY pcm.person_id, pcm.account_id, pcm.currency_code
       `)

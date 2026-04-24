@@ -468,6 +468,8 @@ export class DocumentRepository {
              remaining_usdt_cost_minor = remaining_usdt_cost_minor + ?,
              status = CASE WHEN remaining_amount_minor + ? = 0 THEN 'closed' ELSE 'open' END
          WHERE id = ?
+           AND remaining_amount_minor = ?
+           AND remaining_usdt_cost_minor = ?
            AND remaining_amount_minor + ? >= 0
            AND remaining_usdt_cost_minor + ? >= 0
            AND ${this.approvalGuardSql()}`
@@ -477,6 +479,8 @@ export class DocumentRepository {
         lotUpdate.usdtCostDeltaMinor,
         lotUpdate.amountDeltaMinor,
         lotUpdate.lotId,
+        lotUpdate.expectedRemainingAmountMinor,
+        lotUpdate.expectedRemainingUsdtCostMinor,
         lotUpdate.amountDeltaMinor,
         lotUpdate.usdtCostDeltaMinor,
         documentId,
@@ -497,6 +501,8 @@ export class DocumentRepository {
            AND NOT EXISTS (
              SELECT 1 FROM lots
              WHERE id = ?
+               AND remaining_amount_minor = ?
+               AND remaining_usdt_cost_minor = ?
                AND remaining_amount_minor + ? >= 0
                AND remaining_usdt_cost_minor + ? >= 0
            )`
@@ -510,6 +516,8 @@ export class DocumentRepository {
         documentId,
         period,
         lotUpdate.lotId,
+        lotUpdate.expectedRemainingAmountMinor,
+        lotUpdate.expectedRemainingUsdtCostMinor,
         lotUpdate.amountDeltaMinor,
         lotUpdate.usdtCostDeltaMinor
       );
@@ -589,6 +597,7 @@ export class DocumentRepository {
          SET remaining_amount_minor = remaining_amount_minor + ?,
              status = CASE WHEN remaining_amount_minor + ? = 0 THEN 'matched' ELSE 'partial' END
          WHERE id = ?
+           AND remaining_amount_minor = ?
            AND remaining_amount_minor + ? >= 0
            AND ${this.approvalGuardSql()}`
       )
@@ -596,6 +605,7 @@ export class DocumentRepository {
         pendingCostUpdate.amountDeltaMinor,
         pendingCostUpdate.amountDeltaMinor,
         pendingCostUpdate.pendingCostMatchId,
+        pendingCostUpdate.expectedRemainingAmountMinor,
         pendingCostUpdate.amountDeltaMinor,
         documentId,
         period
@@ -615,6 +625,7 @@ export class DocumentRepository {
            AND NOT EXISTS (
              SELECT 1 FROM pending_cost_matches
              WHERE id = ?
+               AND remaining_amount_minor = ?
                AND remaining_amount_minor + ? >= 0
            )`
       )
@@ -627,6 +638,7 @@ export class DocumentRepository {
         documentId,
         period,
         pendingCostUpdate.pendingCostMatchId,
+        pendingCostUpdate.expectedRemainingAmountMinor,
         pendingCostUpdate.amountDeltaMinor
       );
   }

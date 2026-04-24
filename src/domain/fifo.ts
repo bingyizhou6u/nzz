@@ -48,7 +48,13 @@ export function allocateFifo(
     if (remaining === 0) break;
     const amountMinor = Math.min(remaining, lot.remainingAmountMinor);
     const usdtCostMinor = Math.round((amountMinor / lot.remainingAmountMinor) * lot.remainingUsdtCostMinor);
-    allocations.push({ lotId: lot.id, amountMinor, usdtCostMinor });
+    allocations.push({
+      lotId: lot.id,
+      amountMinor,
+      usdtCostMinor,
+      remainingAmountMinorBefore: lot.remainingAmountMinor,
+      remainingUsdtCostMinorBefore: lot.remainingUsdtCostMinor
+    });
     remaining -= amountMinor;
   }
 

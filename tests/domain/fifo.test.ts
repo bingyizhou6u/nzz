@@ -11,8 +11,20 @@ describe("allocateFifo", () => {
   it("allocates from the oldest lot first", () => {
     const result = allocateFifo(lots, 400000, "AED");
     expect(result.allocations).toEqual([
-      { lotId: "lot_1", amountMinor: 365000, usdtCostMinor: 100000 },
-      { lotId: "lot_2", amountMinor: 35000, usdtCostMinor: 9537 }
+      {
+        lotId: "lot_1",
+        amountMinor: 365000,
+        usdtCostMinor: 100000,
+        remainingAmountMinorBefore: 365000,
+        remainingUsdtCostMinorBefore: 100000
+      },
+      {
+        lotId: "lot_2",
+        amountMinor: 35000,
+        usdtCostMinor: 9537,
+        remainingAmountMinorBefore: 367000,
+        remainingUsdtCostMinorBefore: 100000
+      }
     ]);
     expect(result.unmatchedAmountMinor).toBe(0);
   });
@@ -61,8 +73,20 @@ describe("allocateFifo", () => {
 
     const result = allocateFifo(sameDateLots, 1500, "AED");
     expect(result.allocations).toEqual([
-      { lotId: "lot_a", amountMinor: 1000, usdtCostMinor: 100 },
-      { lotId: "lot_b", amountMinor: 500, usdtCostMinor: 50 }
+      {
+        lotId: "lot_a",
+        amountMinor: 1000,
+        usdtCostMinor: 100,
+        remainingAmountMinorBefore: 1000,
+        remainingUsdtCostMinorBefore: 100
+      },
+      {
+        lotId: "lot_b",
+        amountMinor: 500,
+        usdtCostMinor: 50,
+        remainingAmountMinorBefore: 1000,
+        remainingUsdtCostMinorBefore: 100
+      }
     ]);
   });
 });

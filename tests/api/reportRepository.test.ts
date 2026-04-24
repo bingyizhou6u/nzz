@@ -49,7 +49,8 @@ describe("ReportRepository", () => {
     expect(normalized).toContain("from pending_cost_matches pcm");
     expect(normalized).toContain("join documents d on d.id = pcm.document_id");
     expect(normalized).toContain("sum(pcm.remaining_amount_minor) as remaining_amount_minor");
-    expect(normalized).toContain("where pcm.status = 'open' and d.status = 'approved'");
+    expect(normalized).toContain("pcm.status in ('open', 'partial')");
+    expect(normalized).toContain("d.status = 'approved'");
     expect(normalized).toContain("group by pcm.person_id, pcm.account_id, pcm.currency_code");
     expect(normalized).toContain("order by pcm.person_id, pcm.account_id, pcm.currency_code");
   });
