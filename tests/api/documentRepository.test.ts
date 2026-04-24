@@ -762,6 +762,238 @@ describe("DocumentRepository", () => {
     expect(batchCalls[0].some((statement) => statement.bindings.includes("doc_1:lot:1"))).toBe(false);
   });
 
+  it("batches loan item creations during guarded approval", async () => {
+    const batchCalls: CapturedStatement[][] = [];
+    const repo = new DocumentRepository(mockDb({ onBatch: (statements) => batchCalls.push(statements) }));
+    const auditLogStatement = {
+      sql: "INSERT INTO audit_logs SELECT ? WHERE EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending')",
+      bindings: ["audit_1", "doc_loan"]
+    } as unknown as D1PreparedStatement;
+
+    await repo.approveWithPostings({
+      documentId: "doc_loan",
+      period: "2026-04",
+      reviewer: "reviewer",
+      reviewedAt: "2026-04-25T10:00:00.000Z",
+      accountEntries: [],
+      loanEntries: [],
+      loanItemCreations: [
+        {
+          clientLoanItemId: "doc_loan:loan:1",
+          sourceDocumentId: "doc_loan",
+          sourceLineId: "line_1",
+          borrowerPersonId: "person_borrower",
+          currencyCode: "AED",
+          originalAmountMinor: 367000,
+          remainingAmountMinor: 367000,
+          originalUsdtCostMinor: 100000,
+          remainingUsdtCostMinor: 100000,
+          loanDate: "2026-04-25"
+        }
+      ],
+      loanItemUpdates: [],
+      loanAllocations: [],
+      auditLogStatement
+    });
+
+    expect(batchCalls).toHaveLength(1);
+    const loanItemCreationStatement = batchCalls[0].find((statement) =>
+      statement.sql.replace(/\s+/g, " ").toLowerCase().includes("insert into loan_items")
+    );
+
+    expect(loanItemCreationStatement).toBeDefined();
+    expect(loanItemCreationStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("where exists");
+    expect(loanItemCreationStatement?.bindings).toEqual([
+      expect.stringMatching(/^loan_item_/),
+      "doc_loan",
+      "line_1",
+      "person_borrower",
+      "AED",
+      367000,
+      367000,
+      100000,
+      100000,
+      "2026-04-25",
+      "open",
+      expect.any(String),
+      "doc_loan",
+      "2026-04"
+    ]);
+    expect(batchCalls[0].some((statement) => statement.bindings.includes("doc_loan:loan:1"))).toBe(false);
+  });
+
+  it("guards loan item updates and writes allocations during approval", async () => {
+    const batchCalls: CapturedStatement[][] = [];
+    const repo = new DocumentRepository(mockDb({ onBatch: (statements) => batchCalls.push(statements) }));
+    const auditLogStatement = {
+      sql: "INSERT INTO audit_logs SELECT ? WHERE EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending')",
+      bindings: ["audit_1", "doc_repay"]
+    } as unknown as D1PreparedStatement;
+
+    await repo.approveWithPostings({
+      documentId: "doc_repay",
+      period: "2026-04",
+      reviewer: "reviewer",
+      reviewedAt: "2026-04-25T10:00:00.000Z",
+      reversalOriginalDocumentId: "doc_original",
+      accountEntries: [],
+      loanEntries: [],
+      loanItemCreations: [],
+      loanItemUpdates: [
+        {
+          loanItemId: "loan_item_1",
+          amountDeltaMinor: -10000,
+          usdtCostDeltaMinor: -2700,
+          expectedRemainingAmountMinor: 10000,
+          expectedRemainingUsdtCostMinor: 2700
+        }
+      ],
+      loanAllocations: [
+        {
+          loanItemId: "loan_item_1",
+          allocationType: "repayment",
+          amountMinor: 10000,
+          usdtCostMinor: 2700,
+          allocationDate: "2026-04-25"
+        }
+      ],
+      auditLogStatement
+    });
+
+    expect(batchCalls).toHaveLength(1);
+    const loanItemUpdateStatement = batchCalls[0].find((statement) =>
+      statement.sql.replace(/\s+/g, " ").toLowerCase().includes("update loan_items")
+    );
+    const loanAllocationStatement = batchCalls[0].find((statement) =>
+      statement.sql.replace(/\s+/g, " ").toLowerCase().includes("insert into loan_allocations")
+    );
+
+    expect(loanItemUpdateStatement).toBeDefined();
+    expect(loanItemUpdateStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("remaining_amount_minor = ?");
+    expect(loanItemUpdateStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("remaining_usdt_cost_minor = ?");
+    expect(loanItemUpdateStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("original_document_id = ?");
+    expect(loanItemUpdateStatement?.bindings).toEqual([
+      -10000,
+      -2700,
+      -10000,
+      "loan_item_1",
+      10000,
+      2700,
+      -10000,
+      -2700,
+      "doc_repay",
+      "2026-04",
+      "doc_original",
+      "doc_repay"
+    ]);
+    expect(loanAllocationStatement).toBeDefined();
+    expect(loanAllocationStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("where exists");
+    expect(loanAllocationStatement?.sql.replace(/\s+/g, " ").toLowerCase()).toContain("original_document_id = ?");
+    expect(loanAllocationStatement?.bindings).toEqual([
+      expect.stringMatching(/^loan_alloc_/),
+      "doc_repay",
+      "loan_item_1",
+      "repayment",
+      10000,
+      2700,
+      "2026-04-25",
+      expect.any(String),
+      "doc_repay",
+      "2026-04",
+      "doc_original",
+      "doc_repay"
+    ]);
+  });
+
+  it("maps loan allocations from client loan item ids to generated loan item ids", async () => {
+    const batchCalls: CapturedStatement[][] = [];
+    const repo = new DocumentRepository(mockDb({ onBatch: (statements) => batchCalls.push(statements) }));
+
+    await repo.approveWithPostings({
+      documentId: "doc_loan",
+      period: "2026-04",
+      reviewer: "reviewer",
+      accountEntries: [],
+      loanEntries: [],
+      loanItemCreations: [
+        {
+          clientLoanItemId: "doc_loan:loan:1",
+          sourceDocumentId: "doc_loan",
+          sourceLineId: "line_1",
+          borrowerPersonId: "person_borrower",
+          currencyCode: "USDT",
+          originalAmountMinor: 50000,
+          remainingAmountMinor: 0,
+          originalUsdtCostMinor: 50000,
+          remainingUsdtCostMinor: 0,
+          loanDate: "2026-04-25"
+        }
+      ],
+      loanAllocations: [
+        {
+          loanItemId: "doc_loan:loan:1",
+          allocationType: "reversal",
+          amountMinor: 50000,
+          usdtCostMinor: 50000,
+          allocationDate: "2026-04-25"
+        }
+      ],
+      auditLogStatement: {} as D1PreparedStatement
+    });
+
+    const loanItemCreationStatement = batchCalls[0].find((statement) =>
+      statement.sql.replace(/\s+/g, " ").toLowerCase().includes("insert into loan_items")
+    );
+    const loanAllocationStatement = batchCalls[0].find((statement) =>
+      statement.sql.replace(/\s+/g, " ").toLowerCase().includes("insert into loan_allocations")
+    );
+    const createdLoanItemId = loanItemCreationStatement?.bindings[0];
+
+    expect(createdLoanItemId).toEqual(expect.stringMatching(/^loan_item_/));
+    expect(loanAllocationStatement?.bindings).toContain(createdLoanItemId);
+    expect(loanAllocationStatement?.bindings).not.toContain("doc_loan:loan:1");
+    expect(loanItemCreationStatement?.bindings).toContain("closed");
+  });
+
+  it("lists open loan items by borrower and currency ordered for FIFO repayment", async () => {
+    let sql = "";
+    let boundValues: unknown[] = [];
+    const row = {
+      id: "loan_item_1",
+      source_document_id: "doc_loan",
+      borrower_person_id: "person_borrower",
+      currency_code: "AED",
+      remaining_amount_minor: 10000,
+      remaining_usdt_cost_minor: 2700,
+      loan_date: "2026-04-20",
+      created_at: "2026-04-20T10:00:00.000Z"
+    };
+    const repo = new DocumentRepository(
+      mockDb({
+        allResults: [row],
+        onSql: (value) => (sql = value),
+        onBind: (values) => (boundValues = values)
+      })
+    );
+
+    const result = await repo.listOpenLoanItems({
+      borrowerPersonId: "person_borrower",
+      currencyCode: "AED",
+      targetSourceDocumentId: "doc_loan"
+    });
+
+    expect(result).toEqual([row]);
+    const normalizedSql = sql.replace(/\s+/g, " ").toLowerCase();
+    expect(normalizedSql).toContain("from loan_items");
+    expect(normalizedSql).toContain("borrower_person_id = ?");
+    expect(normalizedSql).toContain("currency_code = ?");
+    expect(normalizedSql).toContain("status in ('open', 'partial')");
+    expect(normalizedSql).toContain("remaining_amount_minor > 0");
+    expect(normalizedSql).toContain("source_document_id = ?");
+    expect(normalizedSql).toContain("order by loan_date, created_at, id");
+    expect(boundValues).toEqual(["person_borrower", "AED", "doc_loan"]);
+  });
+
   it("rejects approval inside the batch when the lot conflict guard fails", async () => {
     const repo = new DocumentRepository(
       mockDb({

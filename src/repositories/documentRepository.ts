@@ -8,6 +8,7 @@ import type {
   PendingCostCreationEffect,
   PendingCostUpdateEffect
 } from "../domain/fifoEffects";
+import type { LoanAllocationEffect, LoanItemCreationEffect, LoanItemUpdateEffect } from "../domain/loanEffects";
 
 export interface CreateDocumentInput {
   documentType: DocumentType;
@@ -38,6 +39,9 @@ export interface ApproveDocumentWithPostingsInput {
   lotMovements?: LotMovementEffect[];
   pendingCostCreations?: PendingCostCreationEffect[];
   pendingCostUpdates?: PendingCostUpdateEffect[];
+  loanItemCreations?: LoanItemCreationEffect[];
+  loanItemUpdates?: LoanItemUpdateEffect[];
+  loanAllocations?: LoanAllocationEffect[];
   reversalOriginalDocumentId?: string | null;
   auditLogStatement: D1PreparedStatement;
   reviewedAt?: string;
@@ -98,6 +102,28 @@ export interface PendingCostMatchRow {
   created_at: string;
 }
 
+export interface OpenLoanItemRow {
+  id: string;
+  source_document_id: string;
+  borrower_person_id: string;
+  currency_code: string;
+  remaining_amount_minor: number;
+  remaining_usdt_cost_minor: number;
+  loan_date: string;
+  created_at: string;
+}
+
+export interface LoanAllocationRow {
+  id: string;
+  document_id: string;
+  loan_item_id: string;
+  allocation_type: string;
+  amount_minor: number;
+  usdt_cost_minor: number;
+  allocation_date: string;
+  created_at: string;
+}
+
 export interface AccountEntryReversalRow {
   account_id: string;
   currency_code: string;
@@ -145,6 +171,7 @@ type ApprovalStatementRole =
   | "lot_update"
   | "pending_cost_conflict_guard"
   | "pending_cost_update"
+  | "loan_item_update"
   | "approval";
 
 export class DocumentRepository {
@@ -288,6 +315,35 @@ export class DocumentRepository {
           ORDER BY expense_date, created_at, id
         `)
         .bind(input.accountId, input.personId, input.currencyCode)
+    );
+  }
+
+  listOpenLoanItems(input: {
+    borrowerPersonId: string;
+    currencyCode: string;
+    targetSourceDocumentId?: string | null;
+  }): Promise<OpenLoanItemRow[]> {
+    const targetSourceDocumentId = input.targetSourceDocumentId?.trim() || null;
+    const sourceFilter = targetSourceDocumentId ? "AND source_document_id = ?" : "";
+    const bindings = targetSourceDocumentId
+      ? [input.borrowerPersonId, input.currencyCode, targetSourceDocumentId]
+      : [input.borrowerPersonId, input.currencyCode];
+
+    return all<OpenLoanItemRow>(
+      this.db
+        .prepare(`
+          SELECT
+            id, source_document_id, borrower_person_id, currency_code,
+            remaining_amount_minor, remaining_usdt_cost_minor, loan_date, created_at
+          FROM loan_items
+          WHERE borrower_person_id = ?
+            AND currency_code = ?
+            AND status IN ('open', 'partial')
+            AND remaining_amount_minor > 0
+            ${sourceFilter}
+          ORDER BY loan_date, created_at, id
+        `)
+        .bind(...bindings)
     );
   }
 
@@ -438,6 +494,10 @@ export class DocumentRepository {
     for (const lotCreation of input.lotCreations ?? []) {
       createdLotIds.set(lotCreation.clientLotId, newId("lot"));
     }
+    const createdLoanItemIds = new Map<string, string>();
+    for (const loanItemCreation of input.loanItemCreations ?? []) {
+      createdLoanItemIds.set(loanItemCreation.clientLoanItemId, newId("loan_item"));
+    }
 
     const statements: D1PreparedStatement[] = [];
     const statementRoles: ApprovalStatementRole[] = [];
@@ -451,6 +511,35 @@ export class DocumentRepository {
     }
     for (const entry of input.loanEntries) {
       addStatement(this.prepareConditionalLoanEntry(input.documentId, input.period, entry, reversalOriginalDocumentId), "write");
+    }
+    for (const loanItemCreation of input.loanItemCreations ?? []) {
+      const loanItemId = createdLoanItemIds.get(loanItemCreation.clientLoanItemId);
+      if (!loanItemId) {
+        throw new Error("Loan item creation id was not prepared");
+      }
+      addStatement(
+        this.prepareConditionalLoanItemCreation(input.documentId, input.period, loanItemCreation, loanItemId, reversalOriginalDocumentId),
+        "write"
+      );
+    }
+    for (const loanItemUpdate of input.loanItemUpdates ?? []) {
+      addStatement(
+        this.prepareConditionalLoanItemUpdate(input.documentId, input.period, loanItemUpdate, reversalOriginalDocumentId),
+        "loan_item_update"
+      );
+    }
+    for (const loanAllocation of input.loanAllocations ?? []) {
+      const loanItemId = createdLoanItemIds.get(loanAllocation.loanItemId) ?? loanAllocation.loanItemId;
+      addStatement(
+        this.prepareConditionalLoanAllocation(
+          input.documentId,
+          input.period,
+          loanAllocation,
+          loanItemId,
+          reversalOriginalDocumentId
+        ),
+        "write"
+      );
     }
     for (const lotCreation of input.lotCreations ?? []) {
       const lotId = createdLotIds.get(lotCreation.clientLotId);
@@ -516,6 +605,9 @@ export class DocumentRepository {
       }
       if (statementRoles[index] === "pending_cost_update" && results[index]?.meta?.changes === 0) {
         throw new Error("Pending cost balance changed before approval could be posted");
+      }
+      if (statementRoles[index] === "loan_item_update" && results[index]?.meta?.changes === 0) {
+        throw new Error("Loan item balance changed before approval could be posted");
       }
     }
   }
@@ -590,6 +682,101 @@ export class DocumentRepository {
         entry.currencyCode,
         entry.amountMinor,
         entry.entryDate,
+        nowIso(),
+        ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId)
+      );
+  }
+
+  private prepareConditionalLoanItemCreation(
+    documentId: string,
+    period: string,
+    creation: LoanItemCreationEffect,
+    loanItemId: string,
+    reversalOriginalDocumentId: string | null = null
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO loan_items (
+           id, source_document_id, source_line_id, borrower_person_id, currency_code,
+           original_amount_minor, remaining_amount_minor, original_usdt_cost_minor,
+           remaining_usdt_cost_minor, loan_date, status, created_at
+         )
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE ${this.approvalGuardSql(reversalOriginalDocumentId)}`
+      )
+      .bind(
+        loanItemId,
+        creation.sourceDocumentId,
+        creation.sourceLineId,
+        creation.borrowerPersonId,
+        creation.currencyCode,
+        creation.originalAmountMinor,
+        creation.remainingAmountMinor,
+        creation.originalUsdtCostMinor,
+        creation.remainingUsdtCostMinor,
+        creation.loanDate,
+        this.loanItemStatus(creation.remainingAmountMinor),
+        nowIso(),
+        ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId)
+      );
+  }
+
+  private prepareConditionalLoanItemUpdate(
+    documentId: string,
+    period: string,
+    update: LoanItemUpdateEffect,
+    reversalOriginalDocumentId: string | null = null
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `UPDATE loan_items
+         SET remaining_amount_minor = remaining_amount_minor + ?,
+             remaining_usdt_cost_minor = remaining_usdt_cost_minor + ?,
+             status = CASE WHEN remaining_amount_minor + ? = 0 THEN 'closed' ELSE 'open' END
+         WHERE id = ?
+           AND remaining_amount_minor = ?
+           AND remaining_usdt_cost_minor = ?
+           AND remaining_amount_minor + ? >= 0
+           AND remaining_usdt_cost_minor + ? >= 0
+           AND ${this.approvalGuardSql(reversalOriginalDocumentId)}`
+      )
+      .bind(
+        update.amountDeltaMinor,
+        update.usdtCostDeltaMinor,
+        update.amountDeltaMinor,
+        update.loanItemId,
+        update.expectedRemainingAmountMinor,
+        update.expectedRemainingUsdtCostMinor,
+        update.amountDeltaMinor,
+        update.usdtCostDeltaMinor,
+        ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId)
+      );
+  }
+
+  private prepareConditionalLoanAllocation(
+    documentId: string,
+    period: string,
+    allocation: LoanAllocationEffect,
+    loanItemId: string,
+    reversalOriginalDocumentId: string | null = null
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO loan_allocations (
+           id, document_id, loan_item_id, allocation_type,
+           amount_minor, usdt_cost_minor, allocation_date, created_at
+         )
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE ${this.approvalGuardSql(reversalOriginalDocumentId)}`
+      )
+      .bind(
+        newId("loan_alloc"),
+        documentId,
+        loanItemId,
+        allocation.allocationType,
+        allocation.amountMinor,
+        allocation.usdtCostMinor,
+        allocation.allocationDate,
         nowIso(),
         ...this.approvalGuardBindings(documentId, period, reversalOriginalDocumentId)
       );
@@ -865,6 +1052,10 @@ export class DocumentRepository {
   }
 
   private lotStatus(remainingAmountMinor: number): "open" | "closed" {
+    return remainingAmountMinor === 0 ? "closed" : "open";
+  }
+
+  private loanItemStatus(remainingAmountMinor: number): "open" | "closed" {
     return remainingAmountMinor === 0 ? "closed" : "open";
   }
 
