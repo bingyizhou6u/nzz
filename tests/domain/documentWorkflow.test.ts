@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { assertDocumentTransition, getLockCheckDate } from "../../src/domain/documentWorkflow";
+import { assertDocumentTransition, getLockCheckDate, periodFromDate } from "../../src/domain/documentWorkflow";
 
 describe("documentWorkflow", () => {
   it("allows draft to pending when submitting", () => {
     expect(() => assertDocumentTransition("draft", "pending", "submit")).not.toThrow();
+  });
+
+  it("allows rejected to pending when submitting", () => {
+    expect(() => assertDocumentTransition("rejected", "pending", "submit")).not.toThrow();
   });
 
   it("allows pending to approved when approving", () => {
@@ -35,5 +39,9 @@ describe("documentWorkflow", () => {
     expect(getLockCheckDate({ documentType: "petty_cash_reimbursement", businessDate: "2026-04-23" })).toBe(
       "2026-04-23"
     );
+  });
+
+  it("gets the period from a date", () => {
+    expect(periodFromDate("2026-04-24")).toBe("2026-04");
   });
 });
