@@ -341,6 +341,30 @@ describe("documents API", () => {
     expect(response.status).not.toBe(404);
   });
 
+  it("routes document approval requests with path params", async () => {
+    const response = await route(
+      new Request("https://ledger.test/api/documents/doc_1/approve", {
+        method: "POST",
+        body: JSON.stringify({ reviewer: "reviewer_1" })
+      }),
+      mockEnv({ firstResult: documentRow({ status: "pending" }) })
+    );
+
+    expect(response.status).not.toBe(404);
+  });
+
+  it("routes document rejection requests with path params", async () => {
+    const response = await route(
+      new Request("https://ledger.test/api/documents/doc_1/reject", {
+        method: "POST",
+        body: JSON.stringify({ actor: "reviewer_1", reason: "Missing receipt" })
+      }),
+      mockEnv({ firstResult: documentRow({ status: "pending" }) })
+    );
+
+    expect(response.status).not.toBe(404);
+  });
+
   it("gets document details with lines when found", async () => {
     const response = await getDocument({
       request: new Request("https://ledger.test/api/documents/doc_1"),
