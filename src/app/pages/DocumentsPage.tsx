@@ -56,12 +56,29 @@ const actionTypeLabels: Record<ActionType, string> = {
   repost: "重记"
 };
 
+function padCalendarPart(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+export function formatLocalDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = padCalendarPart(date.getMonth() + 1);
+  const day = padCalendarPart(date.getDate());
+  return `${year}-${month}-${day}`;
+}
+
+export function formatLocalMonthInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = padCalendarPart(date.getMonth() + 1);
+  return `${year}-${month}`;
+}
+
 function getToday() {
-  return new Date().toISOString().slice(0, 10);
+  return formatLocalDateInputValue(new Date());
 }
 
 function getCurrentPeriod() {
-  return new Date().toISOString().slice(0, 7);
+  return formatLocalMonthInputValue(new Date());
 }
 
 function createInitialForm(): DocumentForm {
