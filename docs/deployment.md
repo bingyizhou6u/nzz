@@ -29,7 +29,7 @@ The endpoint should return JSON with `ok: true`. If port `8787` is already in us
 
 2. Copy the returned `database_id` into `wrangler.jsonc`.
 
-   `wrangler.jsonc` currently contains a placeholder D1 `database_id`. Replace it with the real Cloudflare D1 database UUID before any remote migration or deploy.
+   The committed `wrangler.jsonc` is bound to the current production D1 database. If the Cloudflare environment is recreated, replace `database_id` with the new D1 database UUID before any remote migration or deploy.
 
 3. Run the remote D1 migrations:
 
@@ -44,6 +44,12 @@ The endpoint should return JSON with `ok: true`. If port `8787` is already in us
    ```
 
 5. Protect the deployed hostname with Cloudflare Access before sharing it with users.
+
+Current Workers hostname:
+
+```text
+https://management-ledger.bingyizhou6u.workers.dev
+```
 
 ## Data Safety
 
