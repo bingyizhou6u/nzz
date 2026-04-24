@@ -1,6 +1,13 @@
 import { all, first, newId, nowIso, run } from "./db";
 import type { ActionType, DocumentStatus, DocumentType } from "../domain/types";
 import type { NormalizedDocumentLine } from "../domain/documentLines";
+import type {
+  LotCreationEffect,
+  LotMovementEffect,
+  LotUpdateEffect,
+  PendingCostCreationEffect,
+  PendingCostUpdateEffect
+} from "../domain/fifoEffects";
 
 export interface CreateDocumentInput {
   documentType: DocumentType;
@@ -26,6 +33,11 @@ export interface ApproveDocumentWithPostingsInput {
   reviewer: string;
   accountEntries: Array<{ accountId: string; currencyCode: string; amountMinor: number; entryDate: string }>;
   loanEntries: Array<{ borrowerPersonId: string; currencyCode: string; amountMinor: number; entryDate: string }>;
+  lotCreations?: LotCreationEffect[];
+  lotUpdates?: LotUpdateEffect[];
+  lotMovements?: LotMovementEffect[];
+  pendingCostCreations?: PendingCostCreationEffect[];
+  pendingCostUpdates?: PendingCostUpdateEffect[];
   auditLogStatement: D1PreparedStatement;
   reviewedAt?: string;
 }
@@ -69,6 +81,23 @@ export interface DocumentLineRow {
   exchange_rate_text: string | null;
   note: string | null;
 }
+
+export interface LotRow {
+  id: string;
+  currency_code: string;
+  remaining_amount_minor: number;
+  remaining_usdt_cost_minor: number;
+  lot_date: string;
+}
+
+export interface PendingCostMatchRow {
+  id: string;
+  remaining_amount_minor: number;
+  expense_date: string;
+  created_at: string;
+}
+
+type ApprovalStatementRole = "write" | "lot_update" | "approval";
 
 export class DocumentRepository {
   constructor(private readonly db: D1Database) {}
@@ -172,6 +201,48 @@ export class DocumentRepository {
     return first<{ period: string }>(this.db.prepare(`SELECT period FROM period_locks WHERE period = ?`).bind(period));
   }
 
+  listOpenLotsForAccount(input: {
+    accountId: string;
+    personId?: string | null;
+    currencyCode: string;
+  }): Promise<LotRow[]> {
+    return all<LotRow>(
+      this.db
+        .prepare(`
+          SELECT id, currency_code, remaining_amount_minor, remaining_usdt_cost_minor, lot_date
+          FROM lots
+          WHERE current_account_id = ?
+            AND currency_code = ?
+            AND status = 'open'
+            AND remaining_amount_minor > 0
+            AND ((? IS NULL AND current_person_id IS NULL) OR current_person_id = ?)
+          ORDER BY lot_date, id
+        `)
+        .bind(input.accountId, input.currencyCode, input.personId ?? null, input.personId ?? null)
+    );
+  }
+
+  listOpenPendingCostMatches(input: {
+    accountId: string;
+    personId: string;
+    currencyCode: string;
+  }): Promise<PendingCostMatchRow[]> {
+    return all<PendingCostMatchRow>(
+      this.db
+        .prepare(`
+          SELECT id, remaining_amount_minor, expense_date, created_at
+          FROM pending_cost_matches
+          WHERE account_id = ?
+            AND person_id = ?
+            AND currency_code = ?
+            AND status IN ('open', 'partial')
+            AND remaining_amount_minor > 0
+          ORDER BY expense_date, created_at, id
+        `)
+        .bind(input.accountId, input.personId, input.currencyCode)
+    );
+  }
+
   async insertAccountEntries(
     documentId: string,
     entries: Array<{ accountId: string; currencyCode: string; amountMinor: number; entryDate: string }>
@@ -205,16 +276,60 @@ export class DocumentRepository {
   }
 
   async approveWithPostings(input: ApproveDocumentWithPostingsInput): Promise<void> {
-    const results = await this.runBatch([
-      ...input.accountEntries.map((entry) => this.prepareConditionalAccountEntry(input.documentId, input.period, entry)),
-      ...input.loanEntries.map((entry) => this.prepareConditionalLoanEntry(input.documentId, input.period, entry)),
-      input.auditLogStatement,
-      this.prepareGuardedApprovalUpdate(input.documentId, input.period, input.reviewer, input.reviewedAt ?? nowIso())
-    ]);
+    const createdLotIds = new Map<string, string>();
+    for (const lotCreation of input.lotCreations ?? []) {
+      createdLotIds.set(lotCreation.clientLotId, newId("lot"));
+    }
 
-    const approvalResult = results.at(-1);
+    const statements: D1PreparedStatement[] = [];
+    const statementRoles: ApprovalStatementRole[] = [];
+    const addStatement = (statement: D1PreparedStatement, role: ApprovalStatementRole) => {
+      statements.push(statement);
+      statementRoles.push(role);
+    };
+
+    for (const entry of input.accountEntries) {
+      addStatement(this.prepareConditionalAccountEntry(input.documentId, input.period, entry), "write");
+    }
+    for (const entry of input.loanEntries) {
+      addStatement(this.prepareConditionalLoanEntry(input.documentId, input.period, entry), "write");
+    }
+    for (const lotCreation of input.lotCreations ?? []) {
+      const lotId = createdLotIds.get(lotCreation.clientLotId);
+      if (!lotId) {
+        throw new Error("Lot creation id was not prepared");
+      }
+      addStatement(this.prepareConditionalLotCreation(input.documentId, input.period, lotCreation, lotId), "write");
+    }
+    for (const lotUpdate of input.lotUpdates ?? []) {
+      addStatement(this.prepareConditionalLotUpdate(input.documentId, input.period, lotUpdate), "lot_update");
+    }
+    for (const lotMovement of input.lotMovements ?? []) {
+      const lotId = createdLotIds.get(lotMovement.lotId) ?? lotMovement.lotId;
+      addStatement(this.prepareConditionalLotMovement(input.documentId, input.period, lotMovement, lotId), "write");
+    }
+    for (const pendingCostCreation of input.pendingCostCreations ?? []) {
+      addStatement(this.prepareConditionalPendingCostCreation(input.documentId, input.period, pendingCostCreation), "write");
+    }
+    for (const pendingCostUpdate of input.pendingCostUpdates ?? []) {
+      addStatement(this.prepareConditionalPendingCostUpdate(input.documentId, input.period, pendingCostUpdate), "write");
+    }
+    addStatement(input.auditLogStatement, "write");
+    addStatement(
+      this.prepareGuardedApprovalUpdate(input.documentId, input.period, input.reviewer, input.reviewedAt ?? nowIso()),
+      "approval"
+    );
+
+    const results = await this.runBatch(statements);
+    const approvalResult = results[statementRoles.lastIndexOf("approval")];
     if (approvalResult?.meta?.changes === 0) {
       throw new Error("Document is not pending or period is locked");
+    }
+
+    for (let index = 0; index < results.length; index += 1) {
+      if (statementRoles[index] === "lot_update" && results[index]?.meta?.changes === 0) {
+        throw new Error("Lot balance changed before approval could be posted");
+      }
     }
   }
 
@@ -254,12 +369,7 @@ export class DocumentRepository {
       .prepare(
         `INSERT INTO account_entries (id, document_id, account_id, currency_code, amount_minor, entry_date, created_at)
          SELECT ?, ?, ?, ?, ?, ?, ?
-         WHERE EXISTS (
-           SELECT 1 FROM documents
-           WHERE id = ?
-             AND status = 'pending'
-             AND NOT EXISTS (SELECT 1 FROM period_locks WHERE period = ?)
-         )`
+         WHERE ${this.approvalGuardSql()}`
       )
       .bind(
         newId("acct_entry"),
@@ -283,12 +393,7 @@ export class DocumentRepository {
       .prepare(
         `INSERT INTO loan_entries (id, document_id, borrower_person_id, currency_code, amount_minor, entry_date, created_at)
          SELECT ?, ?, ?, ?, ?, ?, ?
-         WHERE EXISTS (
-           SELECT 1 FROM documents
-           WHERE id = ?
-             AND status = 'pending'
-             AND NOT EXISTS (SELECT 1 FROM period_locks WHERE period = ?)
-         )`
+         WHERE ${this.approvalGuardSql()}`
       )
       .bind(
         newId("loan_entry"),
@@ -298,6 +403,155 @@ export class DocumentRepository {
         entry.amountMinor,
         entry.entryDate,
         nowIso(),
+        documentId,
+        period
+      );
+  }
+
+  private prepareConditionalLotCreation(
+    documentId: string,
+    period: string,
+    lotCreation: LotCreationEffect,
+    lotId: string
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO lots (
+           id, currency_code, original_amount_minor, remaining_amount_minor,
+           original_usdt_cost_minor, remaining_usdt_cost_minor, source_document_id,
+           current_account_id, current_person_id, lot_date, status, created_at
+         )
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE ${this.approvalGuardSql()}`
+      )
+      .bind(
+        lotId,
+        lotCreation.currencyCode,
+        lotCreation.originalAmountMinor,
+        lotCreation.remainingAmountMinor,
+        lotCreation.originalUsdtCostMinor,
+        lotCreation.remainingUsdtCostMinor,
+        lotCreation.sourceDocumentId,
+        lotCreation.currentAccountId,
+        lotCreation.currentPersonId,
+        lotCreation.lotDate,
+        this.lotStatus(lotCreation.remainingAmountMinor),
+        nowIso(),
+        documentId,
+        period
+      );
+  }
+
+  private prepareConditionalLotUpdate(
+    documentId: string,
+    period: string,
+    lotUpdate: LotUpdateEffect
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `UPDATE lots
+         SET remaining_amount_minor = remaining_amount_minor + ?,
+             remaining_usdt_cost_minor = remaining_usdt_cost_minor + ?,
+             status = CASE WHEN remaining_amount_minor + ? = 0 THEN 'closed' ELSE 'open' END
+         WHERE id = ?
+           AND remaining_amount_minor + ? >= 0
+           AND remaining_usdt_cost_minor + ? >= 0
+           AND ${this.approvalGuardSql()}`
+      )
+      .bind(
+        lotUpdate.amountDeltaMinor,
+        lotUpdate.usdtCostDeltaMinor,
+        lotUpdate.amountDeltaMinor,
+        lotUpdate.lotId,
+        lotUpdate.amountDeltaMinor,
+        lotUpdate.usdtCostDeltaMinor,
+        documentId,
+        period
+      );
+  }
+
+  private prepareConditionalLotMovement(
+    documentId: string,
+    period: string,
+    lotMovement: LotMovementEffect,
+    lotId: string
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO lot_movements (
+           id, lot_id, document_id, movement_type, from_account_id, to_account_id,
+           from_person_id, to_person_id, amount_minor, usdt_cost_minor, movement_date, created_at
+         )
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE ${this.approvalGuardSql()}`
+      )
+      .bind(
+        newId("lot_move"),
+        lotId,
+        documentId,
+        lotMovement.movementType,
+        lotMovement.fromAccountId,
+        lotMovement.toAccountId,
+        lotMovement.fromPersonId,
+        lotMovement.toPersonId,
+        lotMovement.amountMinor,
+        lotMovement.usdtCostMinor,
+        lotMovement.movementDate,
+        nowIso(),
+        documentId,
+        period
+      );
+  }
+
+  private prepareConditionalPendingCostCreation(
+    documentId: string,
+    period: string,
+    pendingCostCreation: PendingCostCreationEffect
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO pending_cost_matches (
+           id, document_id, person_id, account_id, currency_code, amount_minor,
+           remaining_amount_minor, expense_date, status, created_at
+         )
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE ${this.approvalGuardSql()}`
+      )
+      .bind(
+        newId("pending_cost"),
+        pendingCostCreation.documentId,
+        pendingCostCreation.personId,
+        pendingCostCreation.accountId,
+        pendingCostCreation.currencyCode,
+        pendingCostCreation.amountMinor,
+        pendingCostCreation.remainingAmountMinor,
+        pendingCostCreation.expenseDate,
+        this.pendingCostStatus(pendingCostCreation.amountMinor, pendingCostCreation.remainingAmountMinor),
+        nowIso(),
+        documentId,
+        period
+      );
+  }
+
+  private prepareConditionalPendingCostUpdate(
+    documentId: string,
+    period: string,
+    pendingCostUpdate: PendingCostUpdateEffect
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `UPDATE pending_cost_matches
+         SET remaining_amount_minor = remaining_amount_minor + ?,
+             status = CASE WHEN remaining_amount_minor + ? = 0 THEN 'matched' ELSE 'partial' END
+         WHERE id = ?
+           AND remaining_amount_minor + ? >= 0
+           AND ${this.approvalGuardSql()}`
+      )
+      .bind(
+        pendingCostUpdate.amountDeltaMinor,
+        pendingCostUpdate.amountDeltaMinor,
+        pendingCostUpdate.pendingCostMatchId,
+        pendingCostUpdate.amountDeltaMinor,
         documentId,
         period
       );
@@ -318,6 +572,24 @@ export class DocumentRepository {
            AND NOT EXISTS (SELECT 1 FROM period_locks WHERE period = ?)`
       )
       .bind(reviewer, reviewedAt, documentId, period);
+  }
+
+  private approvalGuardSql() {
+    return `EXISTS (
+      SELECT 1 FROM documents
+      WHERE id = ?
+        AND status = 'pending'
+        AND NOT EXISTS (SELECT 1 FROM period_locks WHERE period = ?)
+    )`;
+  }
+
+  private lotStatus(remainingAmountMinor: number): "open" | "closed" {
+    return remainingAmountMinor === 0 ? "closed" : "open";
+  }
+
+  private pendingCostStatus(amountMinor: number, remainingAmountMinor: number): "open" | "partial" | "matched" {
+    if (remainingAmountMinor === 0) return "matched";
+    return remainingAmountMinor < amountMinor ? "partial" : "open";
   }
 
   private async runBatch(statements: D1PreparedStatement[]): Promise<D1Result[]> {
