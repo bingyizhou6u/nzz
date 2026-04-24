@@ -1,0 +1,28 @@
+{
+  "name": "management-ledger",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "cf:dev": "wrangler dev",
+    "db:migrate:local": "wrangler d1 migrations apply management-ledger-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply management-ledger-db --remote",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "dependencies": {
+    "@cloudflare/vite-plugin": "^1.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260401.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "^5.8.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.2.0",
+    "wrangler": "^4.0.0"
+  }
+}
