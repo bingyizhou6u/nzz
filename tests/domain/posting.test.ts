@@ -152,4 +152,18 @@ describe("entriesForApprovedDocument", () => {
       })
     ).toThrow(`Unsupported actionType for posting: ${actionType}`);
   });
+
+  it("creates positive account and negative loan entries for loan repayments", () => {
+    const entries = entriesForApprovedDocument({
+      id: "doc_13",
+      documentType: "loan_repayment",
+      actionType: "normal",
+      businessDate: "2026-04-03",
+      borrowerPersonId: "person_1",
+      lines: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 2500 }]
+    });
+
+    expect(entries.accountEntries).toEqual([{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 2500, entryDate: "2026-04-03" }]);
+    expect(entries.loanEntries).toEqual([{ borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: -2500, entryDate: "2026-04-03" }]);
+  });
 });

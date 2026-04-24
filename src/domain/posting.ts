@@ -21,7 +21,11 @@ export interface PostingResult {
 }
 
 export function entriesForApprovedDocument(document: PostingDocument): PostingResult {
-  if (document.documentType !== "project_income" && document.documentType !== "loan_out") {
+  if (
+    document.documentType !== "project_income" &&
+    document.documentType !== "loan_out" &&
+    document.documentType !== "loan_repayment"
+  ) {
     throw new Error(`Unsupported documentType: ${document.documentType}`);
   }
 
@@ -34,9 +38,9 @@ export function entriesForApprovedDocument(document: PostingDocument): PostingRe
   }
 
   let loanBorrowerPersonId = "";
-  if (document.documentType === "loan_out") {
+  if (document.documentType === "loan_out" || document.documentType === "loan_repayment") {
     loanBorrowerPersonId = document.borrowerPersonId?.trim() ?? "";
-    if (!loanBorrowerPersonId) throw new Error("borrowerPersonId is required for loan_out");
+    if (!loanBorrowerPersonId) throw new Error(`borrowerPersonId is required for ${document.documentType}`);
   }
 
   const accountEntries: PostingResult["accountEntries"] = [];
@@ -65,6 +69,13 @@ export function entriesForApprovedDocument(document: PostingDocument): PostingRe
     if (document.documentType === "loan_out") {
       const accountAmountMinor = document.actionType === "reversal" ? line.amountMinor : -line.amountMinor;
       const loanAmountMinor = document.actionType === "reversal" ? -line.amountMinor : line.amountMinor;
+      accountEntries.push({ accountId, currencyCode, amountMinor: accountAmountMinor, entryDate: document.businessDate });
+      loanEntries.push({ borrowerPersonId: loanBorrowerPersonId, currencyCode, amountMinor: loanAmountMinor, entryDate: document.businessDate });
+    }
+
+    if (document.documentType === "loan_repayment") {
+      const accountAmountMinor = document.actionType === "reversal" ? -line.amountMinor : line.amountMinor;
+      const loanAmountMinor = document.actionType === "reversal" ? line.amountMinor : -line.amountMinor;
       accountEntries.push({ accountId, currencyCode, amountMinor: accountAmountMinor, entryDate: document.businessDate });
       loanEntries.push({ borrowerPersonId: loanBorrowerPersonId, currencyCode, amountMinor: loanAmountMinor, entryDate: document.businessDate });
     }
