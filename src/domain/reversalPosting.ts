@@ -22,31 +22,39 @@ export interface ReversalPostingResult {
 }
 
 export function entriesForReversalDocument(input: ReversalPostingInput): ReversalPostingResult {
-  const reversalDate = requireNonEmpty(input.reversalDate, "reversalDate");
+  assertNonEmpty(input.reversalDate, "reversalDate");
   if (input.originalAccountEntries.length === 0 && input.originalLoanEntries.length === 0) {
     throw new Error("Original document has no posting entries to reverse");
   }
 
   return {
-    accountEntries: input.originalAccountEntries.map((entry) => ({
-      accountId: requireNonEmpty(entry.accountId, "accountId"),
-      currencyCode: requireNonEmpty(entry.currencyCode, "currencyCode"),
-      amountMinor: -requireSafeInteger(entry.amountMinor, "amountMinor"),
-      entryDate: reversalDate
-    })),
-    loanEntries: input.originalLoanEntries.map((entry) => ({
-      borrowerPersonId: requireNonEmpty(entry.borrowerPersonId, "borrowerPersonId"),
-      currencyCode: requireNonEmpty(entry.currencyCode, "currencyCode"),
-      amountMinor: -requireSafeInteger(entry.amountMinor, "amountMinor"),
-      entryDate: reversalDate
-    }))
+    accountEntries: input.originalAccountEntries.map((entry) => {
+      assertNonEmpty(entry.accountId, "accountId");
+      assertNonEmpty(entry.currencyCode, "currencyCode");
+
+      return {
+        accountId: entry.accountId,
+        currencyCode: entry.currencyCode,
+        amountMinor: -requireSafeInteger(entry.amountMinor, "amountMinor"),
+        entryDate: input.reversalDate
+      };
+    }),
+    loanEntries: input.originalLoanEntries.map((entry) => {
+      assertNonEmpty(entry.borrowerPersonId, "borrowerPersonId");
+      assertNonEmpty(entry.currencyCode, "currencyCode");
+
+      return {
+        borrowerPersonId: entry.borrowerPersonId,
+        currencyCode: entry.currencyCode,
+        amountMinor: -requireSafeInteger(entry.amountMinor, "amountMinor"),
+        entryDate: input.reversalDate
+      };
+    })
   };
 }
 
-function requireNonEmpty(value: string, label: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) throw new Error(`${label} must be non-empty`);
-  return trimmed;
+function assertNonEmpty(value: string, label: string): void {
+  if (!value.trim()) throw new Error(`${label} must be non-empty`);
 }
 
 function requireSafeInteger(value: number, label: string): number {

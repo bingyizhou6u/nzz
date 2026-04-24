@@ -38,6 +38,28 @@ describe("entriesForReversalDocument", () => {
     });
   });
 
+  it("preserves original posting identifiers while validating trimmed non-empty values", () => {
+    expect(
+      entriesForReversalDocument({
+        reversalDate: "2026-04-25",
+        originalAccountEntries: [{ accountId: "  acct_usdt_main  ", currencyCode: "  USDT  ", amountMinor: -120000 }],
+        originalLoanEntries: [{ borrowerPersonId: "  person_borrower  ", currencyCode: "  USDT  ", amountMinor: 120000 }]
+      })
+    ).toEqual({
+      accountEntries: [
+        { accountId: "  acct_usdt_main  ", currencyCode: "  USDT  ", amountMinor: 120000, entryDate: "2026-04-25" }
+      ],
+      loanEntries: [
+        {
+          borrowerPersonId: "  person_borrower  ",
+          currencyCode: "  USDT  ",
+          amountMinor: -120000,
+          entryDate: "2026-04-25"
+        }
+      ]
+    });
+  });
+
   it("rejects reversals with no original posting effects", () => {
     expect(() =>
       entriesForReversalDocument({
