@@ -23,7 +23,9 @@ describe("entriesForApprovedDocument", () => {
       lines: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 5000 }]
     });
     expect(entries.accountEntries[0].amountMinor).toBe(-5000);
-    expect(entries.loanEntries[0].amountMinor).toBe(5000);
+    expect(entries.loanEntries).toEqual([
+      { borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 5000, usdtCostMinor: 5000, entryDate: "2026-04-01" }
+    ]);
   });
 
   it("posts account transfer as source out and target in", () => {
@@ -151,7 +153,9 @@ describe("entriesForApprovedDocument", () => {
     });
 
     expect(entries.accountEntries).toEqual([{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 5000, entryDate: "2026-04-02" }]);
-    expect(entries.loanEntries).toEqual([{ borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: -5000, entryDate: "2026-04-02" }]);
+    expect(entries.loanEntries).toEqual([
+      { borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: -5000, usdtCostMinor: -5000, entryDate: "2026-04-02" }
+    ]);
   });
 
   it.each(["correction", "repost"] as const)("rejects unsupported %s action types", (actionType) => {
@@ -177,7 +181,9 @@ describe("entriesForApprovedDocument", () => {
     });
 
     expect(entries.accountEntries).toEqual([{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 2500, entryDate: "2026-04-03" }]);
-    expect(entries.loanEntries).toEqual([{ borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: -2500, entryDate: "2026-04-03" }]);
+    expect(entries.loanEntries).toEqual([
+      { borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: -2500, usdtCostMinor: null, entryDate: "2026-04-03" }
+    ]);
   });
 
   it("creates opposite-direction entries for loan repayment reversals", () => {
@@ -191,7 +197,78 @@ describe("entriesForApprovedDocument", () => {
     });
 
     expect(entries.accountEntries).toEqual([{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: -2500, entryDate: "2026-04-03" }]);
-    expect(entries.loanEntries).toEqual([{ borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 2500, entryDate: "2026-04-03" }]);
+    expect(entries.loanEntries).toEqual([
+      { borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: 2500, usdtCostMinor: null, entryDate: "2026-04-03" }
+    ]);
+  });
+
+  it("creates a loan-only entry for loan writeoff", () => {
+    const entries = entriesForApprovedDocument({
+      id: "doc_writeoff",
+      documentType: "loan_writeoff",
+      actionType: "normal",
+      businessDate: "2026-04-25",
+      borrowerPersonId: "person_1",
+      lines: [{ accountId: "", currencyCode: "AED", amountMinor: 10000 }]
+    });
+
+    expect(entries.accountEntries).toEqual([]);
+    expect(entries.loanEntries).toEqual([
+      {
+        borrowerPersonId: "person_1",
+        currencyCode: "AED",
+        amountMinor: -10000,
+        usdtCostMinor: null,
+        entryDate: "2026-04-25"
+      }
+    ]);
+  });
+
+  it("records USDT cost on loan out entries", () => {
+    const entries = entriesForApprovedDocument({
+      id: "doc_loan",
+      documentType: "loan_out",
+      actionType: "normal",
+      businessDate: "2026-04-25",
+      borrowerPersonId: "person_1",
+      lines: [{ accountId: "acct_aed", currencyCode: "AED", amountMinor: 367000, usdtAmountMinor: 100000 }]
+    });
+
+    expect(entries.loanEntries).toEqual([
+      {
+        borrowerPersonId: "person_1",
+        currencyCode: "AED",
+        amountMinor: 367000,
+        usdtCostMinor: 100000,
+        entryDate: "2026-04-25"
+      }
+    ]);
+  });
+
+  it("requires USDT cost for non-USDT loan out entries", () => {
+    expect(() =>
+      entriesForApprovedDocument({
+        id: "doc_loan",
+        documentType: "loan_out",
+        actionType: "normal",
+        businessDate: "2026-04-25",
+        borrowerPersonId: "person_1",
+        lines: [{ accountId: "acct_aed", currencyCode: "AED", amountMinor: 367000 }]
+      })
+    ).toThrow("line usdtAmountMinor is required for non-USDT loan_out");
+  });
+
+  it("requires explicit USDT loan cost to equal principal", () => {
+    expect(() =>
+      entriesForApprovedDocument({
+        id: "doc_loan",
+        documentType: "loan_out",
+        actionType: "normal",
+        businessDate: "2026-04-25",
+        borrowerPersonId: "person_1",
+        lines: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 5000, usdtAmountMinor: 4999 }]
+      })
+    ).toThrow("line usdtAmountMinor must equal amountMinor for USDT loan_out");
   });
 
   it.each([

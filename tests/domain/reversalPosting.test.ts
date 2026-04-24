@@ -26,14 +26,43 @@ describe("entriesForReversalDocument", () => {
       entriesForReversalDocument({
         reversalDate: "2026-04-25",
         originalAccountEntries: [{ accountId: "acct_usdt_main", currencyCode: "USDT", amountMinor: -120000 }],
-        originalLoanEntries: [{ borrowerPersonId: "person_borrower", currencyCode: "USDT", amountMinor: 120000 }]
+        originalLoanEntries: [{ borrowerPersonId: "person_borrower", currencyCode: "USDT", amountMinor: 120000, usdtCostMinor: null }]
       })
     ).toEqual({
       accountEntries: [
         { accountId: "acct_usdt_main", currencyCode: "USDT", amountMinor: 120000, entryDate: "2026-04-25" }
       ],
       loanEntries: [
-        { borrowerPersonId: "person_borrower", currencyCode: "USDT", amountMinor: -120000, entryDate: "2026-04-25" }
+        {
+          borrowerPersonId: "person_borrower",
+          currencyCode: "USDT",
+          amountMinor: -120000,
+          usdtCostMinor: null,
+          entryDate: "2026-04-25"
+        }
+      ]
+    });
+  });
+
+  it("negates original loan entry amount and USDT cost", () => {
+    expect(
+      entriesForReversalDocument({
+        reversalDate: "2026-04-26",
+        originalAccountEntries: [],
+        originalLoanEntries: [
+          { borrowerPersonId: "person_1", currencyCode: "AED", amountMinor: 367000, usdtCostMinor: 100000 }
+        ]
+      })
+    ).toEqual({
+      accountEntries: [],
+      loanEntries: [
+        {
+          borrowerPersonId: "person_1",
+          currencyCode: "AED",
+          amountMinor: -367000,
+          usdtCostMinor: -100000,
+          entryDate: "2026-04-26"
+        }
       ]
     });
   });
@@ -43,7 +72,9 @@ describe("entriesForReversalDocument", () => {
       entriesForReversalDocument({
         reversalDate: "2026-04-25",
         originalAccountEntries: [{ accountId: "  acct_usdt_main  ", currencyCode: "  USDT  ", amountMinor: -120000 }],
-        originalLoanEntries: [{ borrowerPersonId: "  person_borrower  ", currencyCode: "  USDT  ", amountMinor: 120000 }]
+        originalLoanEntries: [
+          { borrowerPersonId: "  person_borrower  ", currencyCode: "  USDT  ", amountMinor: 120000, usdtCostMinor: null }
+        ]
       })
     ).toEqual({
       accountEntries: [
@@ -54,6 +85,7 @@ describe("entriesForReversalDocument", () => {
           borrowerPersonId: "  person_borrower  ",
           currencyCode: "  USDT  ",
           amountMinor: -120000,
+          usdtCostMinor: null,
           entryDate: "2026-04-25"
         }
       ]

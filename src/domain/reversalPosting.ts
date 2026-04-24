@@ -8,6 +8,7 @@ export interface OriginalLoanEntry {
   borrowerPersonId: string;
   currencyCode: string;
   amountMinor: number;
+  usdtCostMinor?: number | null;
 }
 
 export interface ReversalPostingInput {
@@ -18,7 +19,13 @@ export interface ReversalPostingInput {
 
 export interface ReversalPostingResult {
   accountEntries: Array<{ accountId: string; currencyCode: string; amountMinor: number; entryDate: string }>;
-  loanEntries: Array<{ borrowerPersonId: string; currencyCode: string; amountMinor: number; entryDate: string }>;
+  loanEntries: Array<{
+    borrowerPersonId: string;
+    currencyCode: string;
+    amountMinor: number;
+    usdtCostMinor: number | null;
+    entryDate: string;
+  }>;
 }
 
 export function entriesForReversalDocument(input: ReversalPostingInput): ReversalPostingResult {
@@ -47,6 +54,7 @@ export function entriesForReversalDocument(input: ReversalPostingInput): Reversa
         borrowerPersonId: entry.borrowerPersonId,
         currencyCode: entry.currencyCode,
         amountMinor: -requireSafeInteger(entry.amountMinor, "amountMinor"),
+        usdtCostMinor: entry.usdtCostMinor == null ? null : -requireSafeInteger(entry.usdtCostMinor, "usdtCostMinor"),
         entryDate: input.reversalDate
       };
     })

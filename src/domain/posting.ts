@@ -20,7 +20,13 @@ interface PostingDocument {
 
 export interface PostingResult {
   accountEntries: Array<{ accountId: string; currencyCode: string; amountMinor: number; entryDate: string }>;
-  loanEntries: Array<{ borrowerPersonId: string; currencyCode: string; amountMinor: number; entryDate: string }>;
+  loanEntries: Array<{
+    borrowerPersonId: string;
+    currencyCode: string;
+    amountMinor: number;
+    usdtCostMinor: number | null;
+    entryDate: string;
+  }>;
 }
 
 export function entriesForApprovedDocument(document: PostingDocument): PostingResult {
@@ -32,7 +38,8 @@ export function entriesForApprovedDocument(document: PostingDocument): PostingRe
     document.documentType !== "petty_cash_reimbursement" &&
     document.documentType !== "petty_cash_return" &&
     document.documentType !== "loan_out" &&
-    document.documentType !== "loan_repayment"
+    document.documentType !== "loan_repayment" &&
+    document.documentType !== "loan_writeoff"
   ) {
     throw new Error(`Unsupported documentType: ${document.documentType}`);
   }
@@ -49,7 +56,7 @@ export function entriesForApprovedDocument(document: PostingDocument): PostingRe
   }
 
   let loanBorrowerPersonId = "";
-  if (document.documentType === "loan_out" || document.documentType === "loan_repayment") {
+  if (document.documentType === "loan_out" || document.documentType === "loan_repayment" || document.documentType === "loan_writeoff") {
     loanBorrowerPersonId = document.borrowerPersonId?.trim() ?? "";
     if (!loanBorrowerPersonId) throw new Error(`borrowerPersonId is required for ${document.documentType}`);
   }
@@ -62,8 +69,8 @@ export function entriesForApprovedDocument(document: PostingDocument): PostingRe
       throw new Error("line amountMinor must be a positive safe integer");
     }
 
-    const accountId = line.accountId.trim();
-    if (!accountId) {
+    const accountId = document.documentType === "loan_writeoff" ? "" : line.accountId.trim();
+    if (document.documentType !== "loan_writeoff" && !accountId) {
       throw new Error("line accountId is required");
     }
 
@@ -80,15 +87,38 @@ export function entriesForApprovedDocument(document: PostingDocument): PostingRe
     if (document.documentType === "loan_out") {
       const accountAmountMinor = document.actionType === "reversal" ? line.amountMinor : -line.amountMinor;
       const loanAmountMinor = document.actionType === "reversal" ? -line.amountMinor : line.amountMinor;
+      const usdtCostMinor = loanOutUsdtCost(currencyCode, line.amountMinor, line.usdtAmountMinor);
       accountEntries.push({ accountId, currencyCode, amountMinor: accountAmountMinor, entryDate: document.businessDate });
-      loanEntries.push({ borrowerPersonId: loanBorrowerPersonId, currencyCode, amountMinor: loanAmountMinor, entryDate: document.businessDate });
+      loanEntries.push({
+        borrowerPersonId: loanBorrowerPersonId,
+        currencyCode,
+        amountMinor: loanAmountMinor,
+        usdtCostMinor: document.actionType === "reversal" ? -usdtCostMinor : usdtCostMinor,
+        entryDate: document.businessDate
+      });
     }
 
     if (document.documentType === "loan_repayment") {
       const accountAmountMinor = document.actionType === "reversal" ? -line.amountMinor : line.amountMinor;
       const loanAmountMinor = document.actionType === "reversal" ? line.amountMinor : -line.amountMinor;
       accountEntries.push({ accountId, currencyCode, amountMinor: accountAmountMinor, entryDate: document.businessDate });
-      loanEntries.push({ borrowerPersonId: loanBorrowerPersonId, currencyCode, amountMinor: loanAmountMinor, entryDate: document.businessDate });
+      loanEntries.push({
+        borrowerPersonId: loanBorrowerPersonId,
+        currencyCode,
+        amountMinor: loanAmountMinor,
+        usdtCostMinor: null,
+        entryDate: document.businessDate
+      });
+    }
+
+    if (document.documentType === "loan_writeoff") {
+      loanEntries.push({
+        borrowerPersonId: loanBorrowerPersonId,
+        currencyCode,
+        amountMinor: -line.amountMinor,
+        usdtCostMinor: null,
+        entryDate: document.businessDate
+      });
     }
 
     if (document.documentType === "exchange") {
@@ -145,6 +175,18 @@ function requirePositiveSafeInteger(value: number | null | undefined, label: str
     throw new Error(`${label} must be a positive safe integer`);
   }
   return value;
+}
+
+function loanOutUsdtCost(currencyCode: string, amountMinor: number, usdtAmountMinor: number | null | undefined): number {
+  if (currencyCode === "USDT") {
+    if (usdtAmountMinor == null) return amountMinor;
+    const explicitUsdtAmountMinor = requirePositiveSafeInteger(usdtAmountMinor, "line usdtAmountMinor");
+    if (explicitUsdtAmountMinor !== amountMinor) {
+      throw new Error("line usdtAmountMinor must equal amountMinor for USDT loan_out");
+    }
+    return explicitUsdtAmountMinor;
+  }
+  return requirePositiveSafeInteger(usdtAmountMinor, "line usdtAmountMinor for non-USDT loan_out");
 }
 
 function requiredMessage(label: string) {
