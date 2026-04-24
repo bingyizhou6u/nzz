@@ -66,41 +66,17 @@ export class DocumentRepository {
   async createDraft(input: CreateDocumentInput): Promise<{ id: string; documentNo: string; status: DocumentStatus }> {
     const id = newId("doc");
     const documentNo = newId("docno");
-    await run(
-      this.db
-        .prepare(
-          `INSERT INTO documents (
-            id, document_no, document_type, action_type, business_date, period,
-            operator_person_id, project_id, merchant_id, category_id, summary,
-            status, original_document_id, created_by, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)`
-        )
-        .bind(
-          id,
-          documentNo,
-          input.documentType,
-          input.actionType,
-          input.businessDate,
-          input.period,
-          input.operatorPersonId ?? null,
-          input.projectId ?? null,
-          input.merchantId ?? null,
-          input.categoryId ?? null,
-          input.summary,
-          input.originalDocumentId ?? null,
-          input.createdBy,
-          nowIso()
-        )
-    );
+    await run(this.prepareDraftInsert(input, id, documentNo, nowIso()));
     return { id, documentNo, status: "draft" };
   }
 
   async createDraftWithLines(
     input: CreateDocumentWithLinesInput
   ): Promise<{ id: string; documentNo: string; status: DocumentStatus }> {
-    const document = await this.createDraft(input);
-    for (const line of input.lines) {
-      await run(
+    const document = { id: newId("doc"), documentNo: newId("docno"), status: "draft" as DocumentStatus };
+    await this.runBatch([
+      this.prepareDraftInsert(input, document.id, document.documentNo, nowIso()),
+      ...input.lines.map((line) =>
         this.db
           .prepare(
             `INSERT INTO document_lines (
@@ -124,8 +100,8 @@ export class DocumentRepository {
             line.exchangeRateText,
             line.note
           )
-      );
-    }
+      )
+    ]);
     return document;
   }
 
@@ -178,31 +154,69 @@ export class DocumentRepository {
     documentId: string,
     entries: Array<{ accountId: string; currencyCode: string; amountMinor: number; entryDate: string }>
   ) {
-    for (const entry of entries) {
-      await run(
+    await this.runBatch(
+      entries.map((entry) =>
         this.db
           .prepare(
             `INSERT INTO account_entries (id, document_id, account_id, currency_code, amount_minor, entry_date, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?)`
           )
           .bind(newId("acct_entry"), documentId, entry.accountId, entry.currencyCode, entry.amountMinor, entry.entryDate, nowIso())
-      );
-    }
+      )
+    );
   }
 
   async insertLoanEntries(
     documentId: string,
     entries: Array<{ borrowerPersonId: string; currencyCode: string; amountMinor: number; entryDate: string }>
   ) {
-    for (const entry of entries) {
-      await run(
+    await this.runBatch(
+      entries.map((entry) =>
         this.db
           .prepare(
             `INSERT INTO loan_entries (id, document_id, borrower_person_id, currency_code, amount_minor, entry_date, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?)`
           )
           .bind(newId("loan_entry"), documentId, entry.borrowerPersonId, entry.currencyCode, entry.amountMinor, entry.entryDate, nowIso())
+      )
+    );
+  }
+
+  private prepareDraftInsert(input: CreateDocumentInput, id: string, documentNo: string, createdAt: string): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO documents (
+          id, document_no, document_type, action_type, business_date, period,
+          operator_person_id, project_id, merchant_id, category_id, summary,
+          status, original_document_id, created_by, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)`
+      )
+      .bind(
+        id,
+        documentNo,
+        input.documentType,
+        input.actionType,
+        input.businessDate,
+        input.period,
+        input.operatorPersonId ?? null,
+        input.projectId ?? null,
+        input.merchantId ?? null,
+        input.categoryId ?? null,
+        input.summary,
+        input.originalDocumentId ?? null,
+        input.createdBy,
+        createdAt
       );
+  }
+
+  private async runBatch(statements: D1PreparedStatement[]) {
+    if (statements.length === 0) return;
+
+    const results = await this.db.batch(statements);
+    for (const result of results) {
+      if (!result.success) {
+        throw new Error(result.error || "D1 batch write failed");
+      }
     }
   }
 }
