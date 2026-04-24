@@ -404,6 +404,7 @@ describe("documents API", () => {
   });
 
   it("routes reversal approval requests using original posting entries", async () => {
+    const bindCalls: Array<{ sql: string; bindings: unknown[] }> = [];
     let batchStatements: PreparedMock[] = [];
     const response = await route(
       new Request("https://ledger.test/api/documents/doc_reversal/approve", {
@@ -424,6 +425,9 @@ describe("documents API", () => {
           documentRow({ id: "doc_original", status: "approved" })
         ],
         allResultsQueue: [[{ account_id: "acct_usdt", currency_code: "USDT", amount_minor: 120000 }], []],
+        onBind: (bindings, sql) => {
+          bindCalls.push({ sql, bindings });
+        },
         onBatch: (statements) => {
           batchStatements = statements;
         }
@@ -432,6 +436,12 @@ describe("documents API", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ data: { id: "doc_reversal", status: "approved" } });
+
+    const originalAccountEntriesRead = bindCalls.find((call) =>
+      call.sql.toLowerCase().includes("from account_entries")
+    );
+    expect(originalAccountEntriesRead?.bindings).toEqual(["doc_original"]);
+    expect(bindCalls.some((call) => call.sql.toLowerCase().includes("from document_lines"))).toBe(false);
 
     const accountEntryStatement = batchStatements.find((statement) =>
       statement.sql.toLowerCase().includes("insert into account_entries")
