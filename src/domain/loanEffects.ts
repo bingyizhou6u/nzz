@@ -164,7 +164,14 @@ export function totalLoanAllocationUsdtCost(effects: LoanPostingEffects): number
 }
 
 function costForLoanOutLine(currencyCode: string, amountMinor: number, usdtCostMinor: number | null | undefined): number {
-  if (currencyCode === "USDT" && usdtCostMinor == null) return amountMinor;
+  if (currencyCode === "USDT") {
+    if (usdtCostMinor == null) return amountMinor;
+    const explicitUsdtCostMinor = requirePositiveSafeInteger(usdtCostMinor, "line usdtCostMinor");
+    if (explicitUsdtCostMinor !== amountMinor) {
+      throw new Error("line usdtCostMinor must equal amountMinor for USDT loan_out");
+    }
+    return explicitUsdtCostMinor;
+  }
   if (usdtCostMinor == null) throw new Error("line usdtCostMinor is required for non-USDT loan_out");
   return requirePositiveSafeInteger(usdtCostMinor, "line usdtCostMinor");
 }

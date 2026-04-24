@@ -71,6 +71,17 @@ describe("loanEffects", () => {
     expect(result.loanItemCreations[0].remainingUsdtCostMinor).toBe(50000);
   });
 
+  it("rejects explicit USDT loan cost that differs from principal amount", () => {
+    expect(() =>
+      planLoanOutEffects({
+        documentId: "doc_loan",
+        borrowerPersonId: "person_borrower",
+        loanDate: "2026-04-25",
+        lines: [{ lineId: "line_1", currencyCode: "USDT", amountMinor: 50000, usdtCostMinor: 49999 }]
+      })
+    ).toThrow("line usdtCostMinor must equal amountMinor for USDT loan_out");
+  });
+
   it("requires explicit USDT cost for non-USDT loan out", () => {
     expect(() =>
       planLoanOutEffects({
