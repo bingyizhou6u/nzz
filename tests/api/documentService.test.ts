@@ -233,11 +233,12 @@ describe("DocumentService", () => {
       before: { status: "pending" },
       after: { status: "approved" }
     }, {
-      sql: "EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending')",
-      bindings: ["doc_1"]
+      sql: "EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending' AND NOT EXISTS (SELECT 1 FROM period_locks WHERE period = ?))",
+      bindings: ["doc_1", "2026-04"]
     });
     expect(repo.approveWithPostings).toHaveBeenCalledWith({
       documentId: "doc_1",
+      period: "2026-04",
       reviewer: "reviewer_1",
       accountEntries: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 15000, entryDate: "2026-04-24" }],
       loanEntries: [],
@@ -313,6 +314,7 @@ describe("DocumentService", () => {
 
     expect(repo.approveWithPostings).toHaveBeenCalledWith({
       documentId: "doc_1",
+      period: "2026-04",
       reviewer: "reviewer_1",
       accountEntries: [
         { accountId: "acct_usdt", currencyCode: "USDT", amountMinor: -5000, entryDate: "2026-04-24" },

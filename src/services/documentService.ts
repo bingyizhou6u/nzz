@@ -147,13 +147,14 @@ export class DocumentService {
         after: { status: "approved" }
       },
       {
-        sql: "EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending')",
-        bindings: [id]
+        sql: "EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending' AND NOT EXISTS (SELECT 1 FROM period_locks WHERE period = ?))",
+        bindings: [id, approvalPeriod]
       }
     );
 
     await this.documents.approveWithPostings({
       documentId: id,
+      period: approvalPeriod,
       reviewer,
       accountEntries: posting.accountEntries,
       loanEntries: posting.loanEntries,

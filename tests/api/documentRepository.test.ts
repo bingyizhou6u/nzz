@@ -297,6 +297,7 @@ describe("DocumentRepository", () => {
 
     await repo.approveWithPostings({
       documentId: "doc_1",
+      period: "2026-04",
       reviewer: "reviewer_1",
       reviewedAt: "2026-04-24T11:00:00.000Z",
       accountEntries: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 10000, entryDate: "2026-04-24" }],
@@ -307,9 +308,8 @@ describe("DocumentRepository", () => {
     expect(batchCalls).toHaveLength(1);
     expect(batchCalls[0]).toHaveLength(4);
     expect(batchCalls[0][0].sql.replace(/\s+/g, " ").toLowerCase()).toContain("insert into account_entries");
-    expect(batchCalls[0][0].sql.replace(/\s+/g, " ").toLowerCase()).toContain(
-      "where exists (select 1 from documents where id = ? and status = 'pending')"
-    );
+    expect(batchCalls[0][0].sql.replace(/\s+/g, " ").toLowerCase()).toContain("where id = ? and status = 'pending'");
+    expect(batchCalls[0][0].sql.replace(/\s+/g, " ").toLowerCase()).toContain("not exists (select 1 from period_locks");
     expect(batchCalls[0][0].bindings).toEqual([
       expect.stringMatching(/^acct_entry_/),
       "doc_1",
@@ -318,12 +318,12 @@ describe("DocumentRepository", () => {
       10000,
       "2026-04-24",
       expect.any(String),
-      "doc_1"
+      "doc_1",
+      "2026-04"
     ]);
     expect(batchCalls[0][1].sql.replace(/\s+/g, " ").toLowerCase()).toContain("insert into loan_entries");
-    expect(batchCalls[0][1].sql.replace(/\s+/g, " ").toLowerCase()).toContain(
-      "where exists (select 1 from documents where id = ? and status = 'pending')"
-    );
+    expect(batchCalls[0][1].sql.replace(/\s+/g, " ").toLowerCase()).toContain("where id = ? and status = 'pending'");
+    expect(batchCalls[0][1].sql.replace(/\s+/g, " ").toLowerCase()).toContain("not exists (select 1 from period_locks");
     expect(batchCalls[0][1].bindings).toEqual([
       expect.stringMatching(/^loan_entry_/),
       "doc_1",
@@ -332,14 +332,16 @@ describe("DocumentRepository", () => {
       10000,
       "2026-04-24",
       expect.any(String),
-      "doc_1"
+      "doc_1",
+      "2026-04"
     ]);
     expect(batchCalls[0][2]).toBe(auditLogStatement);
     expect(batchCalls[0][3].sql.replace(/\s+/g, " ").toLowerCase()).toContain(
       "update documents set status = 'approved'"
     );
     expect(batchCalls[0][3].sql.replace(/\s+/g, " ").toLowerCase()).toContain("where id = ? and status = 'pending'");
-    expect(batchCalls[0][3].bindings).toEqual(["reviewer_1", "2026-04-24T11:00:00.000Z", "doc_1"]);
+    expect(batchCalls[0][3].sql.replace(/\s+/g, " ").toLowerCase()).toContain("not exists (select 1 from period_locks");
+    expect(batchCalls[0][3].bindings).toEqual(["reviewer_1", "2026-04-24T11:00:00.000Z", "doc_1", "2026-04"]);
   });
 
   it("rejects atomic approval when the guarded status update changes no rows", async () => {
@@ -356,12 +358,13 @@ describe("DocumentRepository", () => {
     await expect(
       repo.approveWithPostings({
         documentId: "doc_1",
+        period: "2026-04",
         reviewer: "reviewer_1",
         accountEntries: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 10000, entryDate: "2026-04-24" }],
         loanEntries: [],
         auditLogStatement: {} as D1PreparedStatement
       })
-    ).rejects.toThrow("Document is not pending");
+    ).rejects.toThrow("Document is not pending or period is locked");
   });
 
   it("checks period locks by period", async () => {

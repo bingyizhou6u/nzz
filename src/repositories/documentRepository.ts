@@ -22,6 +22,7 @@ export interface CreateDocumentWithLinesInput extends CreateDocumentInput {
 
 export interface ApproveDocumentWithPostingsInput {
   documentId: string;
+  period: string;
   reviewer: string;
   accountEntries: Array<{ accountId: string; currencyCode: string; amountMinor: number; entryDate: string }>;
   loanEntries: Array<{ borrowerPersonId: string; currencyCode: string; amountMinor: number; entryDate: string }>;
@@ -205,15 +206,15 @@ export class DocumentRepository {
 
   async approveWithPostings(input: ApproveDocumentWithPostingsInput): Promise<void> {
     const results = await this.runBatch([
-      ...input.accountEntries.map((entry) => this.prepareConditionalAccountEntry(input.documentId, entry)),
-      ...input.loanEntries.map((entry) => this.prepareConditionalLoanEntry(input.documentId, entry)),
+      ...input.accountEntries.map((entry) => this.prepareConditionalAccountEntry(input.documentId, input.period, entry)),
+      ...input.loanEntries.map((entry) => this.prepareConditionalLoanEntry(input.documentId, input.period, entry)),
       input.auditLogStatement,
-      this.prepareGuardedApprovalUpdate(input.documentId, input.reviewer, input.reviewedAt ?? nowIso())
+      this.prepareGuardedApprovalUpdate(input.documentId, input.period, input.reviewer, input.reviewedAt ?? nowIso())
     ]);
 
     const approvalResult = results.at(-1);
     if (approvalResult?.meta?.changes === 0) {
-      throw new Error("Document is not pending");
+      throw new Error("Document is not pending or period is locked");
     }
   }
 
@@ -246,13 +247,19 @@ export class DocumentRepository {
 
   private prepareConditionalAccountEntry(
     documentId: string,
+    period: string,
     entry: { accountId: string; currencyCode: string; amountMinor: number; entryDate: string }
   ): D1PreparedStatement {
     return this.db
       .prepare(
         `INSERT INTO account_entries (id, document_id, account_id, currency_code, amount_minor, entry_date, created_at)
          SELECT ?, ?, ?, ?, ?, ?, ?
-         WHERE EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending')`
+         WHERE EXISTS (
+           SELECT 1 FROM documents
+           WHERE id = ?
+             AND status = 'pending'
+             AND NOT EXISTS (SELECT 1 FROM period_locks WHERE period = ?)
+         )`
       )
       .bind(
         newId("acct_entry"),
@@ -262,19 +269,26 @@ export class DocumentRepository {
         entry.amountMinor,
         entry.entryDate,
         nowIso(),
-        documentId
+        documentId,
+        period
       );
   }
 
   private prepareConditionalLoanEntry(
     documentId: string,
+    period: string,
     entry: { borrowerPersonId: string; currencyCode: string; amountMinor: number; entryDate: string }
   ): D1PreparedStatement {
     return this.db
       .prepare(
         `INSERT INTO loan_entries (id, document_id, borrower_person_id, currency_code, amount_minor, entry_date, created_at)
          SELECT ?, ?, ?, ?, ?, ?, ?
-         WHERE EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending')`
+         WHERE EXISTS (
+           SELECT 1 FROM documents
+           WHERE id = ?
+             AND status = 'pending'
+             AND NOT EXISTS (SELECT 1 FROM period_locks WHERE period = ?)
+         )`
       )
       .bind(
         newId("loan_entry"),
@@ -284,18 +298,26 @@ export class DocumentRepository {
         entry.amountMinor,
         entry.entryDate,
         nowIso(),
-        documentId
+        documentId,
+        period
       );
   }
 
-  private prepareGuardedApprovalUpdate(documentId: string, reviewer: string, reviewedAt: string): D1PreparedStatement {
+  private prepareGuardedApprovalUpdate(
+    documentId: string,
+    period: string,
+    reviewer: string,
+    reviewedAt: string
+  ): D1PreparedStatement {
     return this.db
       .prepare(
         `UPDATE documents
          SET status = 'approved', reviewed_by = ?, reviewed_at = ?, reject_reason = NULL
-         WHERE id = ? AND status = 'pending'`
+         WHERE id = ?
+           AND status = 'pending'
+           AND NOT EXISTS (SELECT 1 FROM period_locks WHERE period = ?)`
       )
-      .bind(reviewer, reviewedAt, documentId);
+      .bind(reviewer, reviewedAt, documentId, period);
   }
 
   private async runBatch(statements: D1PreparedStatement[]): Promise<D1Result[]> {
