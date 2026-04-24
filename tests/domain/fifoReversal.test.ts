@@ -211,6 +211,77 @@ describe("planSafeFifoReversalEffects", () => {
     ).toThrow("Created lot snapshot is required for reversal: doc_transfer");
   });
 
+  it("rejects transfer reversal when created target lot snapshots do not match original movements", () => {
+    expect(() =>
+      planSafeFifoReversalEffects({
+        reversalDocumentId: "doc_rev",
+        originalDocumentId: "doc_transfer",
+        originalDocumentType: "account_transfer",
+        reversalDate: "2026-04-25",
+        originalMovements: [
+          {
+            id: "move_transfer_1",
+            lotId: "lot_source_a",
+            movementType: "account_transfer",
+            fromAccountId: "acct_aed_reserve",
+            toAccountId: "acct_aed_bank",
+            fromPersonId: null,
+            toPersonId: null,
+            amountMinor: 50000,
+            usdtCostMinor: 13650,
+            createdAt: "2026-04-24T10:00:00.000Z"
+          },
+          {
+            id: "move_transfer_2",
+            lotId: "lot_source_b",
+            movementType: "account_transfer",
+            fromAccountId: "acct_aed_reserve",
+            toAccountId: "acct_aed_bank",
+            fromPersonId: null,
+            toPersonId: null,
+            amountMinor: 25000,
+            usdtCostMinor: 6825,
+            createdAt: "2026-04-24T10:00:01.000Z"
+          }
+        ],
+        lots: [
+          {
+            id: "lot_source_a",
+            originalAmountMinor: 100000,
+            remainingAmountMinor: 50000,
+            originalUsdtCostMinor: 27300,
+            remainingUsdtCostMinor: 13650,
+            currentAccountId: "acct_aed_reserve",
+            currentPersonId: null,
+            sourceDocumentId: "doc_fx_a"
+          },
+          {
+            id: "lot_source_b",
+            originalAmountMinor: 50000,
+            remainingAmountMinor: 25000,
+            originalUsdtCostMinor: 13650,
+            remainingUsdtCostMinor: 6825,
+            currentAccountId: "acct_aed_reserve",
+            currentPersonId: null,
+            sourceDocumentId: "doc_fx_b"
+          },
+          {
+            id: "lot_created_a",
+            originalAmountMinor: 50000,
+            remainingAmountMinor: 50000,
+            originalUsdtCostMinor: 13650,
+            remainingUsdtCostMinor: 13650,
+            currentAccountId: "acct_aed_bank",
+            currentPersonId: null,
+            sourceDocumentId: "doc_transfer"
+          }
+        ],
+        pendingCosts: [],
+        laterMovementLotIds: []
+      })
+    ).toThrow("Created lot snapshots do not match original FIFO movements for reversal: doc_transfer");
+  });
+
   it("restores reimbursement-consumed staff lots when no pending cost was created", () => {
     expect(
       planSafeFifoReversalEffects({

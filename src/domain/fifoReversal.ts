@@ -81,15 +81,16 @@ export function planSafeFifoReversalEffects(input: SafeFifoReversalInput): FifoP
     return emptyFifoPostingEffects();
   }
 
+  const movements = movementsOfType(input.originalMovements, movementType);
   const restoreEffects = restoreMovementLots({
     reversalDate,
-    movements: movementsOfType(input.originalMovements, movementType),
+    movements,
     lots: input.lots
   });
   const closeEffects = closeCreatedLots({
     originalDocumentId,
     reversalDate,
-    lots: requireCreatedLots(input.lots, originalDocumentId)
+    lots: requireCreatedLotsForMovements(input.lots, originalDocumentId, movements)
   });
 
   return {
@@ -150,10 +151,17 @@ function requireExchangeCreatedLots(input: {
   });
 }
 
-function requireCreatedLots(lots: ReversalLotSnapshot[], originalDocumentId: string): ReversalLotSnapshot[] {
+function requireCreatedLotsForMovements(
+  lots: ReversalLotSnapshot[],
+  originalDocumentId: string,
+  movements: OriginalLotMovement[]
+): ReversalLotSnapshot[] {
   const createdLots = lots.filter((lot) => lot.sourceDocumentId === originalDocumentId);
   if (createdLots.length === 0) {
     throw new Error(`Created lot snapshot is required for reversal: ${originalDocumentId}`);
+  }
+  if (createdLots.length !== movements.length) {
+    throw new Error(`Created lot snapshots do not match original FIFO movements for reversal: ${originalDocumentId}`);
   }
   return createdLots;
 }
