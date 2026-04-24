@@ -113,6 +113,7 @@ CREATE TABLE document_lines (
   usdt_amount_minor INTEGER,
   exchange_rate_text TEXT,
   note TEXT,
+  UNIQUE(document_id, line_no),
   FOREIGN KEY (document_id) REFERENCES documents(id),
   FOREIGN KEY (account_id) REFERENCES accounts(id),
   FOREIGN KEY (counterparty_account_id) REFERENCES accounts(id),
@@ -154,7 +155,11 @@ CREATE TABLE lot_movements (
   movement_date TEXT NOT NULL,
   created_at TEXT NOT NULL,
   FOREIGN KEY (lot_id) REFERENCES lots(id),
-  FOREIGN KEY (document_id) REFERENCES documents(id)
+  FOREIGN KEY (document_id) REFERENCES documents(id),
+  FOREIGN KEY (from_account_id) REFERENCES accounts(id),
+  FOREIGN KEY (to_account_id) REFERENCES accounts(id),
+  FOREIGN KEY (from_person_id) REFERENCES people(id),
+  FOREIGN KEY (to_person_id) REFERENCES people(id)
 );
 
 CREATE TABLE pending_cost_matches (

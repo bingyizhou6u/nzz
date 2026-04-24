@@ -11,6 +11,7 @@
     {
       "binding": "DB",
       "database_name": "management-ledger-db",
+      // Replace this placeholder with the real Cloudflare D1 database UUID before remote migration or deploy.
       "database_id": "00000000-0000-0000-0000-000000000000"
     }
   ]
