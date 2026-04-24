@@ -28,10 +28,12 @@ describe("ReportRepository", () => {
     await expect(repo.accountBalances()).resolves.toEqual(rows);
 
     const normalized = normalizeSql(sql);
-    expect(normalized).toContain("from account_entries");
-    expect(normalized).toContain("coalesce(sum(amount_minor), 0) as balance_minor");
-    expect(normalized).toContain("group by account_id, currency_code");
-    expect(normalized).toContain("order by account_id, currency_code");
+    expect(normalized).toContain("from account_entries ae");
+    expect(normalized).toContain("join documents d on d.id = ae.document_id");
+    expect(normalized).toContain("where d.status = 'approved'");
+    expect(normalized).toContain("coalesce(sum(ae.amount_minor), 0) as balance_minor");
+    expect(normalized).toContain("group by ae.account_id, ae.currency_code");
+    expect(normalized).toContain("order by ae.account_id, ae.currency_code");
   });
 
   it("returns open pending cost matches grouped and ordered by person, account, and currency", async () => {
@@ -44,11 +46,12 @@ describe("ReportRepository", () => {
     await expect(repo.pettyCashPendingMatches()).resolves.toEqual(rows);
 
     const normalized = normalizeSql(sql);
-    expect(normalized).toContain("from pending_cost_matches");
-    expect(normalized).toContain("sum(remaining_amount_minor) as remaining_amount_minor");
-    expect(normalized).toContain("where status = 'open'");
-    expect(normalized).toContain("group by person_id, account_id, currency_code");
-    expect(normalized).toContain("order by person_id, account_id, currency_code");
+    expect(normalized).toContain("from pending_cost_matches pcm");
+    expect(normalized).toContain("join documents d on d.id = pcm.document_id");
+    expect(normalized).toContain("sum(pcm.remaining_amount_minor) as remaining_amount_minor");
+    expect(normalized).toContain("where pcm.status = 'open' and d.status = 'approved'");
+    expect(normalized).toContain("group by pcm.person_id, pcm.account_id, pcm.currency_code");
+    expect(normalized).toContain("order by pcm.person_id, pcm.account_id, pcm.currency_code");
   });
 
   it("returns loan balance rows grouped and ordered by borrower and currency", async () => {
@@ -59,10 +62,12 @@ describe("ReportRepository", () => {
     await expect(repo.loanBalances()).resolves.toEqual(rows);
 
     const normalized = normalizeSql(sql);
-    expect(normalized).toContain("from loan_entries");
-    expect(normalized).toContain("sum(amount_minor)");
+    expect(normalized).toContain("from loan_entries le");
+    expect(normalized).toContain("join documents d on d.id = le.document_id");
+    expect(normalized).toContain("where d.status = 'approved'");
+    expect(normalized).toContain("sum(le.amount_minor)");
     expect(normalized).toContain("as balance_minor");
-    expect(normalized).toContain("group by borrower_person_id, currency_code");
-    expect(normalized).toContain("order by borrower_person_id, currency_code");
+    expect(normalized).toContain("group by le.borrower_person_id, le.currency_code");
+    expect(normalized).toContain("order by le.borrower_person_id, le.currency_code");
   });
 });

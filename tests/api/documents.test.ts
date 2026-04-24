@@ -26,6 +26,8 @@ describe("documents API", () => {
     error: "documentType, businessDate, period, summary, and createdBy are required"
   };
   const invalidDocumentTypeOrActionTypeError = { error: "Invalid document type or action type" };
+  const invalidBusinessDateOrPeriodError = { error: "Invalid business date or period" };
+  const requiredOriginalDocumentError = { error: "originalDocumentId is required for correction or reversal" };
 
   it("creates draft documents", async () => {
     let boundValues: unknown[] = [];
@@ -50,6 +52,31 @@ describe("documents API", () => {
     expect(body.data.documentNo).toMatch(/^docno_/);
     expect(body.data.status).toBe("draft");
     expect(boundValues[3]).toBe("normal");
+    expect(boundValues[11]).toBeNull();
+  });
+
+  it("stores trimmed original document linkage when provided", async () => {
+    let boundValues: unknown[] = [];
+    const response = await createDocument({
+      request: new Request("https://ledger.test/api/documents", {
+        method: "POST",
+        body: JSON.stringify({
+          documentType: "project_income",
+          actionType: "correction",
+          businessDate: "2026-04-24",
+          period: "2026-04",
+          originalDocumentId: "  doc_original  ",
+          summary: "Correct income",
+          createdBy: "user_1"
+        })
+      }),
+      env: mockEnv({ onBind: (values) => (boundValues = values) }),
+      params: {}
+    });
+
+    expect(response.status).toBe(201);
+    expect(boundValues[3]).toBe("correction");
+    expect(boundValues[11]).toBe("doc_original");
   });
 
   it.each([
@@ -111,6 +138,75 @@ describe("documents API", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual(invalidDocumentTypeOrActionTypeError);
+  });
+
+  it.each([
+    ["impossible business date", { businessDate: "2026-02-30", period: "2026-02" }],
+    ["invalid period", { businessDate: "2026-04-24", period: "2026-4" }],
+    ["mismatched period", { businessDate: "2026-04-24", period: "2026-05" }]
+  ])("rejects %s", async (_name, overrides) => {
+    const response = await createDocument({
+      request: new Request("https://ledger.test/api/documents", {
+        method: "POST",
+        body: JSON.stringify({
+          documentType: "project_income",
+          businessDate: overrides.businessDate,
+          period: overrides.period,
+          summary: "Initial income",
+          createdBy: "user_1"
+        })
+      }),
+      env: mockEnv(),
+      params: {}
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual(invalidBusinessDateOrPeriodError);
+  });
+
+  it.each(["correction", "reversal"] as const)("requires originalDocumentId for %s documents", async (actionType) => {
+    const response = await createDocument({
+      request: new Request("https://ledger.test/api/documents", {
+        method: "POST",
+        body: JSON.stringify({
+          documentType: "project_income",
+          actionType,
+          businessDate: "2026-04-24",
+          period: "2026-04",
+          originalDocumentId: "   ",
+          summary: "Linked document",
+          createdBy: "user_1"
+        })
+      }),
+      env: mockEnv(),
+      params: {}
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual(requiredOriginalDocumentError);
+  });
+
+  it("does not require originalDocumentId for repost documents", async () => {
+    let boundValues: unknown[] = [];
+    const response = await createDocument({
+      request: new Request("https://ledger.test/api/documents", {
+        method: "POST",
+        body: JSON.stringify({
+          documentType: "project_income",
+          actionType: "repost",
+          businessDate: "2026-04-24",
+          period: "2026-04",
+          summary: "Repost income",
+          createdBy: "user_1"
+        })
+      }),
+      env: mockEnv({ onBind: (values) => (boundValues = values) }),
+      params: {}
+    });
+
+    expect(response.status).toBe(201);
+    expect(boundValues[3]).toBe("repost");
+    expect(boundValues[11]).toBeNull();
   });
 
   it("routes document creation requests", async () => {

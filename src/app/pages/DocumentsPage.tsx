@@ -13,6 +13,7 @@ interface DocumentForm {
   actionType: ActionType;
   businessDate: string;
   period: string;
+  originalDocumentId: string;
   summary: string;
   createdBy: string;
   operatorPersonId: string;
@@ -73,6 +74,10 @@ export function formatLocalMonthInputValue(date: Date) {
   return `${year}-${month}`;
 }
 
+export function isOriginalDocumentRequired(actionType: ActionType) {
+  return actionType === "correction" || actionType === "reversal";
+}
+
 function getToday() {
   return formatLocalDateInputValue(new Date());
 }
@@ -87,6 +92,7 @@ function createInitialForm(): DocumentForm {
     actionType: "normal",
     businessDate: getToday(),
     period: getCurrentPeriod(),
+    originalDocumentId: "",
     summary: "",
     createdBy: "",
     operatorPersonId: "",
@@ -119,6 +125,7 @@ export function DocumentsPage() {
       actionType: form.actionType,
       businessDate: form.businessDate,
       period: form.period,
+      originalDocumentId: optionalString(form.originalDocumentId),
       summary: form.summary.trim(),
       createdBy: form.createdBy.trim(),
       operatorPersonId: optionalString(form.operatorPersonId),
@@ -136,6 +143,7 @@ export function DocumentsPage() {
         actionType: current.actionType,
         businessDate: current.businessDate,
         period: current.period,
+        originalDocumentId: isOriginalDocumentRequired(current.actionType) ? current.originalDocumentId : "",
         createdBy: current.createdBy
       }));
     } catch (submitError) {
@@ -205,6 +213,16 @@ export function DocumentsPage() {
               value={form.period}
               onChange={(event) => setForm((current) => ({ ...current, period: event.target.value }))}
               required
+            />
+          </label>
+
+          <label>
+            原单据ID
+            <input
+              value={form.originalDocumentId}
+              onChange={(event) => setForm((current) => ({ ...current, originalDocumentId: event.target.value }))}
+              required={isOriginalDocumentRequired(form.actionType)}
+              maxLength={80}
             />
           </label>
 

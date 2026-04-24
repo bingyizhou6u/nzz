@@ -6,6 +6,7 @@ describe("entriesForApprovedDocument", () => {
     const entries = entriesForApprovedDocument({
       id: "doc_1",
       documentType: "project_income",
+      actionType: "normal",
       businessDate: "2026-04-01",
       lines: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 10000 }]
     });
@@ -16,6 +17,7 @@ describe("entriesForApprovedDocument", () => {
     const entries = entriesForApprovedDocument({
       id: "doc_2",
       documentType: "loan_out",
+      actionType: "normal",
       businessDate: "2026-04-01",
       borrowerPersonId: "person_1",
       lines: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 5000 }]
@@ -29,6 +31,7 @@ describe("entriesForApprovedDocument", () => {
       entriesForApprovedDocument({
         id: "doc_3",
         documentType: "exchange",
+        actionType: "normal",
         businessDate: "2026-04-01",
         lines: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 5000 }]
       })
@@ -40,6 +43,7 @@ describe("entriesForApprovedDocument", () => {
       entriesForApprovedDocument({
         id: "doc_4",
         documentType: "project_income",
+        actionType: "normal",
         businessDate: "2026-04-01",
         lines: []
       })
@@ -52,6 +56,7 @@ describe("entriesForApprovedDocument", () => {
         entriesForApprovedDocument({
           id: "doc_5",
           documentType: "loan_out",
+          actionType: "normal",
           businessDate: "2026-04-01",
           borrowerPersonId: "person_1",
           lines: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor }]
@@ -66,6 +71,7 @@ describe("entriesForApprovedDocument", () => {
         entriesForApprovedDocument({
           id: "doc_6",
           documentType: "project_income",
+          actionType: "normal",
           businessDate: "2026-04-01",
           lines: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor }]
         })
@@ -78,6 +84,7 @@ describe("entriesForApprovedDocument", () => {
       entriesForApprovedDocument({
         id: "doc_7",
         documentType: "loan_out",
+        actionType: "normal",
         businessDate: "2026-04-01",
         borrowerPersonId: "   ",
         lines: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 5000 }]
@@ -90,6 +97,7 @@ describe("entriesForApprovedDocument", () => {
       entriesForApprovedDocument({
         id: "doc_8",
         documentType: "project_income",
+        actionType: "normal",
         businessDate: "2026-04-01",
         lines: [{ accountId: "   ", currencyCode: "USDT", amountMinor: 5000 }]
       })
@@ -99,9 +107,49 @@ describe("entriesForApprovedDocument", () => {
       entriesForApprovedDocument({
         id: "doc_9",
         documentType: "project_income",
+        actionType: "normal",
         businessDate: "2026-04-01",
         lines: [{ accountId: "acct_usdt", currencyCode: "   ", amountMinor: 5000 }]
       })
     ).toThrow("line currencyCode is required");
+  });
+
+  it("creates opposite-direction entries for project income reversals", () => {
+    const entries = entriesForApprovedDocument({
+      id: "doc_10",
+      documentType: "project_income",
+      actionType: "reversal",
+      businessDate: "2026-04-02",
+      lines: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 10000 }]
+    });
+
+    expect(entries.accountEntries).toEqual([{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: -10000, entryDate: "2026-04-02" }]);
+    expect(entries.loanEntries).toEqual([]);
+  });
+
+  it("creates opposite-direction entries for loan out reversals", () => {
+    const entries = entriesForApprovedDocument({
+      id: "doc_11",
+      documentType: "loan_out",
+      actionType: "reversal",
+      businessDate: "2026-04-02",
+      borrowerPersonId: "person_1",
+      lines: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 5000 }]
+    });
+
+    expect(entries.accountEntries).toEqual([{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 5000, entryDate: "2026-04-02" }]);
+    expect(entries.loanEntries).toEqual([{ borrowerPersonId: "person_1", currencyCode: "USDT", amountMinor: -5000, entryDate: "2026-04-02" }]);
+  });
+
+  it.each(["correction", "repost"] as const)("rejects unsupported %s action types", (actionType) => {
+    expect(() =>
+      entriesForApprovedDocument({
+        id: "doc_12",
+        documentType: "project_income",
+        actionType,
+        businessDate: "2026-04-02",
+        lines: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 10000 }]
+      })
+    ).toThrow(`Unsupported actionType for posting: ${actionType}`);
   });
 });

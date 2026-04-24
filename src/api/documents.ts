@@ -11,6 +11,12 @@ const requiredDocumentFieldsResponse = () =>
 const invalidDocumentTypeOrActionTypeResponse = () =>
   Response.json({ error: "Invalid document type or action type" }, { status: 400 });
 
+const invalidBusinessDateOrPeriodResponse = () =>
+  Response.json({ error: "Invalid business date or period" }, { status: 400 });
+
+const requiredOriginalDocumentResponse = () =>
+  Response.json({ error: "originalDocumentId is required for correction or reversal" }, { status: 400 });
+
 const documentTypes = new Set<DocumentType>([
   "project_income",
   "exchange",
@@ -34,6 +40,25 @@ function isActionType(value: string): value is ActionType {
   return actionTypes.has(value as ActionType);
 }
 
+function isValidBusinessDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+
+  const [yearText, monthText, dayText] = value.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function isValidPeriod(value: string) {
+  if (!/^\d{4}-\d{2}$/.test(value)) return false;
+
+  const month = Number(value.slice(5, 7));
+  return month >= 1 && month <= 12;
+}
+
 export const createDocument: Handler = async ({ request, env }) => {
   let body: unknown;
   try {
@@ -55,6 +80,7 @@ export const createDocument: Handler = async ({ request, env }) => {
     projectId,
     merchantId,
     categoryId,
+    originalDocumentId,
     summary,
     createdBy
   } = body as {
@@ -66,6 +92,7 @@ export const createDocument: Handler = async ({ request, env }) => {
     projectId?: unknown;
     merchantId?: unknown;
     categoryId?: unknown;
+    originalDocumentId?: unknown;
     summary?: unknown;
     createdBy?: unknown;
   };
@@ -89,21 +116,38 @@ export const createDocument: Handler = async ({ request, env }) => {
     return invalidDocumentTypeOrActionTypeResponse();
   }
 
+  const normalizedBusinessDate = businessDate.trim();
+  const normalizedPeriod = period.trim();
+  if (
+    !isValidBusinessDate(normalizedBusinessDate) ||
+    !isValidPeriod(normalizedPeriod) ||
+    normalizedPeriod !== normalizedBusinessDate.slice(0, 7)
+  ) {
+    return invalidBusinessDateOrPeriodResponse();
+  }
+
   const normalizedActionType = typeof actionType === "string" ? actionType : "normal";
   if (!isActionType(normalizedActionType)) {
     return invalidDocumentTypeOrActionTypeResponse();
+  }
+
+  const normalizedOriginalDocumentId =
+    typeof originalDocumentId === "string" && originalDocumentId.trim() ? originalDocumentId.trim() : null;
+  if ((normalizedActionType === "correction" || normalizedActionType === "reversal") && !normalizedOriginalDocumentId) {
+    return requiredOriginalDocumentResponse();
   }
 
   const repo = new DocumentRepository(env.DB);
   const document = await repo.createDraft({
     documentType,
     actionType: normalizedActionType,
-    businessDate,
-    period,
+    businessDate: normalizedBusinessDate,
+    period: normalizedPeriod,
     operatorPersonId: typeof operatorPersonId === "string" ? operatorPersonId : null,
     projectId: typeof projectId === "string" ? projectId : null,
     merchantId: typeof merchantId === "string" ? merchantId : null,
     categoryId: typeof categoryId === "string" ? categoryId : null,
+    originalDocumentId: normalizedOriginalDocumentId,
     summary,
     createdBy
   });

@@ -10,6 +10,7 @@ export interface CreateDocumentInput {
   projectId?: string | null;
   merchantId?: string | null;
   categoryId?: string | null;
+  originalDocumentId?: string | null;
   summary: string;
   createdBy: string;
 }
@@ -26,8 +27,8 @@ export class DocumentRepository {
           `INSERT INTO documents (
             id, document_no, document_type, action_type, business_date, period,
             operator_person_id, project_id, merchant_id, category_id, summary,
-            status, created_by, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`
+            status, original_document_id, created_by, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)`
         )
         .bind(
           id,
@@ -41,6 +42,7 @@ export class DocumentRepository {
           input.merchantId ?? null,
           input.categoryId ?? null,
           input.summary,
+          input.originalDocumentId ?? null,
           input.createdBy,
           nowIso()
         )

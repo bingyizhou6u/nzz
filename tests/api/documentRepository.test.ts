@@ -1,23 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { DocumentRepository } from "../../src/repositories/documentRepository";
 
-function mockDb(options: { runResult?: D1Result; onBind?: (values: unknown[]) => void } = {}): D1Database {
+function mockDb(options: { runResult?: D1Result; onSql?: (sql: string) => void; onBind?: (values: unknown[]) => void } = {}): D1Database {
   return {
-    prepare: () =>
-      ({
+    prepare: (sql: string) => {
+      options.onSql?.(sql);
+      return {
         bind(...values: unknown[]) {
           options.onBind?.(values);
           return this;
         },
         run: async () => options.runResult ?? ({ success: true } as D1Result)
-      }) as unknown as D1PreparedStatement
+      } as unknown as D1PreparedStatement;
+    }
   } as unknown as D1Database;
 }
 
 describe("DocumentRepository", () => {
   it("creates draft documents", async () => {
     let boundValues: unknown[] = [];
-    const repo = new DocumentRepository(mockDb({ onBind: (values) => (boundValues = values) }));
+    let sql = "";
+    const repo = new DocumentRepository(mockDb({ onSql: (value) => (sql = value), onBind: (values) => (boundValues = values) }));
 
     const result = await repo.createDraft({
       documentType: "project_income",
@@ -28,6 +31,7 @@ describe("DocumentRepository", () => {
       projectId: "proj_1",
       merchantId: null,
       categoryId: "cat_1",
+      originalDocumentId: null,
       summary: "Initial income",
       createdBy: "user_1"
     });
@@ -47,9 +51,28 @@ describe("DocumentRepository", () => {
       null,
       "cat_1",
       "Initial income",
+      null,
       "user_1",
       expect.any(String)
     ]);
+    expect(sql.replace(/\s+/g, " ").toLowerCase()).toContain("original_document_id");
+  });
+
+  it("binds original document linkage for correction drafts", async () => {
+    let boundValues: unknown[] = [];
+    const repo = new DocumentRepository(mockDb({ onBind: (values) => (boundValues = values) }));
+
+    await repo.createDraft({
+      documentType: "project_income",
+      actionType: "correction",
+      businessDate: "2026-04-24",
+      period: "2026-04",
+      originalDocumentId: "doc_original",
+      summary: "Correct income",
+      createdBy: "user_1"
+    });
+
+    expect(boundValues[11]).toBe("doc_original");
   });
 
   it("throws when draft creation fails", async () => {

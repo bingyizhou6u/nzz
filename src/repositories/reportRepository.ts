@@ -26,12 +26,14 @@ export class ReportRepository {
     return all<AccountBalanceRow>(
       this.db.prepare(`
         SELECT
-          account_id,
-          currency_code,
-          COALESCE(SUM(amount_minor), 0) AS balance_minor
-        FROM account_entries
-        GROUP BY account_id, currency_code
-        ORDER BY account_id, currency_code
+          ae.account_id AS account_id,
+          ae.currency_code AS currency_code,
+          COALESCE(SUM(ae.amount_minor), 0) AS balance_minor
+        FROM account_entries ae
+        JOIN documents d ON d.id = ae.document_id
+        WHERE d.status = 'approved'
+        GROUP BY ae.account_id, ae.currency_code
+        ORDER BY ae.account_id, ae.currency_code
       `)
     );
   }
@@ -40,14 +42,15 @@ export class ReportRepository {
     return all<PettyCashPendingMatchRow>(
       this.db.prepare(`
         SELECT
-          person_id,
-          account_id,
-          currency_code,
-          SUM(remaining_amount_minor) AS remaining_amount_minor
-        FROM pending_cost_matches
-        WHERE status = 'open'
-        GROUP BY person_id, account_id, currency_code
-        ORDER BY person_id, account_id, currency_code
+          pcm.person_id AS person_id,
+          pcm.account_id AS account_id,
+          pcm.currency_code AS currency_code,
+          SUM(pcm.remaining_amount_minor) AS remaining_amount_minor
+        FROM pending_cost_matches pcm
+        JOIN documents d ON d.id = pcm.document_id
+        WHERE pcm.status = 'open' AND d.status = 'approved'
+        GROUP BY pcm.person_id, pcm.account_id, pcm.currency_code
+        ORDER BY pcm.person_id, pcm.account_id, pcm.currency_code
       `)
     );
   }
@@ -56,12 +59,14 @@ export class ReportRepository {
     return all<LoanBalanceRow>(
       this.db.prepare(`
         SELECT
-          borrower_person_id,
-          currency_code,
-          COALESCE(SUM(amount_minor), 0) AS balance_minor
-        FROM loan_entries
-        GROUP BY borrower_person_id, currency_code
-        ORDER BY borrower_person_id, currency_code
+          le.borrower_person_id AS borrower_person_id,
+          le.currency_code AS currency_code,
+          COALESCE(SUM(le.amount_minor), 0) AS balance_minor
+        FROM loan_entries le
+        JOIN documents d ON d.id = le.document_id
+        WHERE d.status = 'approved'
+        GROUP BY le.borrower_person_id, le.currency_code
+        ORDER BY le.borrower_person_id, le.currency_code
       `)
     );
   }
