@@ -8,6 +8,13 @@ type AtomicDocumentRepoMock = DocumentRepoMock & {
   createDraft: ReturnType<typeof vi.fn>;
   listOpenLotsForAccount: ReturnType<typeof vi.fn>;
   listOpenPendingCostMatches: ReturnType<typeof vi.fn>;
+  listAccountEntriesForDocument: ReturnType<typeof vi.fn>;
+  listLoanEntriesForDocument: ReturnType<typeof vi.fn>;
+  listLotMovementsForDocument: ReturnType<typeof vi.fn>;
+  listLotsCreatedByDocument: ReturnType<typeof vi.fn>;
+  listPendingCostMatchesForDocument: ReturnType<typeof vi.fn>;
+  listLotsByIds: ReturnType<typeof vi.fn>;
+  listLaterMovementLotIds: ReturnType<typeof vi.fn>;
   approveWithPostings: ReturnType<typeof vi.fn>;
 };
 type AtomicAuditRepoMock = AuditRepoMock & {
@@ -92,6 +99,13 @@ function createMocks(overrides: Partial<AtomicDocumentRepoMock> = {}) {
     insertLoanEntries: vi.fn(async () => undefined),
     listOpenLotsForAccount: vi.fn(async () => []),
     listOpenPendingCostMatches: vi.fn(async () => []),
+    listAccountEntriesForDocument: vi.fn(async () => []),
+    listLoanEntriesForDocument: vi.fn(async () => []),
+    listLotMovementsForDocument: vi.fn(async () => []),
+    listLotsCreatedByDocument: vi.fn(async () => []),
+    listPendingCostMatchesForDocument: vi.fn(async () => []),
+    listLotsByIds: vi.fn(async () => []),
+    listLaterMovementLotIds: vi.fn(async () => []),
     approveWithPostings: vi.fn(async () => undefined),
     ...overrides
   } satisfies AtomicDocumentRepoMock;
@@ -751,5 +765,183 @@ describe("DocumentService", () => {
         ]
       })
     );
+  });
+
+  it("approves reversals from original approved account and loan entries", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi
+        .fn()
+        .mockResolvedValueOnce(documentRow({
+          id: "doc_rev",
+          status: "pending",
+          action_type: "reversal",
+          original_document_id: "doc_original",
+          business_date: "2026-04-25"
+        }))
+        .mockResolvedValueOnce(documentRow({
+          id: "doc_original",
+          status: "approved",
+          document_type: "loan_out",
+          action_type: "normal",
+          business_date: "2026-04-20"
+        })),
+      listAccountEntriesForDocument: vi.fn(async () => [
+        { account_id: "acct_usdt_main", currency_code: "USDT", amount_minor: -120000 }
+      ]),
+      listLoanEntriesForDocument: vi.fn(async () => [
+        { borrower_person_id: "person_borrower", currency_code: "USDT", amount_minor: 120000 }
+      ])
+    });
+
+    await service.approve("doc_rev", "reviewer_1");
+
+    expect(repo.getDocument).toHaveBeenCalledWith("doc_rev");
+    expect(repo.getDocument).toHaveBeenCalledWith("doc_original");
+    expect(repo.getDocumentLines).not.toHaveBeenCalled();
+    expect(repo.approveWithPostings).toHaveBeenCalledWith(expect.objectContaining({
+      documentId: "doc_rev",
+      period: "2026-04",
+      accountEntries: [
+        { accountId: "acct_usdt_main", currencyCode: "USDT", amountMinor: 120000, entryDate: "2026-04-25" }
+      ],
+      loanEntries: [
+        { borrowerPersonId: "person_borrower", currencyCode: "USDT", amountMinor: -120000, entryDate: "2026-04-25" }
+      ],
+      lotCreations: [],
+      lotUpdates: [],
+      lotMovements: []
+    }));
+  });
+
+  it("approves safe exchange reversals with fifo restoration effects", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi
+        .fn()
+        .mockResolvedValueOnce(documentRow({
+          id: "doc_rev",
+          status: "pending",
+          action_type: "reversal",
+          original_document_id: "doc_fx",
+          business_date: "2026-04-25"
+        }))
+        .mockResolvedValueOnce(documentRow({
+          id: "doc_fx",
+          status: "approved",
+          document_type: "exchange",
+          action_type: "normal"
+        })),
+      listAccountEntriesForDocument: vi.fn(async () => [
+        { account_id: "acct_usdt_main", currency_code: "USDT", amount_minor: -100000 },
+        { account_id: "acct_aed_reserve", currency_code: "AED", amount_minor: 367000 }
+      ]),
+      listLotMovementsForDocument: vi.fn(async () => [
+        {
+          id: "move_fx",
+          lot_id: "lot_fx",
+          movement_type: "exchange_in",
+          from_account_id: null,
+          to_account_id: "acct_aed_reserve",
+          from_person_id: null,
+          to_person_id: null,
+          amount_minor: 367000,
+          usdt_cost_minor: 100000,
+          created_at: "2026-04-24T10:00:00.000Z"
+        }
+      ]),
+      listLotsCreatedByDocument: vi.fn(async () => [
+        {
+          id: "lot_fx",
+          original_amount_minor: 367000,
+          remaining_amount_minor: 367000,
+          original_usdt_cost_minor: 100000,
+          remaining_usdt_cost_minor: 100000,
+          source_document_id: "doc_fx",
+          current_account_id: "acct_aed_reserve",
+          current_person_id: null
+        }
+      ])
+    });
+
+    await service.approve("doc_rev", "reviewer_1");
+
+    expect(repo.listLaterMovementLotIds).toHaveBeenCalledWith({ lotIds: ["lot_fx"], originalDocumentId: "doc_fx" });
+    expect(repo.approveWithPostings).toHaveBeenCalledWith(expect.objectContaining({
+      accountEntries: [
+        { accountId: "acct_usdt_main", currencyCode: "USDT", amountMinor: 100000, entryDate: "2026-04-25" },
+        { accountId: "acct_aed_reserve", currencyCode: "AED", amountMinor: -367000, entryDate: "2026-04-25" }
+      ],
+      lotUpdates: [
+        {
+          lotId: "lot_fx",
+          amountDeltaMinor: -367000,
+          usdtCostDeltaMinor: -100000,
+          expectedRemainingAmountMinor: 367000,
+          expectedRemainingUsdtCostMinor: 100000
+        }
+      ],
+      lotMovements: [
+        expect.objectContaining({ lotId: "lot_fx", movementType: "fifo_reversal" })
+      ]
+    }));
+  });
+
+  it("rejects fifo reversals when later lot movements exist", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi
+        .fn()
+        .mockResolvedValueOnce(documentRow({
+          id: "doc_rev",
+          status: "pending",
+          action_type: "reversal",
+          original_document_id: "doc_transfer"
+        }))
+        .mockResolvedValueOnce(documentRow({
+          id: "doc_transfer",
+          status: "approved",
+          document_type: "account_transfer",
+          action_type: "normal"
+        })),
+      listAccountEntriesForDocument: vi.fn(async () => [
+        { account_id: "acct_aed_reserve", currency_code: "AED", amount_minor: -50000 },
+        { account_id: "acct_aed_bank", currency_code: "AED", amount_minor: 50000 }
+      ]),
+      listLotMovementsForDocument: vi.fn(async () => [
+        {
+          id: "move_transfer",
+          lot_id: "lot_source",
+          movement_type: "account_transfer",
+          from_account_id: "acct_aed_reserve",
+          to_account_id: "acct_aed_bank",
+          from_person_id: null,
+          to_person_id: null,
+          amount_minor: 50000,
+          usdt_cost_minor: 13650,
+          created_at: "2026-04-24T10:00:00.000Z"
+        }
+      ]),
+      listLaterMovementLotIds: vi.fn(async () => [{ lot_id: "lot_source" }])
+    });
+
+    await expect(service.approve("doc_rev", "reviewer_1")).rejects.toThrow(
+      "Complex FIFO reversal requires manual review: affected lots have later movements"
+    );
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
+  });
+
+  it("rejects reversals when the original document is not approved", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi
+        .fn()
+        .mockResolvedValueOnce(documentRow({
+          id: "doc_rev",
+          status: "pending",
+          action_type: "reversal",
+          original_document_id: "doc_original"
+        }))
+        .mockResolvedValueOnce(documentRow({ id: "doc_original", status: "pending" }))
+    });
+
+    await expect(service.approve("doc_rev", "reviewer_1")).rejects.toThrow("Original document must be approved before reversal");
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
   });
 });

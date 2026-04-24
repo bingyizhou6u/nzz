@@ -6,14 +6,17 @@ import {
   planExchangeLotCreation,
   planPettyCashIssueEffects,
   planPettyCashReimbursementEffects,
-  planPettyCashReturnEffects
+  planPettyCashReturnEffects,
+  type LotMovementType
 } from "../domain/fifoEffects";
+import { planSafeFifoReversalEffects } from "../domain/fifoReversal";
 import { assertDocumentTransition, periodFromDate } from "../domain/documentWorkflow";
 import { entriesForApprovedDocument } from "../domain/posting";
+import { entriesForReversalDocument } from "../domain/reversalPosting";
 import type { Lot } from "../domain/types";
 import type { ActionType, DocumentType } from "../domain/types";
 import type { AuditLogRepository } from "../repositories/auditLogRepository";
-import type { DocumentLineRow, DocumentRepository, LotRow, PendingCostMatchRow } from "../repositories/documentRepository";
+import type { DocumentDetailRow, DocumentLineRow, DocumentRepository, LotRow, PendingCostMatchRow } from "../repositories/documentRepository";
 
 export interface CreateDraftRequest {
   documentType: DocumentType;
@@ -44,6 +47,13 @@ type DocumentWorkflowRepository = Pick<
   | "insertLoanEntries"
   | "listOpenLotsForAccount"
   | "listOpenPendingCostMatches"
+  | "listAccountEntriesForDocument"
+  | "listLoanEntriesForDocument"
+  | "listLotMovementsForDocument"
+  | "listLotsCreatedByDocument"
+  | "listPendingCostMatchesForDocument"
+  | "listLotsByIds"
+  | "listLaterMovementLotIds"
   | "approveWithPostings"
 >;
 
@@ -135,6 +145,11 @@ export class DocumentService {
       throw new Error(`Period ${approvalPeriod} is locked`);
     }
 
+    if (document.action_type === "reversal") {
+      await this.approveReversal(document, reviewer, approvalPeriod);
+      return;
+    }
+
     const lines = await this.documents.getDocumentLines(id);
     assertSingleLineFifoApproval(document.document_type, lines);
     const posting = entriesForApprovedDocument({
@@ -180,6 +195,120 @@ export class DocumentService {
       pendingCostCreations: fifoEffects.pendingCostCreations,
       pendingCostUpdates: fifoEffects.pendingCostUpdates,
       auditLogStatement
+    });
+  }
+
+  private async approveReversal(document: DocumentDetailRow, reviewer: string, approvalPeriod: string) {
+    const originalDocumentId = document.original_document_id?.trim() ?? "";
+    if (!originalDocumentId) {
+      throw new Error("originalDocumentId is required for reversal approval");
+    }
+
+    const original = await this.requireDocument(originalDocumentId);
+    if (original.status !== "approved") {
+      throw new Error("Original document must be approved before reversal");
+    }
+
+    const [originalAccountEntries, originalLoanEntries] = await Promise.all([
+      this.documents.listAccountEntriesForDocument(originalDocumentId),
+      this.documents.listLoanEntriesForDocument(originalDocumentId)
+    ]);
+
+    const posting = entriesForReversalDocument({
+      reversalDate: document.business_date,
+      originalAccountEntries: originalAccountEntries.map((entry) => ({
+        accountId: entry.account_id,
+        currencyCode: entry.currency_code,
+        amountMinor: entry.amount_minor
+      })),
+      originalLoanEntries: originalLoanEntries.map((entry) => ({
+        borrowerPersonId: entry.borrower_person_id,
+        currencyCode: entry.currency_code,
+        amountMinor: entry.amount_minor
+      }))
+    });
+
+    const fifoEffects = await this.planFifoReversalEffects(document.id, original, document.business_date);
+    const auditLogStatement = this.auditLogs.prepareRecordWhen(
+      {
+        actor: reviewer,
+        action: "document.approve",
+        entityType: "document",
+        entityId: document.id,
+        before: { status: document.status },
+        after: { status: "approved", originalDocumentId }
+      },
+      {
+        sql: "EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending' AND NOT EXISTS (SELECT 1 FROM period_locks WHERE period = ?))",
+        bindings: [document.id, approvalPeriod]
+      }
+    );
+
+    await this.documents.approveWithPostings({
+      documentId: document.id,
+      period: approvalPeriod,
+      reviewer,
+      accountEntries: posting.accountEntries,
+      loanEntries: posting.loanEntries,
+      lotCreations: fifoEffects.lotCreations,
+      lotUpdates: fifoEffects.lotUpdates,
+      lotMovements: fifoEffects.lotMovements,
+      pendingCostCreations: fifoEffects.pendingCostCreations,
+      pendingCostUpdates: fifoEffects.pendingCostUpdates,
+      auditLogStatement
+    });
+  }
+
+  private async planFifoReversalEffects(reversalDocumentId: string, original: DocumentDetailRow, reversalDate: string) {
+    if (!isSingleLineFifoDocumentType(original.document_type)) {
+      return emptyFifoPostingEffects();
+    }
+
+    const [originalMovements, createdLots, pendingCosts] = await Promise.all([
+      this.documents.listLotMovementsForDocument(original.id),
+      this.documents.listLotsCreatedByDocument(original.id),
+      this.documents.listPendingCostMatchesForDocument(original.id)
+    ]);
+    const movementLotIds = originalMovements.map((movement) => movement.lot_id);
+    const createdLotIds = createdLots.map((lot) => lot.id);
+    const lotIds = uniqueText([...movementLotIds, ...createdLotIds]);
+    const [movementLots, laterMovementLotIds] = await Promise.all([
+      this.documents.listLotsByIds(lotIds),
+      this.documents.listLaterMovementLotIds({ lotIds, originalDocumentId: original.id })
+    ]);
+
+    return planSafeFifoReversalEffects({
+      reversalDocumentId,
+      originalDocumentId: original.id,
+      originalDocumentType: original.document_type,
+      reversalDate,
+      originalMovements: originalMovements.map((movement) => ({
+        id: movement.id,
+        lotId: movement.lot_id,
+        movementType: movement.movement_type as LotMovementType,
+        fromAccountId: movement.from_account_id,
+        toAccountId: movement.to_account_id,
+        fromPersonId: movement.from_person_id,
+        toPersonId: movement.to_person_id,
+        amountMinor: movement.amount_minor,
+        usdtCostMinor: movement.usdt_cost_minor,
+        createdAt: movement.created_at
+      })),
+      lots: [...movementLots, ...createdLots].map((lot) => ({
+        id: lot.id,
+        originalAmountMinor: lot.original_amount_minor,
+        remainingAmountMinor: lot.remaining_amount_minor,
+        originalUsdtCostMinor: lot.original_usdt_cost_minor,
+        remainingUsdtCostMinor: lot.remaining_usdt_cost_minor,
+        currentAccountId: lot.current_account_id,
+        currentPersonId: lot.current_person_id,
+        sourceDocumentId: lot.source_document_id
+      })),
+      pendingCosts: pendingCosts.map((pendingCost) => ({
+        id: pendingCost.id,
+        remainingAmountMinor: pendingCost.remaining_amount_minor
+      })),
+      laterMovementLotIds: laterMovementLotIds.map((row) => row.lot_id)
     });
   }
 
@@ -362,4 +491,8 @@ function mapPendingCostMatchRow(row: PendingCostMatchRow) {
     expenseDate: row.expense_date,
     createdAt: row.created_at
   };
+}
+
+function uniqueText(values: string[]) {
+  return [...new Set(values.filter((value) => value.trim()))];
 }
