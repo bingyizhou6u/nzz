@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { accountBalances, loanAging, loanAllocations, loanWriteoffs, lotBalances } from "../../src/api/reports";
+import {
+  accountBalances,
+  exceptionChecks,
+  expenseDetails,
+  expenseSummary,
+  loanAging,
+  loanAllocations,
+  loanWriteoffs,
+  lotBalances,
+  merchantIncome,
+  monthlyOperatingSummary,
+  projectIncome,
+  projectProfitLoss
+} from "../../src/api/reports";
 import { route } from "../../src/worker/router";
 import type { Env } from "../../src/worker/env";
 
@@ -7,15 +20,17 @@ function mockEnv(rows: unknown[] = []): Env {
   return mockEnvWithSql(rows).env;
 }
 
-function mockEnvWithSql(rows: unknown[] = []): { env: Env; sql: string[] } {
+function mockEnvWithSql(rows: unknown[] = []): { env: Env; sql: string[]; bindings: unknown[][] } {
   const sql: string[] = [];
+  const bindings: unknown[][] = [];
   return {
     env: {
       DB: {
         prepare: (query: string) => {
           sql.push(query);
           return {
-            bind() {
+            bind(...values: unknown[]) {
+              bindings.push(values);
               return this;
             },
             all: async () => ({ success: true, results: rows }),
@@ -26,7 +41,8 @@ function mockEnvWithSql(rows: unknown[] = []): { env: Env; sql: string[] } {
       } as unknown as D1Database,
       ASSETS: { fetch: async () => new Response("asset") } as unknown as Fetcher
     },
-    sql
+    sql,
+    bindings
   };
 }
 
@@ -89,6 +105,27 @@ describe("reports API", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ data: rows });
   });
+
+  it.each([
+    ["project income", projectIncome, "/api/reports/project-income?period=2026-04&projectId=proj_1"],
+    ["merchant income", merchantIncome, "/api/reports/merchant-income?period=2026-04"],
+    ["expense details", expenseDetails, "/api/reports/expense-details?period=2026-04"],
+    ["expense summary", expenseSummary, "/api/reports/expense-summary?period=2026-04"],
+    ["project profit loss", projectProfitLoss, "/api/reports/project-profit-loss?period=2026-04"],
+    ["monthly operating", monthlyOperatingSummary, "/api/reports/monthly-operating?period=2026-04"],
+    ["exception checks", exceptionChecks, "/api/reports/exception-checks?staleDays=45"]
+  ])("returns %s from formal report handler", async (_label, handler, pathname) => {
+    const rows = [{ id: "row_1" }];
+
+    const response = await handler({
+      request: new Request(`https://ledger.test${pathname}`),
+      env: mockEnv(rows),
+      params: {}
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: rows });
+  });
 });
 
 describe("report routes", () => {
@@ -101,7 +138,14 @@ describe("report routes", () => {
     "/api/reports/loan-writeoffs",
     "/api/reports/lots",
     "/api/reports/lot-movements",
-    "/api/reports/pending-costs"
+    "/api/reports/pending-costs",
+    "/api/reports/project-income",
+    "/api/reports/merchant-income",
+    "/api/reports/expense-details",
+    "/api/reports/expense-summary",
+    "/api/reports/project-profit-loss",
+    "/api/reports/monthly-operating",
+    "/api/reports/exception-checks"
   ])("routes GET %s", async (pathname) => {
     const response = await route(new Request(`https://ledger.test${pathname}`), mockEnv());
 
@@ -115,7 +159,14 @@ describe("report routes", () => {
     ["/api/reports/pending-costs", "from pending_cost_matches"],
     ["/api/reports/loan-aging", "from loan_items li"],
     ["/api/reports/loan-allocations", "from loan_allocations la"],
-    ["/api/reports/loan-writeoffs", "from loan_allocations la"]
+    ["/api/reports/loan-writeoffs", "from loan_allocations la"],
+    ["/api/reports/project-income", "from account_entries ae"],
+    ["/api/reports/merchant-income", "d.merchant_id is not null"],
+    ["/api/reports/expense-details", "from expense_detail_rows"],
+    ["/api/reports/expense-summary", "from expense_detail_rows"],
+    ["/api/reports/project-profit-loss", "from project_profit_loss_rows"],
+    ["/api/reports/monthly-operating", "from project_profit_loss_rows"],
+    ["/api/reports/exception-checks", "from pending_cost_matches pcm"]
   ])("routes GET %s to the expected report query", async (pathname, expectedFrom) => {
     const { env, sql } = mockEnvWithSql();
 
@@ -124,5 +175,21 @@ describe("report routes", () => {
     expect(response.status).toBe(200);
     expect(sql).toHaveLength(1);
     expect(normalizeSql(sql[0])).toContain(expectedFrom);
+  });
+
+  it("binds query params to formal report SQL", async () => {
+    const { env, sql, bindings } = mockEnvWithSql();
+
+    const response = await route(
+      new Request("https://ledger.test/api/reports/project-income?period=2026-04&projectId=proj_1&currencyCode=aed"),
+      env
+    );
+
+    expect(response.status).toBe(200);
+    expect(sql).toHaveLength(1);
+    expect(normalizeSql(sql[0])).toContain("d.period = ?");
+    expect(normalizeSql(sql[0])).toContain("d.project_id = ?");
+    expect(normalizeSql(sql[0])).toContain("ae.currency_code = ?");
+    expect(bindings).toEqual([["2026-04", "proj_1", "AED"]]);
   });
 });

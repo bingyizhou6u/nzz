@@ -9,14 +9,21 @@ import {
 import { createProject, listCurrencies } from "../api/masterData";
 import {
   accountBalances,
+  exceptionChecks,
+  expenseDetails,
+  expenseSummary,
   loanAging,
   loanAllocations,
   loanBalances,
   loanWriteoffs,
   lotBalances,
   lotMovements,
+  merchantIncome,
+  monthlyOperatingSummary,
   pendingCostMatches,
-  pettyCashPendingMatches
+  pettyCashPendingMatches,
+  projectIncome,
+  projectProfitLoss
 } from "../api/reports";
 import type { Env, Handler } from "./env";
 
@@ -60,6 +67,13 @@ const routes: Route[] = [
   defineRoute("GET", "/api/reports/lots", lotBalances),
   defineRoute("GET", "/api/reports/lot-movements", lotMovements),
   defineRoute("GET", "/api/reports/pending-costs", pendingCostMatches),
+  defineRoute("GET", "/api/reports/project-income", projectIncome),
+  defineRoute("GET", "/api/reports/merchant-income", merchantIncome),
+  defineRoute("GET", "/api/reports/expense-details", expenseDetails),
+  defineRoute("GET", "/api/reports/expense-summary", expenseSummary),
+  defineRoute("GET", "/api/reports/project-profit-loss", projectProfitLoss),
+  defineRoute("GET", "/api/reports/monthly-operating", monthlyOperatingSummary),
+  defineRoute("GET", "/api/reports/exception-checks", exceptionChecks),
   defineRoute("GET", "/api/documents", listDocuments),
   defineRoute("GET", "/api/documents/:id", getDocument),
   defineRoute("POST", "/api/documents", createDocument),
