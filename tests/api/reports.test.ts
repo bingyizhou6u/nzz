@@ -57,7 +57,8 @@ describe("reports API", () => {
     const response = await accountBalances({
       request: new Request("https://ledger.test/api/reports/account-balances"),
       env: mockEnv(rows),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(200);
@@ -82,7 +83,8 @@ describe("reports API", () => {
     const response = await lotBalances({
       request: new Request("https://ledger.test/api/reports/lots"),
       env: mockEnv(rows),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(200);
@@ -99,7 +101,8 @@ describe("reports API", () => {
     const response = await handler({
       request: new Request(`https://ledger.test${pathname}`),
       env: mockEnv(rows),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(200);
@@ -120,7 +123,8 @@ describe("reports API", () => {
     const response = await handler({
       request: new Request(`https://ledger.test${pathname}`),
       env: mockEnv(rows),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(200);

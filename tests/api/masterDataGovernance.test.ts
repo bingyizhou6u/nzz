@@ -105,7 +105,8 @@ describe("master data governance API", () => {
     const response = await listMasterDataSnapshot({
       request: new Request("https://ledger.test/api/master-data"),
       env: mockEnv({ queues: [[{ id: "person_1", referenceCount: 0 }], [], [], [], [], []] }),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(200);
@@ -154,12 +155,14 @@ describe("master data governance API", () => {
     await listMasterDataMerchants({
       request: new Request("https://ledger.test/api/master-data/merchants?projectId=proj_1"),
       env: mockEnv({ queues: [[]], onBind: (values) => bindings.push(values) }),
-      params: {}
+      params: {},
+      actor: null
     });
     await listMasterDataAccounts({
       request: new Request("https://ledger.test/api/master-data/accounts?currencyCode=aed&accountType=petty_cash&ownerPersonId=person_1"),
       env: mockEnv({ queues: [[]], onBind: (values) => bindings.push(values) }),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(bindings).toContainEqual(["proj_1", "proj_1"]);
@@ -181,7 +184,8 @@ describe("master data governance write API", () => {
         })
       }),
       env: writeMockEnv({ enabledPeople: ["person_admin"] }),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(201);
@@ -204,7 +208,8 @@ describe("master data governance write API", () => {
         })
       }),
       env: writeMockEnv({ enabledPeople: ["person_admin"], projectStatuses: { proj_archived: "archived" } }),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -218,7 +223,8 @@ describe("master data governance write API", () => {
         body: JSON.stringify({ actor: "person_admin", name: "USDT", minorUnits: 2, isEnabled: false })
       }),
       env: writeMockEnv({ enabledPeople: ["person_admin"] }),
-      params: { code: "USDT" }
+      params: { code: "USDT" },
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -255,7 +261,8 @@ describe("master data governance write API", () => {
         ],
         onRunBindings: (values) => runBindings.push(values)
       }),
-      params: { id: "proj_1" }
+      params: { id: "proj_1" },
+      actor: null
     });
 
     expect(response.status).toBe(200);
@@ -274,7 +281,8 @@ describe("master data governance write API", () => {
         })
       }),
       env: writeMockEnv({ enabledPeople: ["person_admin"] }),
-      params: { id: "proj_missing" }
+      params: { id: "proj_missing" },
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -325,7 +333,8 @@ describe("master data governance write API", () => {
           }
         ]
       }),
-      params: { id: "merc_1" }
+      params: { id: "merc_1" },
+      actor: null
     });
 
     expect(response.status).toBe(200);
@@ -366,7 +375,8 @@ describe("master data governance write API", () => {
           }
         ]
       }),
-      params: { id: "acct_1" }
+      params: { id: "acct_1" },
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -417,7 +427,8 @@ describe("master data governance write API", () => {
           }
         ]
       }),
-      params: { id: "merc_1" }
+      params: { id: "merc_1" },
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -434,7 +445,8 @@ describe("master data governance write API", () => {
         enabledPeople: ["person_admin"],
         firstRows: [{ code: "AED", name: "Dirham", minor_units: 2, is_enabled: 1, referenceCount: 1 }]
       }),
-      params: { code: "AED" }
+      params: { code: "AED" },
+      actor: null
     });
 
     expect(response.status).toBe(400);

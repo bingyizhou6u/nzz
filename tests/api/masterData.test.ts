@@ -27,7 +27,8 @@ describe("master data API", () => {
     const response = await listCurrencies({
       request: new Request("https://ledger.test/api/currencies"),
       env: mockEnv({ rows: [{ code: "AED", name: "UAE Dirham", minor_units: 2, is_enabled: 1 }] }),
-      params: {}
+      params: {},
+      actor: null
     });
 
     await expect(response.json()).resolves.toEqual({
@@ -42,7 +43,8 @@ describe("master data API", () => {
         body: JSON.stringify({ code: "P001", name: "Project One", note: "Initial" })
       }),
       env: mockEnv(),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(201);
@@ -58,7 +60,8 @@ describe("master data API", () => {
         body: JSON.stringify({ code: "P001" })
       }),
       env: mockEnv(),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -76,7 +79,8 @@ describe("master data API", () => {
         body
       }),
       env: mockEnv(),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -90,7 +94,8 @@ describe("master data API", () => {
         body: "{"
       }),
       env: mockEnv(),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -107,7 +112,8 @@ describe("master data API", () => {
         body: JSON.stringify(body)
       }),
       env: mockEnv(),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(400);

@@ -68,7 +68,8 @@ describe("document entry option API", () => {
           ]
         ]
       }),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(200);
@@ -135,7 +136,8 @@ describe("document entry option API", () => {
           ]
         ]
       }),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(200);
@@ -208,7 +210,8 @@ describe("document entry option API", () => {
           ]
         ]
       }),
-      params: {}
+      params: {},
+      actor: null
     });
 
     const body = (await response.json()) as {

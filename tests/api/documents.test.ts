@@ -189,7 +189,8 @@ describe("documents API", () => {
         })
       }),
       env: mockEnv(),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -203,7 +204,8 @@ describe("documents API", () => {
         body: JSON.stringify({ actor: "freeform_user" })
       }),
       env: mockEnv(),
-      params: { id: "doc_1" }
+      params: { id: "doc_1" },
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -217,7 +219,8 @@ describe("documents API", () => {
         body: JSON.stringify({ reviewer: "freeform_user" })
       }),
       env: mockEnv(),
-      params: { id: "doc_1" }
+      params: { id: "doc_1" },
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -231,7 +234,8 @@ describe("documents API", () => {
         body: JSON.stringify({ actor: "freeform_user", reason: "Missing receipt" })
       }),
       env: mockEnv(),
-      params: { id: "doc_1" }
+      params: { id: "doc_1" },
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -257,7 +261,8 @@ describe("documents API", () => {
           if (sql.toLowerCase().includes("insert into documents")) boundValues = values;
         }
       }),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(201);
@@ -289,7 +294,8 @@ describe("documents API", () => {
           if (sql.toLowerCase().includes("insert into documents")) boundValues = values;
         }
       }),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(201);
@@ -310,7 +316,8 @@ describe("documents API", () => {
         body
       }),
       env: mockEnv(),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -331,7 +338,8 @@ describe("documents API", () => {
         })
       }),
       env: mockEnv(),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -353,7 +361,8 @@ describe("documents API", () => {
         })
       }),
       env: mockEnv(),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -378,7 +387,8 @@ describe("documents API", () => {
         })
       }),
       env: mockEnv(),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -401,7 +411,8 @@ describe("documents API", () => {
         })
       }),
       env: mockEnv(),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -427,7 +438,8 @@ describe("documents API", () => {
           })
         }),
         env: mockEnv(),
-        params: {}
+        params: {},
+        actor: null
       });
 
       expect(response.status).toBe(400);
@@ -498,7 +510,8 @@ describe("documents API", () => {
             statements.find((statement) => statement.sql.toLowerCase().includes("insert into document_lines"))?.bindings ?? [];
         }
       }),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(201);
@@ -520,7 +533,8 @@ describe("documents API", () => {
         })
       }),
       env: mockEnv(),
-      params: {}
+      params: {},
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -560,7 +574,8 @@ describe("documents API", () => {
         firstResult: validProjectIncomeDocumentRow({ status: "draft", merchant_id: null }),
         allResultsQueue: [[lineRow()]]
       }),
-      params: { id: "doc_1" }
+      params: { id: "doc_1" },
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -602,7 +617,8 @@ describe("documents API", () => {
           currencyRows
         ]
       }),
-      params: { id: "doc_1" }
+      params: { id: "doc_1" },
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -692,7 +708,8 @@ describe("documents API", () => {
         firstResult: documentRow(),
         allResults: [lineRow()]
       }),
-      params: { id: "doc_1" }
+      params: { id: "doc_1" },
+      actor: null
     });
 
     expect(response.status).toBe(200);
@@ -703,7 +720,8 @@ describe("documents API", () => {
     const response = await getDocument({
       request: new Request("https://ledger.test/api/documents/doc_missing"),
       env: mockEnv(),
-      params: { id: "doc_missing" }
+      params: { id: "doc_missing" },
+      actor: null
     });
 
     expect(response.status).toBe(404);
@@ -717,7 +735,8 @@ describe("documents API", () => {
         body: JSON.stringify({})
       }),
       env: mockEnv(),
-      params: { id: "doc_1" }
+      params: { id: "doc_1" },
+      actor: null
     });
 
     expect(response.status).toBe(400);
@@ -731,7 +750,8 @@ describe("documents API", () => {
         body: JSON.stringify({ actor: "user_1" })
       }),
       env: mockEnv(),
-      params: { id: "doc_1" }
+      params: { id: "doc_1" },
+      actor: null
     });
 
     expect(response.status).toBe(400);
