@@ -113,6 +113,24 @@ describe("document page capability gating", () => {
     expect(documentTableBodyText(container)).not.toContain("DOC-PENDING");
   });
 
+  it("surfaces document list load failures without a filtered-count empty state", async () => {
+    const container = await renderDocumentsPage(
+      ["documents.view"],
+      [],
+      documentsFetchFailure("单据读取服务不可用")
+    );
+
+    await waitFor(() => {
+      expect(documentListStatusText(container)).toBe("读取失败");
+      expect(documentListNoticeText(container)).toContain("单据读取服务不可用");
+    });
+
+    const emptyCellText = documentEmptyCellText(container);
+    expect(emptyCellText).toBeTruthy();
+    expect(emptyCellText).not.toContain("显示");
+    expect(emptyCellText).not.toContain("总计");
+  });
+
   it("derives create and row workflow actions from capabilities", () => {
     expect(canCreateDraftDocument(["documents.view", "documents.create"])).toBe(true);
     expect(canCreateDraftDocument(["documents.view"])).toBe(false);
@@ -520,8 +538,12 @@ function draftDocument(id: string, documentNo: string, status: string) {
   };
 }
 
-async function renderDocumentsPage(capabilities: Capability[], documents: ReturnType<typeof draftDocument>[]) {
-  vi.stubGlobal("fetch", documentsFetch(documents));
+async function renderDocumentsPage(
+  capabilities: Capability[],
+  documents: ReturnType<typeof draftDocument>[],
+  fetchHandler: FetchHandler = documentsFetch(documents)
+) {
+  vi.stubGlobal("fetch", fetchHandler);
 
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -539,6 +561,25 @@ function documentsFetch(documents: ReturnType<typeof draftDocument>[]) {
     const url = String(input);
     if (url === "/api/documents") {
       return Promise.resolve(jsonResponse({ data: documents }));
+    }
+    if (url === "/api/document-entry/options") {
+      return Promise.resolve(
+        jsonResponse({
+          data: { people: [], projects: [], merchants: [], accounts: [], currencies: [], categories: [] }
+        })
+      );
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  });
+}
+
+function documentsFetchFailure(message: string) {
+  return vi.fn<FetchHandler>().mockImplementation((input) => {
+    const url = String(input);
+    if (url === "/api/documents") {
+      return Promise.resolve(
+        jsonResponse({ error: message }, { status: 503, statusText: "Service Unavailable" })
+      );
     }
     if (url === "/api/document-entry/options") {
       return Promise.resolve(
@@ -614,6 +655,10 @@ function documentNumbers(container: HTMLElement) {
 
 function documentEmptyCellText(container: HTMLElement) {
   return documentListPanel(container).querySelector(".empty-cell")?.textContent?.trim();
+}
+
+function documentListNoticeText(container: HTMLElement) {
+  return documentListPanel(container).querySelector(".notice")?.textContent?.trim();
 }
 
 function documentTableBodyText(container: HTMLElement) {

@@ -1130,7 +1130,7 @@ textarea {
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 1120px) {
+@media (max-width: 1280px) {
   .documents-workspace {
     grid-template-columns: 1fr;
   }
