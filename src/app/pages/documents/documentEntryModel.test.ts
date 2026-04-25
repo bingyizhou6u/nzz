@@ -40,7 +40,10 @@ const options: DocumentEntryOptions = {
       status: "active"
     }
   ],
-  currencies: [{ code: "AED", name: "迪拉姆", minor_units: 2, is_enabled: 1 }],
+  currencies: [
+    { code: "AED", name: "迪拉姆", minor_units: 2, is_enabled: 1 },
+    { code: "USDT", name: "Tether", minor_units: 2, is_enabled: 1 }
+  ],
   categories: [
     {
       id: "cat_income",
@@ -129,6 +132,28 @@ describe("document entry model", () => {
     );
 
     expect(errors).toContain("转出账户和转入账户不能相同");
+  });
+
+  it("requires currency to match the selected account currency", () => {
+    const errors = validateDocumentForm(
+      {
+        ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),
+        documentType: "project_income",
+        operatorPersonId: "person_ops",
+        projectId: "proj_1",
+        merchantId: "merchant_1",
+        categoryId: "cat_income",
+        accountId: "acct_company_aed",
+        currencyCode: "USDT",
+        amountMajor: "120.50",
+        usdtAmountMajor: "32.84",
+        summary: "Merchant income"
+      },
+      options,
+      "person_ops"
+    );
+
+    expect(errors).toContain("币种必须与账户币种一致");
   });
 
   it("reports a single original document error when reversal is missing the original document", () => {

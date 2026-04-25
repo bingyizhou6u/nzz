@@ -237,6 +237,14 @@ export function validateDocumentForm(
   ) {
     errors.push("转出账户和转入账户不能相同");
   }
+  const selectedAccountCurrency = accountCurrencyCode(options, form.accountId.trim());
+  if (
+    selectedAccountCurrency &&
+    form.currencyCode.trim() &&
+    selectedAccountCurrency.toUpperCase() !== form.currencyCode.trim().toUpperCase()
+  ) {
+    errors.push("币种必须与账户币种一致");
+  }
   return errors;
 }
 

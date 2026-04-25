@@ -5,7 +5,14 @@ import {
   formatLocalMonthInputValue,
   isOriginalDocumentRequired
 } from "./documents/documentEntryModel";
-import { canApproveDocument, canSubmitDocument, isLineAccountRequired, workflowActionBody } from "./DocumentsPage";
+import {
+  canApproveDocument,
+  canSubmitDocument,
+  isLineAccountRequired,
+  isSelectedOriginalDocumentValid,
+  originalDocumentQueryType,
+  workflowActionBody
+} from "./DocumentsPage";
 
 describe("document date defaults", () => {
   it("formats date inputs from local calendar fields", () => {
@@ -204,5 +211,20 @@ describe("document date defaults", () => {
     expect(workflowActionBody("submit", "person_finance")).toEqual({ actor: "person_finance" });
     expect(workflowActionBody("approve", "person_manager")).toEqual({ reviewer: "person_manager" });
     expect(workflowActionBody("reject", "person_manager")).toEqual({ actor: "person_manager", reason: "退回修改" });
+  });
+
+  it("loads loan origin documents for normal loan settlement documents", () => {
+    expect(originalDocumentQueryType("loan_repayment", "normal")).toBe("loan_out");
+    expect(originalDocumentQueryType("loan_writeoff", "normal")).toBe("loan_out");
+    expect(originalDocumentQueryType("project_income", "reversal")).toBe("project_income");
+    expect(originalDocumentQueryType("project_income", "normal")).toBeNull();
+  });
+
+  it("accepts only original document ids from the loaded options", () => {
+    const originalDocuments = [{ id: "doc_1" }];
+
+    expect(isSelectedOriginalDocumentValid("doc_1", originalDocuments)).toBe(true);
+    expect(isSelectedOriginalDocumentValid("stale_doc", originalDocuments)).toBe(false);
+    expect(isSelectedOriginalDocumentValid("", originalDocuments)).toBe(true);
   });
 });

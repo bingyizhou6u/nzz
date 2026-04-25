@@ -225,6 +225,7 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
           getLabel={currencyLabel}
           onChange={(value) => updateField("currencyCode", value)}
           required
+          disabled={Boolean(form.accountId)}
         />
       ) : null}
 

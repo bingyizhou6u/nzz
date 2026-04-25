@@ -95,6 +95,23 @@ export function workflowActionBody(action: WorkflowAction, actorId: string) {
   return { actor };
 }
 
+export function originalDocumentQueryType(documentType: DocumentType, actionType: ActionType): DocumentType | null {
+  if (isOriginalDocumentRequired(actionType)) return documentType;
+  if (actionType === "normal" && (documentType === "loan_repayment" || documentType === "loan_writeoff")) {
+    return "loan_out";
+  }
+  return null;
+}
+
+export function isSelectedOriginalDocumentValid(
+  originalDocumentId: string,
+  originalDocuments: Array<{ id: string }>
+) {
+  const selectedId = originalDocumentId.trim();
+  if (!selectedId) return true;
+  return originalDocuments.some((document) => document.id === selectedId);
+}
+
 export function DocumentsPage() {
   const initialForm = useMemo(() => createInitialDocumentForm(), []);
   const emptyOptions = useMemo<DocumentEntryOptions>(
@@ -111,6 +128,7 @@ export function DocumentsPage() {
   const [areOptionsLoading, setAreOptionsLoading] = useState(true);
   const [areOriginalDocumentsLoading, setAreOriginalDocumentsLoading] = useState(false);
   const [optionsError, setOptionsError] = useState<string | null>(null);
+  const [originalDocumentsError, setOriginalDocumentsError] = useState<string | null>(null);
   const [currentActorId, setCurrentActorId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionKey, setActionKey] = useState<string | null>(null);
@@ -180,14 +198,17 @@ export function DocumentsPage() {
     let isCurrent = true;
 
     async function loadOriginalDocuments() {
-      if (!isOriginalDocumentRequired(form.actionType)) {
+      const queryDocumentType = originalDocumentQueryType(form.documentType, form.actionType);
+      if (!queryDocumentType) {
         setOriginalDocuments([]);
+        setOriginalDocumentsError(null);
         setAreOriginalDocumentsLoading(false);
         return;
       }
 
       setAreOriginalDocumentsLoading(true);
-      const query = `?documentType=${encodeURIComponent(form.documentType)}`;
+      setOriginalDocumentsError(null);
+      const query = `?documentType=${encodeURIComponent(queryDocumentType)}`;
       const response = await getJson<ApiEnvelope<OriginalDocumentOption[]>>(
         `/api/document-entry/original-documents${query}`
       );
@@ -199,7 +220,8 @@ export function DocumentsPage() {
     void loadOriginalDocuments()
       .catch((loadOriginalDocumentsError) => {
         if (isCurrent) {
-          setError(
+          setOriginalDocuments([]);
+          setOriginalDocumentsError(
             loadOriginalDocumentsError instanceof Error ? loadOriginalDocumentsError.message : "读取原单据失败"
           );
         }
@@ -227,6 +249,14 @@ export function DocumentsPage() {
     const validationErrors = validateDocumentForm(form, entryOptions, currentActorId);
     if (validationErrors.length > 0) {
       setError(validationErrors.join("；"));
+      return;
+    }
+    if (originalDocumentsError) {
+      setError(originalDocumentsError);
+      return;
+    }
+    if (!isSelectedOriginalDocumentValid(form.originalDocumentId, originalDocuments)) {
+      setError("请选择有效原单据");
       return;
     }
 
@@ -487,6 +517,8 @@ export function DocumentsPage() {
             originalDocuments={originalDocuments}
           />
 
+          {originalDocumentsError ? <div className="notice error wide-field">{originalDocumentsError}</div> : null}
+
           <div className="form-actions">
             <button
               type="submit"
@@ -495,6 +527,7 @@ export function DocumentsPage() {
                 areOptionsLoading ||
                 areOriginalDocumentsLoading ||
                 Boolean(optionsError) ||
+                Boolean(originalDocumentsError) ||
                 !currentActorId
               }
             >
