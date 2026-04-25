@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   documentRuleMessages,
+  isOriginalRequiredForDocument,
+  requiredHeaderFieldsFor,
+  requiredLineFieldsFor,
   validateDocumentMasterData,
   validateDocumentStructure,
   type DocumentMasterDataSnapshot,
@@ -195,9 +198,53 @@ describe("document structure rules", () => {
 
     expect(errors).toEqual([]);
   });
+
+  it("rejects unsupported correction and repost actions", () => {
+    for (const actionType of ["correction", "repost"] as const) {
+      const errors = validateDocumentStructure({
+        stage: "submit",
+        document: document({ actionType }),
+        lines: [line()]
+      });
+
+      expect(errors).toEqual([{ field: "actionType", message: documentRuleMessages.unsupportedDocumentType }]);
+    }
+  });
+});
+
+describe("document rule helper fields", () => {
+  it("detects when original documents are required", () => {
+    expect(isOriginalRequiredForDocument("project_income", "reversal")).toBe(true);
+    expect(isOriginalRequiredForDocument("loan_repayment", "normal")).toBe(true);
+    expect(isOriginalRequiredForDocument("loan_writeoff", "normal")).toBe(true);
+    expect(isOriginalRequiredForDocument("project_income", "normal")).toBe(false);
+    expect(isOriginalRequiredForDocument("loan_repayment", "correction")).toBe(false);
+  });
+
+  it("returns reversal-only required fields", () => {
+    expect(requiredHeaderFieldsFor("project_income", "reversal")).toEqual(["originalDocumentId", "summary"]);
+    expect(requiredLineFieldsFor("project_income", "reversal")).toEqual([]);
+  });
+
+  it("returns no required fields for unsupported document or action helpers", () => {
+    expect(requiredHeaderFieldsFor("manual_adjustment", "normal")).toEqual([]);
+    expect(requiredLineFieldsFor("manual_adjustment", "normal")).toEqual([]);
+    expect(requiredHeaderFieldsFor("project_income", "repost")).toEqual([]);
+    expect(requiredLineFieldsFor("project_income", "repost")).toEqual([]);
+  });
 });
 
 describe("document master data rules", () => {
+  it("rejects unsupported master-data validation actions", () => {
+    const errors = validateDocumentMasterData({
+      document: document({ actionType: "correction" }),
+      lines: [line()],
+      masterData: masterData()
+    });
+
+    expect(errors).toEqual([{ field: "actionType", message: documentRuleMessages.unsupportedDocumentType }]);
+  });
+
   it("rejects merchant outside the selected project", () => {
     const snapshot = masterData({
       merchants: new Map([["merchant_1", { id: "merchant_1", project_id: "proj_2", status: "active" }]])
@@ -287,6 +334,28 @@ describe("document master data rules", () => {
         borrowerPersonId: "person_ops"
       },
       originalLines: [line({ borrowerPersonId: "person_ops", currencyCode: "AED" })]
+    });
+
+    expect(errors.map((error) => error.message)).toContain(documentRuleMessages.loanBorrowerMatch);
+  });
+
+  it("rejects loan line borrowers that conflict with the header borrower", () => {
+    const errors = validateDocumentMasterData({
+      document: document({
+        documentType: "loan_repayment",
+        borrowerPersonId: "person_bob",
+        originalDocumentId: "doc_loan",
+        categoryId: null
+      }),
+      lines: [line({ borrowerPersonId: "person_ops" })],
+      masterData: masterData(),
+      originalDocument: {
+        id: "doc_loan",
+        documentType: "loan_out",
+        status: "approved",
+        borrowerPersonId: "person_bob"
+      },
+      originalLines: [line({ borrowerPersonId: "person_bob", currencyCode: "AED" })]
     });
 
     expect(errors.map((error) => error.message)).toContain(documentRuleMessages.loanBorrowerMatch);

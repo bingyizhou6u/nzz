@@ -122,7 +122,7 @@ export interface ValidateDocumentMasterDataInput {
   originalLines?: DocumentRuleLine[];
 }
 
-type HeaderField =
+export type DocumentRuleHeaderField =
   | "operatorPersonId"
   | "projectId"
   | "merchantId"
@@ -131,11 +131,17 @@ type HeaderField =
   | "personId"
   | "borrowerPersonId"
   | "summary";
-type LineField = "accountId" | "counterpartyAccountId" | "personId" | "currencyCode" | "amountMinor" | "usdtAmountMinor";
+export type DocumentRuleLineField =
+  | "accountId"
+  | "counterpartyAccountId"
+  | "personId"
+  | "currencyCode"
+  | "amountMinor"
+  | "usdtAmountMinor";
 
-interface DocumentRuleDefinition {
-  headerFields: HeaderField[];
-  lineFields: LineField[];
+export interface DocumentRuleDefinition {
+  headerFields: DocumentRuleHeaderField[];
+  lineFields: DocumentRuleLineField[];
   singleLine: boolean;
 }
 
@@ -150,6 +156,8 @@ export const SUPPORTED_DOCUMENT_TYPES = new Set<DocumentType>([
   "loan_repayment",
   "loan_writeoff"
 ]);
+
+const SUPPORTED_ACTION_TYPES = new Set<ActionType>(["normal", "reversal"]);
 
 export const DOCUMENT_RULES: Record<DocumentType, DocumentRuleDefinition> = {
   project_income: {
@@ -204,7 +212,7 @@ export const DOCUMENT_RULES: Record<DocumentType, DocumentRuleDefinition> = {
   }
 };
 
-const messageByHeaderField: Record<HeaderField, string> = {
+const messageByHeaderField: Record<DocumentRuleHeaderField, string> = {
   operatorPersonId: documentRuleMessages.personRequired,
   projectId: documentRuleMessages.projectRequired,
   merchantId: documentRuleMessages.merchantRequired,
@@ -215,7 +223,7 @@ const messageByHeaderField: Record<HeaderField, string> = {
   summary: documentRuleMessages.summaryRequired
 };
 
-const messageByLineField: Record<LineField, string> = {
+const messageByLineField: Record<DocumentRuleLineField, string> = {
   accountId: documentRuleMessages.accountRequired,
   counterpartyAccountId: documentRuleMessages.counterpartyAccountRequired,
   personId: documentRuleMessages.personRequired,
@@ -250,7 +258,8 @@ export function isOriginalRequiredForDocument(documentType: DocumentType, action
   return actionType === "reversal" || (actionType === "normal" && isLoanSettlementDocumentType(documentType));
 }
 
-export function requiredHeaderFieldsFor(documentType: DocumentType, actionType: ActionType): HeaderField[] {
+export function requiredHeaderFieldsFor(documentType: DocumentType, actionType: ActionType): DocumentRuleHeaderField[] {
+  if (!isSupportedDocumentType(documentType) || !isSupportedActionType(actionType)) return [];
   if (actionType === "reversal") return ["originalDocumentId", "summary"];
 
   const fields = [...DOCUMENT_RULES[documentType].headerFields];
@@ -260,7 +269,8 @@ export function requiredHeaderFieldsFor(documentType: DocumentType, actionType: 
   return fields;
 }
 
-export function requiredLineFieldsFor(documentType: DocumentType, actionType: ActionType): LineField[] {
+export function requiredLineFieldsFor(documentType: DocumentType, actionType: ActionType): DocumentRuleLineField[] {
+  if (!isSupportedDocumentType(documentType) || !isSupportedActionType(actionType)) return [];
   if (actionType === "reversal") return [];
   return [...DOCUMENT_RULES[documentType].lineFields];
 }
@@ -272,6 +282,10 @@ function validateDocumentStructureUnsafe(input: ValidateDocumentStructureInput):
 
   if (!isSupportedDocumentType(document.documentType)) {
     addViolation(errors, "documentType", documentRuleMessages.unsupportedDocumentType);
+    return errors;
+  }
+  if (!isSupportedActionType(document.actionType)) {
+    addViolation(errors, "actionType", documentRuleMessages.unsupportedDocumentType);
     return errors;
   }
 
@@ -317,6 +331,10 @@ function validateDocumentMasterDataUnsafe(input: ValidateDocumentMasterDataInput
     addViolation(errors, "documentType", documentRuleMessages.unsupportedDocumentType);
     return errors;
   }
+  if (!isSupportedActionType(document.actionType)) {
+    addViolation(errors, "actionType", documentRuleMessages.unsupportedDocumentType);
+    return errors;
+  }
 
   if (document.actionType === "reversal") {
     validateReversalOriginal(errors, document, input.originalDocument);
@@ -328,6 +346,7 @@ function validateDocumentMasterDataUnsafe(input: ValidateDocumentMasterDataInput
   validateCategory(errors, document, lines, masterData);
   validateCurrencies(errors, lines, masterData);
   validateAccounts(errors, document.documentType, lines, masterData);
+  validateLoanBorrowers(errors, document, lines);
   validateLoanSettlement(errors, document, lines, input.originalDocument, input.originalLines ?? []);
 
   return errors;
@@ -337,7 +356,7 @@ function validateRequiredHeaderFields(
   errors: DocumentRuleViolation[],
   document: DocumentRuleDocument,
   lines: DocumentRuleLine[],
-  fields: HeaderField[]
+  fields: DocumentRuleHeaderField[]
 ) {
   for (const field of fields) {
     if (!hasHeaderField(document, lines, field)) {
@@ -547,6 +566,21 @@ function validateLoanSettlement(
   }
 }
 
+function validateLoanBorrowers(errors: DocumentRuleViolation[], document: DocumentRuleDocument, lines: DocumentRuleLine[]) {
+  if (!isLoanDocumentType(document.documentType)) return;
+
+  const borrowerPersonId = currentBorrowerPersonId(document, lines);
+  if (!borrowerPersonId) return;
+
+  for (const line of lines) {
+    const lineBorrowerPersonId = text(line.borrowerPersonId);
+    if (lineBorrowerPersonId && lineBorrowerPersonId !== borrowerPersonId) {
+      addViolation(errors, "borrowerPersonId", documentRuleMessages.loanBorrowerMatch);
+      return;
+    }
+  }
+}
+
 function accountForLine(
   errors: DocumentRuleViolation[],
   masterData: DocumentMasterDataSnapshot,
@@ -613,13 +647,13 @@ function requireDifferentAccounts(errors: DocumentRuleViolation[], line: Documen
   }
 }
 
-function hasHeaderField(document: DocumentRuleDocument, lines: DocumentRuleLine[], field: HeaderField) {
+function hasHeaderField(document: DocumentRuleDocument, lines: DocumentRuleLine[], field: DocumentRuleHeaderField) {
   if (field === "personId") return Boolean(currentPersonId(lines));
   if (field === "borrowerPersonId") return Boolean(currentBorrowerPersonId(document, lines));
   return hasText(document[field]);
 }
 
-function hasLineField(line: DocumentRuleLine, field: LineField) {
+function hasLineField(line: DocumentRuleLine, field: DocumentRuleLineField) {
   if (field === "amountMinor" || field === "usdtAmountMinor") {
     const value = line[field];
     return Number.isSafeInteger(value) && (value as number) > 0;
@@ -639,8 +673,16 @@ function isLoanSettlementDocumentType(documentType: DocumentType) {
   return documentType === "loan_repayment" || documentType === "loan_writeoff";
 }
 
+function isLoanDocumentType(documentType: DocumentType) {
+  return documentType === "loan_out" || isLoanSettlementDocumentType(documentType);
+}
+
 function isSupportedDocumentType(documentType: DocumentType) {
   return SUPPORTED_DOCUMENT_TYPES.has(documentType);
+}
+
+function isSupportedActionType(actionType: ActionType) {
+  return SUPPORTED_ACTION_TYPES.has(actionType);
 }
 
 function mapGet<T>(map: Map<string, T>, key: string): T | undefined {
@@ -657,7 +699,7 @@ function violation(field: string, message: string): DocumentRuleViolation {
   return { field, message };
 }
 
-function lineFieldName(index: number, field: LineField) {
+function lineFieldName(index: number, field: DocumentRuleLineField) {
   return `lines.${index}.${field}`;
 }
 
