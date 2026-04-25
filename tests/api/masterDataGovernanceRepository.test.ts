@@ -59,6 +59,29 @@ describe("MasterDataGovernanceRepository read model", () => {
     expect(sql).toContain("referencecount");
   });
 
+  it("avoids compound selects for high fan-out reference counts", async () => {
+    const capturedSql: string[] = [];
+    const repo = new MasterDataGovernanceRepository(
+      mockDb({
+        rows: [],
+        firstRow: null,
+        onSql: (sql) => capturedSql.push(sql)
+      })
+    );
+
+    await repo.listPeople();
+    await repo.listAccounts();
+    await repo.listCurrencies();
+    await repo.getPerson("person_1");
+    await repo.getAccount("account_1");
+    await repo.getCurrency("AED");
+
+    for (const sql of capturedSql.map(normalizeSql)) {
+      expect(sql).not.toContain(" union all ");
+      expect(sql).toContain("referencecount");
+    }
+  });
+
   it("lists projects with reference counts", async () => {
     const row = {
       id: "proj_1",

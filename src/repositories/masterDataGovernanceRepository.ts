@@ -209,21 +209,7 @@ export class MasterDataGovernanceRepository {
       this.db.prepare(`
         SELECT
           p.id, p.name, p.alias, p.roles_json, p.is_enabled, p.created_at,
-          (
-            SELECT COUNT(*) FROM (
-              SELECT operator_person_id AS ref_id FROM documents WHERE operator_person_id = p.id
-              UNION ALL SELECT person_id FROM document_lines WHERE person_id = p.id
-              UNION ALL SELECT borrower_person_id FROM document_lines WHERE borrower_person_id = p.id
-              UNION ALL SELECT owner_person_id FROM projects WHERE owner_person_id = p.id
-              UNION ALL SELECT owner_person_id FROM merchants WHERE owner_person_id = p.id
-              UNION ALL SELECT owner_person_id FROM accounts WHERE owner_person_id = p.id
-              UNION ALL SELECT current_person_id FROM lots WHERE current_person_id = p.id
-              UNION ALL SELECT from_person_id FROM lot_movements WHERE from_person_id = p.id
-              UNION ALL SELECT to_person_id FROM lot_movements WHERE to_person_id = p.id
-              UNION ALL SELECT person_id FROM pending_cost_matches WHERE person_id = p.id
-              UNION ALL SELECT borrower_person_id FROM loan_entries WHERE borrower_person_id = p.id
-            )
-          ) AS referenceCount
+          ${this.personReferenceCountSql("p")} AS referenceCount
         FROM people p
         ORDER BY p.is_enabled DESC, p.name, p.id
       `)
@@ -271,17 +257,7 @@ export class MasterDataGovernanceRepository {
         SELECT
           a.id, a.name, a.account_type, a.currency_code, a.owner_person_id,
           a.is_company_account, a.allow_negative, a.status, a.created_at,
-          (
-            SELECT COUNT(*) FROM (
-              SELECT account_id AS ref_id FROM document_lines WHERE account_id = a.id
-              UNION ALL SELECT counterparty_account_id FROM document_lines WHERE counterparty_account_id = a.id
-              UNION ALL SELECT account_id FROM account_entries WHERE account_id = a.id
-              UNION ALL SELECT current_account_id FROM lots WHERE current_account_id = a.id
-              UNION ALL SELECT from_account_id FROM lot_movements WHERE from_account_id = a.id
-              UNION ALL SELECT to_account_id FROM lot_movements WHERE to_account_id = a.id
-              UNION ALL SELECT account_id FROM pending_cost_matches WHERE account_id = a.id
-            )
-          ) AS referenceCount
+          ${this.accountReferenceCountSql("a")} AS referenceCount
         FROM accounts a
         WHERE
           (? IS NULL OR a.currency_code = ?)
@@ -297,16 +273,7 @@ export class MasterDataGovernanceRepository {
       this.db.prepare(`
         SELECT
           c.code, c.name, c.minor_units, c.is_enabled,
-          (
-            SELECT COUNT(*) FROM (
-              SELECT currency_code AS ref_id FROM accounts WHERE currency_code = c.code
-              UNION ALL SELECT currency_code FROM document_lines WHERE currency_code = c.code
-              UNION ALL SELECT currency_code FROM account_entries WHERE currency_code = c.code
-              UNION ALL SELECT currency_code FROM loan_entries WHERE currency_code = c.code
-              UNION ALL SELECT currency_code FROM lots WHERE currency_code = c.code
-              UNION ALL SELECT currency_code FROM pending_cost_matches WHERE currency_code = c.code
-            )
-          ) AS referenceCount
+          ${this.currencyReferenceCountSql("c")} AS referenceCount
         FROM currencies c
         ORDER BY c.is_enabled DESC, c.code
       `)
@@ -707,21 +674,7 @@ export class MasterDataGovernanceRepository {
     return `
       SELECT
         p.id, p.name, p.alias, p.roles_json, p.is_enabled, p.created_at,
-        (
-          SELECT COUNT(*) FROM (
-            SELECT operator_person_id AS ref_id FROM documents WHERE operator_person_id = p.id
-            UNION ALL SELECT person_id FROM document_lines WHERE person_id = p.id
-            UNION ALL SELECT borrower_person_id FROM document_lines WHERE borrower_person_id = p.id
-            UNION ALL SELECT owner_person_id FROM projects WHERE owner_person_id = p.id
-            UNION ALL SELECT owner_person_id FROM merchants WHERE owner_person_id = p.id
-            UNION ALL SELECT owner_person_id FROM accounts WHERE owner_person_id = p.id
-            UNION ALL SELECT current_person_id FROM lots WHERE current_person_id = p.id
-            UNION ALL SELECT from_person_id FROM lot_movements WHERE from_person_id = p.id
-            UNION ALL SELECT to_person_id FROM lot_movements WHERE to_person_id = p.id
-            UNION ALL SELECT person_id FROM pending_cost_matches WHERE person_id = p.id
-            UNION ALL SELECT borrower_person_id FROM loan_entries WHERE borrower_person_id = p.id
-          )
-        ) AS referenceCount
+        ${this.personReferenceCountSql("p")} AS referenceCount
       FROM people p
     `;
   }
@@ -755,17 +708,7 @@ export class MasterDataGovernanceRepository {
       SELECT
         a.id, a.name, a.account_type, a.currency_code, a.owner_person_id,
         a.is_company_account, a.allow_negative, a.status, a.created_at,
-        (
-          SELECT COUNT(*) FROM (
-            SELECT account_id AS ref_id FROM document_lines WHERE account_id = a.id
-            UNION ALL SELECT counterparty_account_id FROM document_lines WHERE counterparty_account_id = a.id
-            UNION ALL SELECT account_id FROM account_entries WHERE account_id = a.id
-            UNION ALL SELECT current_account_id FROM lots WHERE current_account_id = a.id
-            UNION ALL SELECT from_account_id FROM lot_movements WHERE from_account_id = a.id
-            UNION ALL SELECT to_account_id FROM lot_movements WHERE to_account_id = a.id
-            UNION ALL SELECT account_id FROM pending_cost_matches WHERE account_id = a.id
-          )
-        ) AS referenceCount
+        ${this.accountReferenceCountSql("a")} AS referenceCount
       FROM accounts a
     `;
   }
@@ -774,18 +717,48 @@ export class MasterDataGovernanceRepository {
     return `
       SELECT
         c.code, c.name, c.minor_units, c.is_enabled,
-        (
-          SELECT COUNT(*) FROM (
-            SELECT currency_code AS ref_id FROM accounts WHERE currency_code = c.code
-            UNION ALL SELECT currency_code FROM document_lines WHERE currency_code = c.code
-            UNION ALL SELECT currency_code FROM account_entries WHERE currency_code = c.code
-            UNION ALL SELECT currency_code FROM loan_entries WHERE currency_code = c.code
-            UNION ALL SELECT currency_code FROM lots WHERE currency_code = c.code
-            UNION ALL SELECT currency_code FROM pending_cost_matches WHERE currency_code = c.code
-          )
-        ) AS referenceCount
+        ${this.currencyReferenceCountSql("c")} AS referenceCount
       FROM currencies c
     `;
+  }
+
+  private personReferenceCountSql(alias: string) {
+    return `(
+      (SELECT COUNT(*) FROM documents WHERE operator_person_id = ${alias}.id)
+      + (SELECT COUNT(*) FROM document_lines WHERE person_id = ${alias}.id)
+      + (SELECT COUNT(*) FROM document_lines WHERE borrower_person_id = ${alias}.id)
+      + (SELECT COUNT(*) FROM projects WHERE owner_person_id = ${alias}.id)
+      + (SELECT COUNT(*) FROM merchants WHERE owner_person_id = ${alias}.id)
+      + (SELECT COUNT(*) FROM accounts WHERE owner_person_id = ${alias}.id)
+      + (SELECT COUNT(*) FROM lots WHERE current_person_id = ${alias}.id)
+      + (SELECT COUNT(*) FROM lot_movements WHERE from_person_id = ${alias}.id)
+      + (SELECT COUNT(*) FROM lot_movements WHERE to_person_id = ${alias}.id)
+      + (SELECT COUNT(*) FROM pending_cost_matches WHERE person_id = ${alias}.id)
+      + (SELECT COUNT(*) FROM loan_entries WHERE borrower_person_id = ${alias}.id)
+    )`;
+  }
+
+  private accountReferenceCountSql(alias: string) {
+    return `(
+      (SELECT COUNT(*) FROM document_lines WHERE account_id = ${alias}.id)
+      + (SELECT COUNT(*) FROM document_lines WHERE counterparty_account_id = ${alias}.id)
+      + (SELECT COUNT(*) FROM account_entries WHERE account_id = ${alias}.id)
+      + (SELECT COUNT(*) FROM lots WHERE current_account_id = ${alias}.id)
+      + (SELECT COUNT(*) FROM lot_movements WHERE from_account_id = ${alias}.id)
+      + (SELECT COUNT(*) FROM lot_movements WHERE to_account_id = ${alias}.id)
+      + (SELECT COUNT(*) FROM pending_cost_matches WHERE account_id = ${alias}.id)
+    )`;
+  }
+
+  private currencyReferenceCountSql(alias: string) {
+    return `(
+      (SELECT COUNT(*) FROM accounts WHERE currency_code = ${alias}.code)
+      + (SELECT COUNT(*) FROM document_lines WHERE currency_code = ${alias}.code)
+      + (SELECT COUNT(*) FROM account_entries WHERE currency_code = ${alias}.code)
+      + (SELECT COUNT(*) FROM loan_entries WHERE currency_code = ${alias}.code)
+      + (SELECT COUNT(*) FROM lots WHERE currency_code = ${alias}.code)
+      + (SELECT COUNT(*) FROM pending_cost_matches WHERE currency_code = ${alias}.code)
+    )`;
   }
 
   private categorySelectSql() {
