@@ -62,6 +62,33 @@ describe("formal ui primitives", () => {
     expect(container.querySelector(".notice.danger")?.textContent).toBe("读取失败");
   });
 
+  it("merges notice class names with tone classes", async () => {
+    const container = await render(createElement(Notice, { tone: "danger", className: "wide-field", children: "读取失败" }));
+    const notice = container.querySelector(".notice");
+
+    expect(notice?.classList.contains("notice")).toBe(true);
+    expect(notice?.classList.contains("danger")).toBe(true);
+    expect(notice?.classList.contains("wide-field")).toBe(true);
+  });
+
+  it("uses assertive alert semantics for danger notices by default", async () => {
+    const container = await render(createElement(Notice, { tone: "danger", children: "读取失败" }));
+    const notice = container.querySelector(".notice");
+
+    expect(notice?.getAttribute("role")).toBe("alert");
+    expect(notice?.getAttribute("aria-live")).toBe("assertive");
+  });
+
+  it("allows callers to override notice live region semantics", async () => {
+    const container = await render(
+      createElement(Notice, { tone: "danger", role: "status", "aria-live": "polite", children: "后台同步中" })
+    );
+    const notice = container.querySelector(".notice");
+
+    expect(notice?.getAttribute("role")).toBe("status");
+    expect(notice?.getAttribute("aria-live")).toBe("polite");
+  });
+
   it("renders section titles with optional descriptions", async () => {
     const container = await render(createElement(SectionTitle, { title: "资金概览", description: "按币种汇总余额" }));
 

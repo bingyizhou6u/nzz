@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 
 export type Tone = "default" | "ok" | "warning" | "danger" | "muted";
 
@@ -24,8 +24,29 @@ export function EmptyState({ title, message }: { title: string; message: string 
   );
 }
 
-export function Notice({ tone = "default", children }: { tone?: Tone; children: ReactNode }) {
-  return <div className={`notice ${tone}`}>{children}</div>;
+type NoticeProps = HTMLAttributes<HTMLDivElement> & {
+  tone?: Tone;
+  children: ReactNode;
+};
+
+export function Notice({
+  tone = "default",
+  className,
+  children,
+  role,
+  "aria-live": ariaLive,
+  ...props
+}: NoticeProps) {
+  const isDanger = tone === "danger";
+  const noticeRole = role ?? (isDanger ? "alert" : "status");
+  const noticeAriaLive = ariaLive ?? (isDanger ? "assertive" : "polite");
+  const noticeClassName = ["notice", tone, className].filter(Boolean).join(" ");
+
+  return (
+    <div {...props} className={noticeClassName} role={noticeRole} aria-live={noticeAriaLive}>
+      {children}
+    </div>
+  );
 }
 
 export function SectionTitle({ title, description }: { title: string; description?: string }) {
