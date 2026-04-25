@@ -288,6 +288,26 @@ describe("document entry model", () => {
     expect(errors).not.toContain("请选择或填写借款人");
   });
 
+  it("preserves legacy reimbursement validation when derived state is not supplied", () => {
+    const errors = validateDocumentForm(
+      {
+        ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),
+        documentType: "petty_cash_reimbursement",
+        personId: "person_ops",
+        categoryId: "cat_plain_expense",
+        accountId: "acct_petty_ops",
+        currencyCode: "AED",
+        amountMajor: "20",
+        summary: "Legacy validation"
+      },
+      options,
+      "person_ops"
+    );
+
+    expect(errors).toContain("请选择或填写项目");
+    expect(errors).not.toContain("请选择或填写商户");
+  });
+
   it("builds project income payload using current actor person id", () => {
     const payload = buildDocumentPayload(
       {

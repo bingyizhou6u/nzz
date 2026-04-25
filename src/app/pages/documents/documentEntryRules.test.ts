@@ -163,6 +163,20 @@ describe("document entry derived rules", () => {
     expect(state.requiredFields).not.toContain("borrowerPersonId");
   });
 
+  it("does not expand reimbursement reversal fields from a stale category", () => {
+    const form = {
+      ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),
+      documentType: "petty_cash_reimbursement" as const,
+      actionType: "reversal" as const,
+      categoryId: "cat_reimburse_merchant"
+    };
+
+    const state = deriveDocumentEntryState(form, options, []);
+
+    expect(state.visibleFields).toEqual(["originalDocumentId", "summary"]);
+    expect(state.requiredFields).toEqual(["originalDocumentId", "summary"]);
+  });
+
   it("filters merchant options by selected project", () => {
     const form = {
       ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),

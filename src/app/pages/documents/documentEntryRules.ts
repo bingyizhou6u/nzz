@@ -81,6 +81,9 @@ export function deriveDocumentEntryState(
 
 function dynamicVisibleFields(form: DocumentEntryForm, selectedCategory: CategoryOption | undefined): DocumentFieldKey[] {
   const fields = new Set(getVisibleFieldKeys(form.documentType, form.actionType));
+  if (form.documentType === "petty_cash_reimbursement" && form.actionType === "reversal") {
+    return [...fields];
+  }
   if (form.documentType === "petty_cash_reimbursement" && selectedCategory?.requires_merchant) {
     fields.add("projectId");
     fields.add("merchantId");

@@ -233,7 +233,7 @@ export function validateDocumentForm(
     errors.push("请选择原单据");
   }
 
-  const requiredFields = entryState?.requiredFields ?? getVisibleFieldKeys(form.documentType, form.actionType);
+  const requiredFields = entryState?.requiredFields ?? getLegacyValidationFieldKeys(form);
   for (const field of requiredFields) {
     if (!entryState && field === "merchantId" && form.documentType === "petty_cash_reimbursement") continue;
     if (!entryState && field === "operatorPersonId" && form.documentType === "petty_cash_reimbursement") continue;
@@ -258,6 +258,17 @@ export function validateDocumentForm(
     errors.push("币种必须与账户币种一致");
   }
   return [...errors, ...(entryState?.validationErrors ?? [])];
+}
+
+function getLegacyValidationFieldKeys(form: DocumentEntryForm): DocumentFieldKey[] {
+  const fields = getVisibleFieldKeys(form.documentType, form.actionType);
+  if (form.documentType !== "petty_cash_reimbursement" || form.actionType === "reversal" || fields.includes("projectId")) {
+    return fields;
+  }
+
+  const personIndex = fields.indexOf("personId");
+  if (personIndex === -1) return ["projectId", ...fields];
+  return [...fields.slice(0, personIndex + 1), "projectId", ...fields.slice(personIndex + 1)];
 }
 
 export function buildDocumentPayload(form: DocumentEntryForm, currentActorId: string) {
