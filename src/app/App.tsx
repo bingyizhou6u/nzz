@@ -59,7 +59,9 @@ export function App() {
       {session.status === "authenticated" && pages.length === 0 ? (
         <SessionStatusPanel title="暂无可访问功能" message="当前账号没有可用功能，请联系管理员调整权限。" />
       ) : null}
-      {session.status === "authenticated" && activePageKey === "workspace" ? <WorkspacePage /> : null}
+      {session.status === "authenticated" && activePageKey === "workspace" ? (
+        <WorkspacePage session={session} onNavigate={setActivePage} />
+      ) : null}
       {session.status === "authenticated" && activePageKey === "documents" ? (
         <DocumentsPage capabilities={session.capabilities} />
       ) : null}

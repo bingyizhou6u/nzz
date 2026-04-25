@@ -653,6 +653,122 @@ textarea {
   line-height: 1.5;
 }
 
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.8fr);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.workspace-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  border: 1px solid #d9dde3;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 16px;
+}
+
+.workspace-card:nth-child(3) {
+  grid-column: 1 / -1;
+}
+
+.workspace-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.task-list,
+.quick-actions {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.task-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: center;
+  min-height: 58px;
+  border-color: #d9dde3;
+  background: #ffffff;
+  color: #17202a;
+  padding: 10px 12px;
+  text-align: left;
+  white-space: normal;
+}
+
+.task-row:hover:not(:disabled) {
+  border-color: #b8ccc9;
+  background: #f4f8f7;
+  color: #17202a;
+}
+
+.task-row span,
+.task-row small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-row small {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.task-row .status-tag {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.metric-tile {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid #eaecf0;
+  border-radius: 8px;
+  background: #fafbfc;
+  padding: 12px;
+}
+
+.metric-tile span {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.metric-tile strong {
+  color: #17202a;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.metric-tile .status-tag {
+  justify-self: start;
+}
+
+.quick-actions {
+  grid-template-columns: repeat(auto-fit, minmax(160px, max-content));
+}
+
+.quick-actions button {
+  min-width: 144px;
+}
+
 .field-error-list {
   display: grid;
   gap: 4px;
@@ -1093,6 +1209,9 @@ textarea {
   .project-form,
   .document-form,
   .report-filter-grid,
+  .workspace-grid,
+  .metric-grid,
+  .quick-actions,
   .master-data-form,
   .period-lock-form,
   .period-lock-unlock-form,
@@ -1108,6 +1227,18 @@ textarea {
       "queue"
       "detail"
       "preview";
+  }
+
+  .workspace-card:nth-child(3) {
+    grid-column: auto;
+  }
+
+  .workspace-card-header {
+    flex-direction: column;
+  }
+
+  .quick-actions button {
+    width: 100%;
   }
 
   .wide-field {
