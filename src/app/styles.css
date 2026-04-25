@@ -162,6 +162,31 @@ main {
   justify-content: flex-end;
 }
 
+.report-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  padding: 16px;
+}
+
+.report-filter-grid label {
+  min-width: 0;
+}
+
+.report-group {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.report-group-title {
+  padding: 4px 2px;
+}
+
+.report-panel table {
+  min-width: 760px;
+}
+
 .status-slot {
   min-width: 72px;
   color: #667085;
@@ -390,7 +415,8 @@ select {
 
   .form-grid,
   .project-form,
-  .document-form {
+  .document-form,
+  .report-filter-grid {
     grid-template-columns: 1fr;
   }
 
