@@ -236,6 +236,42 @@ describe("master data governance write API", () => {
     await expect(response.json()).resolves.toEqual({ error: "权限不足" });
   });
 
+  it("rejects master data writes when body actor does not match authenticated actor", async () => {
+    const response = await createMasterDataProject({
+      request: new Request("https://ledger.test/api/master-data/projects", {
+        method: "POST",
+        body: JSON.stringify({ actor: "spoofed_person", code: "P1", name: "Project" })
+      }),
+      env: writeMockEnv(),
+      params: {},
+      actor: adminActor
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "请求中的操作人和当前登录人不一致" });
+  });
+
+  it("rejects admin role creation from actors without role management permission", async () => {
+    const response = await createMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people", {
+        method: "POST",
+        body: JSON.stringify({
+          actor: "person_manager",
+          name: "New Admin",
+          alias: null,
+          roles: ["admin"],
+          isEnabled: true
+        })
+      }),
+      env: writeMockEnv(),
+      params: {},
+      actor: financeManagerActor
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "权限不足" });
+  });
+
   it("creates people with actor audit", async () => {
     const response = await createMasterDataPerson({
       request: new Request("https://ledger.test/api/master-data/people", {
@@ -290,6 +326,39 @@ describe("master data governance write API", () => {
     });
 
     expect(response.status).toBe(200);
+  });
+
+  it("rejects admin role removal from actors without role management permission", async () => {
+    const existingAdmin = {
+      id: "person_admin_target",
+      name: "Admin Target",
+      alias: "old",
+      roles_json: "[\"admin\"]",
+      is_enabled: 1,
+      login_email: "target@example.com",
+      access_subject: null,
+      last_login_at: null,
+      created_at: "2026-04-25T00:00:00.000Z",
+      referenceCount: 0
+    };
+    const response = await updateMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people/person_admin_target", {
+        method: "PATCH",
+        body: JSON.stringify({
+          actor: "person_manager",
+          name: "Admin Target",
+          alias: "old",
+          roles: ["finance_manager"],
+          isEnabled: true
+        })
+      }),
+      env: writeMockEnv({ firstRows: [existingAdmin] }),
+      params: { id: "person_admin_target" },
+      actor: financeManagerActor
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "权限不足" });
   });
 
   it("rejects merchant creation for archived projects", async () => {
