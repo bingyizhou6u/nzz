@@ -92,6 +92,43 @@ h2 {
   font-size: 13px;
 }
 
+.header-session {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.identity-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.identity-bar strong,
+.identity-bar span {
+  display: block;
+}
+
+.identity-bar strong {
+  color: #17202a;
+  font-size: 13px;
+}
+
+.role-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
 .tabs {
   display: inline-flex;
   gap: 4px;
@@ -377,6 +414,13 @@ select {
   color: #b42318;
 }
 
+.workspace-placeholder {
+  padding: 16px;
+  color: #667085;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 .actor-panel {
   display: grid;
   grid-template-columns: minmax(220px, 360px) 1fr;
@@ -548,6 +592,20 @@ select {
   .app-header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .header-session {
+    justify-items: stretch;
+  }
+
+  .identity-bar {
+    align-items: flex-start;
+    flex-direction: column;
+    text-align: left;
+  }
+
+  .role-tags {
+    justify-content: flex-start;
   }
 
   .tabs {

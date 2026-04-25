@@ -1,18 +1,52 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { MasterDataPage } from "./pages/MasterDataPage";
 import { ReportsPage } from "./pages/ReportsPage";
+import { getSession } from "./session/sessionApi";
+import { roleLabels, visibleNavigationItems } from "./session/sessionModel";
+import type { PageKey, SessionState } from "./session/sessionTypes";
 
-type PageKey = "master-data" | "documents" | "reports";
-
-const pages: Array<{ key: PageKey; label: string }> = [
-  { key: "master-data", label: "基础资料" },
-  { key: "documents", label: "业务单据" },
-  { key: "reports", label: "报表中心" }
-];
+const unboundPersonMessage = "当前登录邮箱未绑定启用人员，请联系管理员。";
 
 export function App() {
-  const [activePage, setActivePage] = useState<PageKey>("master-data");
+  const [session, setSession] = useState<SessionState>({ status: "loading" });
+  const [activePage, setActivePage] = useState<PageKey | null>(null);
+  const pages = useMemo(() => visibleNavigationItems(session), [session]);
+  const activePageKey = pages.find((page) => page.key === activePage)?.key ?? pages[0]?.key ?? null;
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadSession() {
+      try {
+        const response = await getSession();
+        if (isCurrent) {
+          setSession({ status: "authenticated", person: response.person, capabilities: response.capabilities });
+        }
+      } catch {
+        if (isCurrent) {
+          setSession({ status: "error", message: unboundPersonMessage });
+        }
+      }
+    }
+
+    void loadSession();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (session.status !== "authenticated") return;
+    if (pages.length === 0) {
+      setActivePage(null);
+      return;
+    }
+    if (!activePage || !pages.some((page) => page.key === activePage)) {
+      setActivePage(pages[0].key);
+    }
+  }, [activePage, pages, session.status]);
 
   return (
     <div className="app-shell">
@@ -21,26 +55,83 @@ export function App() {
           <h1>内部管理会计台账</h1>
           <p>正式系统 Beta</p>
         </div>
-        <nav className="tabs" aria-label="主导航">
-          {pages.map((page) => (
-            <button
-              key={page.key}
-              type="button"
-              className={page.key === activePage ? "tab active" : "tab"}
-              onClick={() => setActivePage(page.key)}
-              aria-current={page.key === activePage ? "page" : undefined}
-            >
-              {page.label}
-            </button>
-          ))}
-        </nav>
+        <div className="header-session">
+          {session.status === "authenticated" ? (
+            <div className="identity-bar" aria-label="当前登录身份">
+              <div>
+                <strong>{session.person.alias ? `${session.person.name} / ${session.person.alias}` : session.person.name}</strong>
+                <span>{session.person.loginEmail}</span>
+              </div>
+              <div className="role-tags" aria-label="角色">
+                {session.person.roles.map((role) => (
+                  <span key={role} className="tag muted">
+                    {roleLabels[role]}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="identity-bar" role="status" aria-live="polite">
+              {session.status === "loading" ? "正在确认登录身份" : "身份不可用"}
+            </div>
+          )}
+          {session.status === "authenticated" && pages.length > 0 ? (
+            <nav className="tabs" aria-label="主导航">
+              {pages.map((page) => (
+                <button
+                  key={page.key}
+                  type="button"
+                  className={page.key === activePageKey ? "tab active" : "tab"}
+                  onClick={() => setActivePage(page.key)}
+                  aria-current={page.key === activePageKey ? "page" : undefined}
+                >
+                  {page.label}
+                </button>
+              ))}
+            </nav>
+          ) : null}
+        </div>
       </header>
 
       <main>
-        {activePage === "master-data" ? <MasterDataPage /> : null}
-        {activePage === "documents" ? <DocumentsPage /> : null}
-        {activePage === "reports" ? <ReportsPage /> : null}
+        {session.status === "loading" ? <SessionStatusPanel title="读取会话" message="正在加载当前登录身份..." /> : null}
+        {session.status === "error" ? <SessionStatusPanel title="无法进入系统" message={session.message} isError /> : null}
+        {session.status === "authenticated" && pages.length === 0 ? (
+          <SessionStatusPanel title="暂无可访问功能" message="当前账号没有可用功能，请联系管理员调整权限。" />
+        ) : null}
+        {session.status === "authenticated" && activePageKey === "documents" ? <DocumentsPage /> : null}
+        {session.status === "authenticated" && activePageKey === "review" ? (
+          <PlaceholderWorkspace title="审核中心" description="审核中心将在后续任务中接入正式待审队列。" />
+        ) : null}
+        {session.status === "authenticated" && activePageKey === "reports" ? <ReportsPage /> : null}
+        {session.status === "authenticated" && activePageKey === "master-data" ? <MasterDataPage /> : null}
+        {session.status === "authenticated" && activePageKey === "period-locks" ? (
+          <PlaceholderWorkspace title="锁账月结" description="锁账月结工作区将在后续任务中接入期间锁定操作。" />
+        ) : null}
       </main>
     </div>
+  );
+}
+
+function SessionStatusPanel({ title, message, isError = false }: { title: string; message: string; isError?: boolean }) {
+  return (
+    <section className="panel">
+      <div className="panel-header">
+        <h2>{title}</h2>
+      </div>
+      <div className={isError ? "notice error" : "workspace-placeholder"}>{message}</div>
+    </section>
+  );
+}
+
+function PlaceholderWorkspace({ title, description }: { title: string; description: string }) {
+  return (
+    <section className="panel">
+      <div className="panel-header">
+        <h2>{title}</h2>
+        <div className="status-slot">待接入</div>
+      </div>
+      <div className="workspace-placeholder">{description}</div>
+    </section>
   );
 }
