@@ -47,8 +47,7 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
       ? personPettyCashAccountOptions
       : companyAccountOptions;
   const counterpartyAccountOptions = getCounterpartyAccountOptions();
-  const isProjectRequired =
-    form.documentType === "project_income" || form.documentType === "petty_cash_reimbursement";
+  const isProjectRequired = fields.includes("projectId") && form.documentType !== "loan_writeoff";
 
   function updateField<K extends keyof DocumentEntryForm>(key: K, value: DocumentEntryForm[K]) {
     setForm((current) => ({ ...current, [key]: value }));
