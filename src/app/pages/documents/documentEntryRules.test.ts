@@ -63,6 +63,19 @@ const options: DocumentEntryOptions = {
       is_enabled: 1
     },
     {
+      id: "cat_reimburse_plain",
+      name: "General Expense",
+      parent_id: null,
+      category_type: "expense",
+      direction: "out",
+      affects_expense_report: 1,
+      affects_project_report: 0,
+      requires_merchant: 0,
+      requires_person: 0,
+      requires_borrower: 0,
+      is_enabled: 1
+    },
+    {
       id: "cat_reimburse_merchant",
       name: "Merchant Expense",
       parent_id: null,
@@ -74,12 +87,25 @@ const options: DocumentEntryOptions = {
       requires_person: 0,
       requires_borrower: 0,
       is_enabled: 1
+    },
+    {
+      id: "cat_reimburse_borrower",
+      name: "Borrower Expense",
+      parent_id: null,
+      category_type: "expense",
+      direction: "out",
+      affects_expense_report: 1,
+      affects_project_report: 0,
+      requires_merchant: 0,
+      requires_person: 0,
+      requires_borrower: 1,
+      is_enabled: 1
     }
   ]
 };
 
 describe("document entry derived rules", () => {
-  it("adds required fields from category flags", () => {
+  it("adds project and merchant fields from reimbursement merchant category flags", () => {
     const form = {
       ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),
       documentType: "petty_cash_reimbursement" as const,
@@ -92,6 +118,49 @@ describe("document entry derived rules", () => {
     expect(state.visibleFields).toContain("merchantId");
     expect(state.requiredFields).toContain("projectId");
     expect(state.requiredFields).toContain("merchantId");
+  });
+
+  it("keeps reimbursement person required as the account owner when category requires person", () => {
+    const form = {
+      ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),
+      documentType: "petty_cash_reimbursement" as const,
+      categoryId: "cat_reimburse_person"
+    };
+
+    const state = deriveDocumentEntryState(form, options, []);
+
+    expect(state.visibleFields).toContain("personId");
+    expect(state.requiredFields).toContain("personId");
+  });
+
+  it("adds borrower fields from reimbursement borrower category flags", () => {
+    const form = {
+      ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),
+      documentType: "petty_cash_reimbursement" as const,
+      categoryId: "cat_reimburse_borrower"
+    };
+
+    const state = deriveDocumentEntryState(form, options, []);
+
+    expect(state.visibleFields).toContain("borrowerPersonId");
+    expect(state.requiredFields).toContain("borrowerPersonId");
+  });
+
+  it("does not require optional reimbursement context fields without category flags", () => {
+    const form = {
+      ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),
+      documentType: "petty_cash_reimbursement" as const,
+      categoryId: "cat_reimburse_plain"
+    };
+
+    const state = deriveDocumentEntryState(form, options, []);
+
+    expect(state.visibleFields).not.toContain("projectId");
+    expect(state.visibleFields).not.toContain("merchantId");
+    expect(state.visibleFields).not.toContain("borrowerPersonId");
+    expect(state.requiredFields).not.toContain("projectId");
+    expect(state.requiredFields).not.toContain("merchantId");
+    expect(state.requiredFields).not.toContain("borrowerPersonId");
   });
 
   it("filters merchant options by selected project", () => {

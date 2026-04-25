@@ -85,9 +85,6 @@ function dynamicVisibleFields(form: DocumentEntryForm, selectedCategory: Categor
     fields.add("projectId");
     fields.add("merchantId");
   }
-  if (form.documentType === "petty_cash_reimbursement" && selectedCategory?.requires_person) {
-    fields.add("personId");
-  }
   if (form.documentType === "petty_cash_reimbursement" && selectedCategory?.requires_borrower) {
     fields.add("borrowerPersonId");
   }
@@ -100,6 +97,8 @@ function dynamicRequiredFields(
   selectedCategory: CategoryOption | undefined
 ): DocumentFieldKey[] {
   const required = new Set<DocumentFieldKey>();
+  // For reimbursements, personId is the reimbursing petty-cash owner used for account filtering.
+  // Category requires_person confirms that same field rather than adding a second person selector.
   for (const field of visibleFields) {
     if (field === "originalDocumentId" && !isOriginalDocumentFieldRequired(form.documentType, form.actionType)) continue;
     if (field === "projectId" && form.documentType === "loan_writeoff") continue;

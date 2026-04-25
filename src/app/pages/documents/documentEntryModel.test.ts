@@ -9,6 +9,7 @@ import {
   pettyCashAccountsForPerson,
   validateDocumentForm
 } from "./documentEntryModel";
+import { deriveDocumentEntryState } from "./documentEntryRules";
 import type { DocumentEntryOptions } from "./documentEntryTypes";
 
 const options: DocumentEntryOptions = {
@@ -70,6 +71,19 @@ const options: DocumentEntryOptions = {
       requires_person: 1,
       requires_borrower: 0,
       is_enabled: 1
+    },
+    {
+      id: "cat_plain_expense",
+      name: "Plain Expense",
+      parent_id: null,
+      category_type: "expense",
+      direction: "out",
+      affects_expense_report: 1,
+      affects_project_report: 0,
+      requires_merchant: 0,
+      requires_person: 0,
+      requires_borrower: 0,
+      is_enabled: 1
     }
   ]
 };
@@ -97,6 +111,17 @@ describe("document entry model", () => {
     expect(getVisibleFieldKeys("project_income", "reversal")).toEqual(["originalDocumentId", "summary"]);
   });
 
+  it("keeps reimbursement base fields limited to fields that are always applicable", () => {
+    expect(getVisibleFieldKeys("petty_cash_reimbursement", "normal")).toEqual([
+      "personId",
+      "categoryId",
+      "accountId",
+      "currencyCode",
+      "amountMajor",
+      "summary"
+    ]);
+  });
+
   it("filters merchants by selected project", () => {
     expect(merchantOptionsForProject(options, "proj_1").map((merchant) => merchant.id)).toEqual(["merchant_1"]);
   });
@@ -109,7 +134,8 @@ describe("document entry model", () => {
 
   it("filters categories for reimbursement documents", () => {
     expect(categoryOptionsForDocumentType(options, "petty_cash_reimbursement").map((category) => category.id)).toEqual([
-      "cat_expense"
+      "cat_expense",
+      "cat_plain_expense"
     ]);
   });
 
@@ -241,6 +267,25 @@ describe("document entry model", () => {
 
     expect(errors).toContain("请选择或填写借款人");
     expect(errors).toContain("科目类型不适用于当前单据类型");
+  });
+
+  it("does not require non-applicable reimbursement fields when derived state omits them", () => {
+    const form = {
+      ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),
+      documentType: "petty_cash_reimbursement" as const,
+      personId: "person_ops",
+      categoryId: "cat_plain_expense",
+      accountId: "acct_petty_ops",
+      currencyCode: "AED",
+      amountMajor: "20",
+      summary: "Plain reimbursement"
+    };
+
+    const errors = validateDocumentForm(form, options, "person_ops", deriveDocumentEntryState(form, options, []));
+
+    expect(errors).not.toContain("请选择或填写项目");
+    expect(errors).not.toContain("请选择或填写商户");
+    expect(errors).not.toContain("请选择或填写借款人");
   });
 
   it("builds project income payload using current actor person id", () => {
