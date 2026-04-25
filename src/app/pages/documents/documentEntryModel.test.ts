@@ -111,9 +111,11 @@ describe("document entry model", () => {
     expect(getVisibleFieldKeys("project_income", "reversal")).toEqual(["originalDocumentId", "summary"]);
   });
 
-  it("keeps reimbursement base fields limited to fields that are always applicable", () => {
+  it("keeps reimbursement visible fields compatible with the current legacy UI", () => {
     expect(getVisibleFieldKeys("petty_cash_reimbursement", "normal")).toEqual([
       "personId",
+      "projectId",
+      "merchantId",
       "categoryId",
       "accountId",
       "currencyCode",

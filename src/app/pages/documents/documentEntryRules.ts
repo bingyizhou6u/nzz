@@ -80,7 +80,7 @@ export function deriveDocumentEntryState(
 }
 
 function dynamicVisibleFields(form: DocumentEntryForm, selectedCategory: CategoryOption | undefined): DocumentFieldKey[] {
-  const fields = new Set(getVisibleFieldKeys(form.documentType, form.actionType));
+  const fields = new Set(contextBaseFields(form));
   if (form.documentType === "petty_cash_reimbursement" && form.actionType === "reversal") {
     return [...fields];
   }
@@ -92,6 +92,12 @@ function dynamicVisibleFields(form: DocumentEntryForm, selectedCategory: Categor
     fields.add("borrowerPersonId");
   }
   return [...fields];
+}
+
+function contextBaseFields(form: DocumentEntryForm): DocumentFieldKey[] {
+  const fields = getVisibleFieldKeys(form.documentType, form.actionType);
+  if (form.documentType !== "petty_cash_reimbursement" || form.actionType === "reversal") return fields;
+  return fields.filter((field) => field !== "projectId" && field !== "merchantId" && field !== "borrowerPersonId");
 }
 
 function dynamicRequiredFields(

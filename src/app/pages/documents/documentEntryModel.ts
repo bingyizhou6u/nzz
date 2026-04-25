@@ -96,6 +96,8 @@ const baseFieldsByType: Record<DocumentType, DocumentFieldKey[]> = {
   ],
   petty_cash_reimbursement: [
     "personId",
+    "projectId",
+    "merchantId",
     "categoryId",
     "accountId",
     "currencyCode",
