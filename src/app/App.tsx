@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { MasterDataPage } from "./pages/MasterDataPage";
 import { ReportsPage } from "./pages/ReportsPage";
+import { ReviewCenterPage } from "./pages/ReviewCenterPage";
 import { getSession } from "./session/sessionApi";
 import { roleLabels, visibleNavigationItems } from "./session/sessionModel";
 import type { PageKey, SessionState } from "./session/sessionTypes";
@@ -101,7 +102,7 @@ export function App() {
         ) : null}
         {session.status === "authenticated" && activePageKey === "documents" ? <DocumentsPage /> : null}
         {session.status === "authenticated" && activePageKey === "review" ? (
-          <PlaceholderWorkspace title="审核中心" description="审核中心将在后续任务中接入正式待审队列。" />
+          <ReviewCenterPage capabilities={session.capabilities} />
         ) : null}
         {session.status === "authenticated" && activePageKey === "reports" ? <ReportsPage /> : null}
         {session.status === "authenticated" && activePageKey === "master-data" ? <MasterDataPage /> : null}

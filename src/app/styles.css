@@ -18,7 +18,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -356,7 +357,8 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   min-height: 36px;
   border: 1px solid #cfd5dc;
@@ -368,6 +370,13 @@ select {
 
 select {
   appearance: auto;
+}
+
+textarea {
+  min-height: 76px;
+  resize: vertical;
+  padding: 8px 10px;
+  line-height: 1.4;
 }
 
 .wide-field {
@@ -583,6 +592,174 @@ select {
   font-size: 13px;
 }
 
+.review-layout {
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) minmax(340px, 0.78fr);
+  grid-template-areas:
+    "queue detail"
+    "queue preview";
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.review-queue {
+  grid-area: queue;
+}
+
+.review-detail {
+  grid-area: detail;
+}
+
+.review-preview {
+  grid-area: preview;
+}
+
+.review-queue-table {
+  min-width: 720px;
+}
+
+.review-queue-table tr {
+  cursor: pointer;
+}
+
+.selected-row td {
+  background: #eef6f5;
+}
+
+.row-select-button {
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  color: #1f5e5a;
+  padding: 0;
+  font-weight: 700;
+  white-space: normal;
+  text-align: left;
+}
+
+.row-select-button:hover:not(:disabled) {
+  background: transparent;
+  color: #184b48;
+  text-decoration: underline;
+}
+
+.review-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  padding: 16px;
+}
+
+.review-detail-grid > div {
+  min-width: 0;
+  border-bottom: 1px solid #eaecf0;
+  padding-bottom: 8px;
+}
+
+.review-detail-grid span {
+  display: block;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.review-detail-grid strong {
+  display: block;
+  margin-top: 4px;
+  color: #17202a;
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.review-actions {
+  display: grid;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.review-actions > button {
+  justify-self: start;
+  min-width: 104px;
+}
+
+.reject-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  min-width: 0;
+}
+
+.preview-groups {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.preview-group {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border-top: 1px solid #eaecf0;
+  padding-top: 12px;
+}
+
+.preview-group:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.preview-group-header,
+.risk-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.preview-group-header strong {
+  font-size: 14px;
+}
+
+.preview-section {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.risk-line {
+  color: #475467;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.risk-line span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.preview-section ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.preview-section li {
+  min-width: 0;
+  border: 1px solid #eaecf0;
+  border-radius: 6px;
+  background: #fafbfc;
+  padding: 7px 8px;
+  color: #344054;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 820px) {
   .app-shell {
     width: min(100vw - 20px, 1180px);
@@ -647,8 +824,18 @@ select {
   .report-filter-grid,
   .master-data-form,
   .master-data-table-tools,
-  .actor-panel {
+  .actor-panel,
+  .review-layout,
+  .review-detail-grid,
+  .reject-form {
     grid-template-columns: 1fr;
+  }
+
+  .review-layout {
+    grid-template-areas:
+      "queue"
+      "detail"
+      "preview";
   }
 
   .wide-field {
