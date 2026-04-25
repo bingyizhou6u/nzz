@@ -15,9 +15,10 @@
     }
   ],
   "vars": {
-    "AUTH_MODE": "development",
+    // For local development, set AUTH_MODE=development and DEV_ACTOR_EMAIL in .dev.vars or wrangler dev env.
+    "AUTH_MODE": "access",
     "CF_ACCESS_TEAM_DOMAIN": "",
     "CF_ACCESS_AUD": "",
-    "DEV_ACTOR_EMAIL": "finance-demo@example.test"
+    "DEV_ACTOR_EMAIL": ""
   }
 }

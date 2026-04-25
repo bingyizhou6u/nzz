@@ -276,19 +276,27 @@ Modify `wrangler.jsonc`:
 
 ```jsonc
 "vars": {
-  "AUTH_MODE": "development",
+  // For local development, set AUTH_MODE=development and DEV_ACTOR_EMAIL in .dev.vars or wrangler dev env.
+  "AUTH_MODE": "access",
   "CF_ACCESS_TEAM_DOMAIN": "",
   "CF_ACCESS_AUD": "",
-  "DEV_ACTOR_EMAIL": "finance-demo@example.test"
+  "DEV_ACTOR_EMAIL": ""
 }
 ```
 
-Production deployment must override:
+Production deployment must override the empty Access settings:
 
 ```text
 AUTH_MODE=access
 CF_ACCESS_TEAM_DOMAIN=https://<team-name>.cloudflareaccess.com
 CF_ACCESS_AUD=<Application Audience AUD tag>
+```
+
+Local development may use `.dev.vars` or `wrangler dev` environment variables:
+
+```text
+AUTH_MODE=development
+DEV_ACTOR_EMAIL=<local mapped people.login_email>
 ```
 
 - [ ] **Step 6: Extend people read model**
