@@ -9,6 +9,7 @@ import {
 import { listDocumentEntryOptions, listOriginalDocuments } from "../api/documentEntryOptions";
 import { listCurrencies } from "../api/masterData";
 import { getMe } from "../api/me";
+import { createPeriodLock, deletePeriodLock, listPeriodLocks } from "../api/periodLocks";
 import {
   createMasterDataAccount,
   createMasterDataCategory,
@@ -110,6 +111,9 @@ const routes: Route[] = [
   defineRoute("GET", "/api/reports/project-profit-loss", projectProfitLoss, "reports.view"),
   defineRoute("GET", "/api/reports/monthly-operating", monthlyOperatingSummary, "reports.view"),
   defineRoute("GET", "/api/reports/exception-checks", exceptionChecks, "reports.view"),
+  defineRoute("GET", "/api/period-locks", listPeriodLocks, "periodLocks.view"),
+  defineRoute("POST", "/api/period-locks", createPeriodLock, "periodLocks.lock"),
+  defineRoute("DELETE", "/api/period-locks/:period", deletePeriodLock, "periodLocks.unlock"),
   defineRoute("GET", "/api/master-data", listMasterDataSnapshot, "masterData.view"),
   defineRoute("GET", "/api/master-data/reference-summary", masterDataReferenceSummary, "masterData.view"),
   defineRoute("GET", "/api/master-data/people", listMasterDataPeople, "masterData.view"),
