@@ -4,16 +4,21 @@ import { route } from "../../src/worker/router";
 import type { Env } from "../../src/worker/env";
 
 function env(
-  options: { rows?: unknown[]; runResult?: D1Result; firstRow?: unknown; onBind?: (values: unknown[]) => void } = {}
+  options: {
+    rows?: unknown[];
+    runResult?: D1Result;
+    firstRow?: unknown;
+    onBind?: (values: unknown[], sql: string) => void;
+  } = {}
 ): Env {
   return {
     AUTH_MODE: "development",
     DEV_ACTOR_EMAIL: "admin@example.test",
     DB: {
-      prepare: () =>
+      prepare: (sql: string) =>
         ({
           bind(...values: unknown[]) {
-            options.onBind?.(values);
+            options.onBind?.(values, sql);
             return this;
           },
           all: async () => ({ success: true, results: options.rows ?? [] }),
@@ -46,6 +51,17 @@ const readonly = {
   email: "reader@example.test",
   roles: ["readonly" as const]
 };
+
+function actorRow(role: "admin" | "finance_manager" | "readonly") {
+  return {
+    id: `${role}_1`,
+    name: role,
+    alias: null,
+    login_email: "admin@example.test",
+    roles_json: JSON.stringify([role]),
+    is_enabled: 1
+  };
+}
 
 describe("period lock API", () => {
   it("lists period locks for authorized users", async () => {
@@ -96,6 +112,21 @@ describe("period lock API", () => {
     expect(response.status).toBe(400);
   });
 
+  it("unlocks periods for admins", async () => {
+    const response = await deletePeriodLock({
+      request: new Request("https://ledger.test/api/period-locks/2026-04", {
+        method: "DELETE",
+        body: JSON.stringify({ reason: "reopen for correction" })
+      }),
+      env: env(),
+      params: { period: "2026-04" },
+      actor: admin
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: { period: "2026-04", status: "unlocked" } });
+  });
+
   it("rejects readonly lock attempts", async () => {
     const response = await createPeriodLock({
       request: new Request("https://ledger.test/api/period-locks", {
@@ -114,6 +145,20 @@ describe("period lock API", () => {
       request: new Request("https://ledger.test/api/period-locks", {
         method: "POST",
         body: JSON.stringify({ period: "2026-13" })
+      }),
+      env: env(),
+      params: {},
+      actor: manager
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects malformed period formats", async () => {
+    const response = await createPeriodLock({
+      request: new Request("https://ledger.test/api/period-locks", {
+        method: "POST",
+        body: JSON.stringify({ period: "202604" })
       }),
       env: env(),
       params: {},
@@ -155,6 +200,40 @@ describe("period lock API", () => {
     ]);
   });
 
+  it("records delete audit metadata after unlocking", async () => {
+    const calls: { sql: string; values: unknown[] }[] = [];
+    const response = await deletePeriodLock({
+      request: new Request("https://ledger.test/api/period-locks/2026-04", {
+        method: "DELETE",
+        body: JSON.stringify({ reason: "reopen for correction" })
+      }),
+      env: env({ onBind: (values, sql) => calls.push({ sql, values }) }),
+      params: { period: "2026-04" },
+      actor: admin
+    });
+
+    expect(response.status).toBe(200);
+    expect(calls[0].sql.replace(/\s+/g, " ").toLowerCase()).toContain("delete from period_locks where period = ?");
+    expect(calls[0].values).toEqual(["2026-04"]);
+    expect(calls[1].sql.replace(/\s+/g, " ").toLowerCase()).toContain("insert into audit_logs");
+    expect(calls[1].values).toEqual([
+      expect.stringMatching(/^audit_/),
+      "admin_1",
+      "period_lock.delete",
+      "period_lock",
+      "2026-04",
+      JSON.stringify({ period: "2026-04" }),
+      null,
+      "reopen for correction",
+      "admin_1",
+      "admin@example.test",
+      null,
+      null,
+      null,
+      expect.any(String)
+    ]);
+  });
+
   it("routes period lock listing", async () => {
     const response = await route(
       new Request("https://ledger.test/api/period-locks"),
@@ -171,6 +250,31 @@ describe("period lock API", () => {
     );
 
     expect(response.status).toBe(200);
+  });
+
+  it("routes period unlock for admins", async () => {
+    const response = await route(
+      new Request("https://ledger.test/api/period-locks/2026-04", {
+        method: "DELETE",
+        body: JSON.stringify({ reason: "reopen for correction" })
+      }),
+      env({ firstRow: actorRow("admin") })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: { period: "2026-04", status: "unlocked" } });
+  });
+
+  it("denies period unlock at the router capability gate for managers", async () => {
+    const response = await route(
+      new Request("https://ledger.test/api/period-locks/2026-04", {
+        method: "DELETE",
+        body: JSON.stringify({ reason: "reopen for correction" })
+      }),
+      env({ firstRow: actorRow("finance_manager") })
+    );
+
+    expect(response.status).toBe(403);
   });
 
   it("denies readonly lock attempts at the router capability gate", async () => {
