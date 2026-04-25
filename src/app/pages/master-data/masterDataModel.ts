@@ -124,7 +124,7 @@ function normalizedEmail(value: string) {
   return nullableText(value)?.toLowerCase() ?? null;
 }
 
-export function buildPersonPayload(form: PersonForm): Record<string, unknown> {
+export function buildPersonPayload(form: PersonForm, _actor?: string): Record<string, unknown> {
   return {
     name: form.name.trim(),
     alias: nullableText(form.alias),

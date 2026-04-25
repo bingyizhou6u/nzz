@@ -117,7 +117,8 @@ describe("master data capability gating", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
       name: "Alice Updated",
-      roles: ["admin"]
+      roles: ["admin"],
+      loginEmail: "admin@example.com"
     });
   });
 

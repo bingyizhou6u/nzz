@@ -11,13 +11,14 @@ import {
 import { writeMasterData } from "./masterDataRequests";
 import type { PersonForm, PersonRole, PersonRow } from "./masterDataTypes";
 
-const emptyForm: PersonForm = { name: "", alias: "", roles: ["finance_entry"], isEnabled: true };
+const emptyForm: PersonForm = { name: "", alias: "", roles: ["finance_entry"], loginEmail: "", isEnabled: true };
 
 function rowToForm(row: PersonRow): PersonForm {
   return {
     name: row.name,
     alias: row.alias ?? "",
     roles: parseRoles(row.roles_json),
+    loginEmail: row.login_email ?? "",
     isEnabled: Boolean(row.is_enabled)
   };
 }
