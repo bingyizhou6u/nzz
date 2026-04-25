@@ -42,6 +42,11 @@ export function createInitialDocumentForm(date = new Date()): DocumentEntryForm 
   };
 }
 
+export function filterDocumentsByStatus<T extends { status: string }>(documents: readonly T[], status: string): T[] {
+  if (status === "all") return [...documents];
+  return documents.filter((document) => document.status === status);
+}
+
 export function isOriginalDocumentRequired(actionType: ActionType) {
   return actionType === "correction" || actionType === "reversal";
 }

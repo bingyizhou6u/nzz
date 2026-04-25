@@ -44,6 +44,48 @@ afterEach(async () => {
 });
 
 describe("document page capability gating", () => {
+  it("renders the list and entry panels inside the documents workspace", async () => {
+    const container = await renderDocumentsPage(["documents.view", "documents.create"], [
+      draftDocument("doc_1", "DOC-001", "draft")
+    ]);
+
+    await waitFor(() => {
+      const workspace = container.querySelector(".documents-workspace");
+      const listPanel = workspace?.querySelector(".document-list-panel");
+      const entryPanel = workspace?.querySelector(".document-entry-panel");
+
+      expect(workspace).not.toBeNull();
+      expect(listPanel?.textContent).toContain("单据列表");
+      expect(entryPanel?.textContent).toContain("创建草稿单据");
+    });
+  });
+
+  it("filters visible documents by selected status", async () => {
+    const container = await renderDocumentsPage(["documents.view"], [
+      draftDocument("doc_draft", "DOC-DRAFT", "draft"),
+      draftDocument("doc_approved", "DOC-APPROVED", "approved"),
+      draftDocument("doc_pending", "DOC-PENDING", "pending")
+    ]);
+
+    await waitFor(() => {
+      expect(container.textContent).toContain("DOC-DRAFT");
+      expect(container.textContent).toContain("DOC-APPROVED");
+      expect(container.textContent).toContain("DOC-PENDING");
+    });
+
+    const statusSelect = container.querySelector('select[aria-label="单据状态"]') as HTMLSelectElement | null;
+    expect(statusSelect).not.toBeNull();
+
+    await act(async () => {
+      statusSelect!.value = "draft";
+      statusSelect!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(container.textContent).toContain("DOC-DRAFT");
+    expect(container.textContent).not.toContain("DOC-APPROVED");
+    expect(container.textContent).not.toContain("DOC-PENDING");
+  });
+
   it("derives create and row workflow actions from capabilities", () => {
     expect(canCreateDraftDocument(["documents.view", "documents.create"])).toBe(true);
     expect(canCreateDraftDocument(["documents.view"])).toBe(false);

@@ -6,6 +6,7 @@ import { DocumentTypeFields } from "./documents/DocumentTypeFields";
 import {
   buildDocumentPayload,
   createInitialDocumentForm,
+  filterDocumentsByStatus,
   isOriginalDocumentRequired,
   validateDocumentForm
 } from "./documents/documentEntryModel";
@@ -144,6 +145,7 @@ export function DocumentsPage({ capabilities }: DocumentsPageProps) {
   );
   const canCreate = canCreateDraftDocument(capabilities);
   const [documents, setDocuments] = useState<DocumentListItem[]>([]);
+  const [statusFilter, setStatusFilter] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -161,6 +163,10 @@ export function DocumentsPage({ capabilities }: DocumentsPageProps) {
   const entryState = useMemo(
     () => deriveDocumentEntryState(form, entryOptions, originalDocuments),
     [entryOptions, form, originalDocuments]
+  );
+  const visibleDocuments = useMemo(
+    () => filterDocumentsByStatus(documents, statusFilter),
+    [documents, statusFilter]
   );
 
   useEffect(() => {
@@ -357,222 +363,235 @@ export function DocumentsPage({ capabilities }: DocumentsPageProps) {
 
   return (
     <div className="page-stack">
-      <section className="panel">
-        <div className="panel-header">
-          <h2>单据列表</h2>
-          <div className="document-toolbar">
-            <div className="status-slot" role="status" aria-live="polite">
-              {isLoading ? "读取中" : loadError ? "读取失败" : `${documents.length} 条`}
+      <div className="documents-workspace">
+        <section className="panel document-list-panel">
+          <div className="panel-header">
+            <h2>单据列表</h2>
+            <div className="document-toolbar">
+              <select
+                aria-label="单据状态"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+              >
+                <option value="all">全部状态</option>
+                <option value="draft">草稿</option>
+                <option value="pending">待审核</option>
+                <option value="approved">已审核</option>
+                <option value="rejected">已退回</option>
+              </select>
+              <div className="status-slot" role="status" aria-live="polite">
+                {isLoading ? "读取中" : loadError ? "读取失败" : `${documents.length} 条`}
+              </div>
+              <button type="button" className="secondary-button" onClick={refreshDocuments} disabled={isLoading}>
+                重新读取
+              </button>
             </div>
-            <button type="button" className="secondary-button" onClick={refreshDocuments} disabled={isLoading}>
-              重新读取
-            </button>
           </div>
-        </div>
 
-        {loadError ? <div className="notice error">{loadError}</div> : null}
+          {loadError ? <div className="notice error">{loadError}</div> : null}
 
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>单据号</th>
-                <th>类型</th>
-                <th>日期</th>
-                <th>状态</th>
-                <th>摘要</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <td colSpan={6} className="empty-cell">
-                    读取中
-                  </td>
+                  <th>单据号</th>
+                  <th>类型</th>
+                  <th>日期</th>
+                  <th>状态</th>
+                  <th>摘要</th>
+                  <th>操作</th>
                 </tr>
-              ) : documents.length > 0 ? (
-                documents.map((document) => {
-                  const actions = documentWorkflowActions(document.status, capabilities);
-                  return (
-                    <tr key={document.id}>
-                      <td className="mono">{document.document_no}</td>
-                      <td>{documentTypeLabels[document.document_type] ?? document.document_type}</td>
-                      <td className="mono">{document.business_date}</td>
-                      <td>
-                        <span className={document.status === "approved" ? "tag ok" : "tag muted"}>
-                          {statusLabels[document.status] ?? document.status}
-                        </span>
-                      </td>
-                      <td>{document.summary}</td>
-                      <td>
-                        <div className="inline-actions">
-                          {actions.includes("submit") ? (
-                            <button
-                              type="button"
-                              className="secondary-button"
-                              onClick={() => void handleWorkflowAction(document, "submit")}
-                              disabled={Boolean(actionKey) || isSubmitting}
-                            >
-                              {actionKey === `${document.id}:submit` ? "提交中" : "提交"}
-                            </button>
-                          ) : null}
-                          {actions.includes("approve") ? (
-                            <button
-                              type="button"
-                              onClick={() => void handleWorkflowAction(document, "approve")}
-                              disabled={Boolean(actionKey) || isSubmitting}
-                            >
-                              {actionKey === `${document.id}:approve` ? "审核中" : "通过"}
-                            </button>
-                          ) : null}
-                          {actions.includes("reject") ? (
-                            <button
-                              type="button"
-                              className="secondary-button"
-                              onClick={() => void handleWorkflowAction(document, "reject")}
-                              disabled={Boolean(actionKey) || isSubmitting}
-                            >
-                              {actionKey === `${document.id}:reject` ? "退回中" : "退回"}
-                            </button>
-                          ) : null}
-                          {actions.length === 0 ? <span>无</span> : null}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={6} className="empty-cell">
-                    暂无数据
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="panel">
-        <div className="panel-header">
-          <h2>创建草稿单据</h2>
-          <div className="status-slot" role="status" aria-live="polite">
-            {!canCreate ? "只读" : isSubmitting ? "提交中" : actionKey ? "处理中" : error ? "失败" : result ? "完成" : "待提交"}
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={6} className="empty-cell">
+                      读取中
+                    </td>
+                  </tr>
+                ) : visibleDocuments.length > 0 ? (
+                  visibleDocuments.map((document) => {
+                    const actions = documentWorkflowActions(document.status, capabilities);
+                    return (
+                      <tr key={document.id}>
+                        <td className="mono">{document.document_no}</td>
+                        <td>{documentTypeLabels[document.document_type] ?? document.document_type}</td>
+                        <td className="mono">{document.business_date}</td>
+                        <td>
+                          <span className={document.status === "approved" ? "tag ok" : "tag muted"}>
+                            {statusLabels[document.status] ?? document.status}
+                          </span>
+                        </td>
+                        <td>{document.summary}</td>
+                        <td>
+                          <div className="inline-actions">
+                            {actions.includes("submit") ? (
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => void handleWorkflowAction(document, "submit")}
+                                disabled={Boolean(actionKey) || isSubmitting}
+                              >
+                                {actionKey === `${document.id}:submit` ? "提交中" : "提交"}
+                              </button>
+                            ) : null}
+                            {actions.includes("approve") ? (
+                              <button
+                                type="button"
+                                onClick={() => void handleWorkflowAction(document, "approve")}
+                                disabled={Boolean(actionKey) || isSubmitting}
+                              >
+                                {actionKey === `${document.id}:approve` ? "审核中" : "通过"}
+                              </button>
+                            ) : null}
+                            {actions.includes("reject") ? (
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => void handleWorkflowAction(document, "reject")}
+                                disabled={Boolean(actionKey) || isSubmitting}
+                              >
+                                {actionKey === `${document.id}:reject` ? "退回中" : "退回"}
+                              </button>
+                            ) : null}
+                            {actions.length === 0 ? <span>无</span> : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="empty-cell">
+                      暂无数据
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
-        </div>
-        {!canCreate ? <div className="notice">当前账号没有创建单据权限，不能创建草稿。</div> : null}
-        {canCreate && optionsError ? <div className="notice error">{optionsError}</div> : null}
+        </section>
 
-        {canCreate ? (
-        <form className="form-grid document-form" onSubmit={handleSubmit}>
-          <label>
-            单据类型
-            <select
-              value={form.documentType}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...createInitialDocumentForm(),
-                  documentType: event.target.value as DocumentType,
-                  actionType: current.actionType,
-                  businessDate: current.businessDate,
-                  period: current.period
-                }))
-              }
-            >
-              {supportedDraftDocumentTypes.map((documentType) => (
-                <option key={documentType} value={documentType}>
-                  {documentTypeLabels[documentType]}
-                </option>
-              ))}
-            </select>
-          </label>
+        <section className="panel document-entry-panel">
+          <div className="panel-header">
+            <h2>创建草稿单据</h2>
+            <div className="status-slot" role="status" aria-live="polite">
+              {!canCreate ? "只读" : isSubmitting ? "提交中" : actionKey ? "处理中" : error ? "失败" : result ? "完成" : "待提交"}
+            </div>
+          </div>
+          {!canCreate ? <div className="notice">当前账号没有创建单据权限，不能创建草稿。</div> : null}
+          {canCreate && optionsError ? <div className="notice error">{optionsError}</div> : null}
 
-          <label>
-            动作类型
-            <select
-              value={form.actionType}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  actionType: event.target.value as ActionType,
-                  originalDocumentId: ""
-                }))
-              }
-            >
-              {supportedDraftActionTypes.map((actionType) => (
-                <option key={actionType} value={actionType}>
-                  {actionTypeLabels[actionType]}
-                </option>
-              ))}
-            </select>
-          </label>
+          {canCreate ? (
+            <form className="form-grid document-form" onSubmit={handleSubmit}>
+              <label>
+                单据类型
+                <select
+                  value={form.documentType}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...createInitialDocumentForm(),
+                      documentType: event.target.value as DocumentType,
+                      actionType: current.actionType,
+                      businessDate: current.businessDate,
+                      period: current.period
+                    }))
+                  }
+                >
+                  {supportedDraftDocumentTypes.map((documentType) => (
+                    <option key={documentType} value={documentType}>
+                      {documentTypeLabels[documentType]}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-          <label>
-            业务日期
-            <input
-              type="date"
-              value={form.businessDate}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  businessDate: event.target.value,
-                  period: event.target.value.slice(0, 7)
-                }))
-              }
-              required
-            />
-          </label>
+              <label>
+                动作类型
+                <select
+                  value={form.actionType}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      actionType: event.target.value as ActionType,
+                      originalDocumentId: ""
+                    }))
+                  }
+                >
+                  {supportedDraftActionTypes.map((actionType) => (
+                    <option key={actionType} value={actionType}>
+                      {actionTypeLabels[actionType]}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-          <label>
-            期间
-            <input
-              type="month"
-              value={form.period}
-              onChange={(event) => setForm((current) => ({ ...current, period: event.target.value }))}
-              required
-            />
-          </label>
+              <label>
+                业务日期
+                <input
+                  type="date"
+                  value={form.businessDate}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      businessDate: event.target.value,
+                      period: event.target.value.slice(0, 7)
+                    }))
+                  }
+                  required
+                />
+              </label>
 
-          <DocumentTypeFields
-            form={form}
-            setForm={setForm}
-            entryState={entryState}
-            originalDocuments={originalDocuments}
-          />
+              <label>
+                期间
+                <input
+                  type="month"
+                  value={form.period}
+                  onChange={(event) => setForm((current) => ({ ...current, period: event.target.value }))}
+                  required
+                />
+              </label>
 
-          {originalDocumentsError ? <div className="notice error wide-field">{originalDocumentsError}</div> : null}
-          {entryState.validationErrors.length > 0 ? (
-            <div className="notice error wide-field">{entryState.validationErrors.join("；")}</div>
+              <DocumentTypeFields
+                form={form}
+                setForm={setForm}
+                entryState={entryState}
+                originalDocuments={originalDocuments}
+              />
+
+              {originalDocumentsError ? <div className="notice error wide-field">{originalDocumentsError}</div> : null}
+              {entryState.validationErrors.length > 0 ? (
+                <div className="notice error wide-field">{entryState.validationErrors.join("；")}</div>
+              ) : null}
+
+              <div className="form-actions">
+                <button
+                  type="submit"
+                  disabled={
+                    isSubmitting ||
+                    areOptionsLoading ||
+                    areOriginalDocumentsLoading ||
+                    Boolean(optionsError) ||
+                    Boolean(originalDocumentsError)
+                  }
+                >
+                  {isSubmitting ? "提交中" : "创建草稿"}
+                </button>
+              </div>
+            </form>
           ) : null}
 
-          <div className="form-actions">
-            <button
-              type="submit"
-              disabled={
-                isSubmitting ||
-                areOptionsLoading ||
-                areOriginalDocumentsLoading ||
-                Boolean(optionsError) ||
-                Boolean(originalDocumentsError)
-              }
-            >
-              {isSubmitting ? "提交中" : "创建草稿"}
-            </button>
+          <div className="message-line" role="status" aria-live="polite">
+            {error ? (
+              <span className="text-error">{error}</span>
+            ) : result ? (
+              <span>
+                {result.documentNo} / {statusLabels[result.status] ?? result.status}
+              </span>
+            ) : null}
           </div>
-        </form>
-        ) : null}
-
-        <div className="message-line" role="status" aria-live="polite">
-          {error ? (
-            <span className="text-error">{error}</span>
-          ) : result ? (
-            <span>
-              {result.documentNo} / {statusLabels[result.status] ?? result.status}
-            </span>
-          ) : null}
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }

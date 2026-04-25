@@ -6,6 +6,7 @@ import {
   buildDocumentPayload,
   categoryOptionsForDocumentType,
   createInitialDocumentForm,
+  filterDocumentsByStatus,
   getVisibleFieldKeys,
   merchantOptionsForProject,
   pettyCashAccountsForPerson,
@@ -128,6 +129,20 @@ function capturingSetForm(initialForm: DocumentEntryForm) {
 }
 
 describe("document entry model", () => {
+  it("filters documents by status without mutating the input array", () => {
+    const documents = [
+      { id: "doc_draft", status: "draft" },
+      { id: "doc_pending", status: "pending" },
+      { id: "doc_approved", status: "approved" }
+    ];
+    const before = documents.map((document) => ({ ...document }));
+
+    expect(filterDocumentsByStatus(documents, "all")).toEqual(documents);
+    expect(filterDocumentsByStatus(documents, "draft")).toEqual([documents[0]]);
+    expect(filterDocumentsByStatus(documents, "approved")).toEqual([documents[2]]);
+    expect(documents).toEqual(before);
+  });
+
   it("keeps project income fields business-specific", () => {
     expect(getVisibleFieldKeys("project_income", "normal")).toEqual([
       "operatorPersonId",
