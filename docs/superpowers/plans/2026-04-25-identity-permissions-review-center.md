@@ -2363,13 +2363,18 @@ npm run db:seed:local
 
 Expected: migrations apply and seed succeeds.
 
-If seed lacks `login_email`, update `scripts/seed-demo.sql` so demo people include:
+For local smoke with development auth, configure a private `.dev.vars` file or command-line env with:
 
-```sql
-login_email = 'finance-demo@example.test'
+```text
+AUTH_MODE=development
+DEV_ACTOR_EMAIL=<your local test email>
 ```
 
-for the finance demo user and matching local `DEV_ACTOR_EMAIL`.
+Then update one test person in local D1 only. Do not commit this email to `scripts/seed-demo.sql`, and do not run this override against remote D1:
+
+```bash
+wrangler d1 execute management-ledger-db --local --command "UPDATE people SET login_email = '<your local test email>' WHERE id = '<local test person id>'"
+```
 
 - [ ] **Step 6: Start local Worker**
 
