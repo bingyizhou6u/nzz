@@ -4,6 +4,7 @@ import type { PeriodLockRow } from "./period-locks/periodLockTypes";
 
 type LoadState = "loading" | "ready" | "error";
 type ActionKey = "lock" | `unlock:${string}` | null;
+type ShouldApplyLoad = () => boolean;
 
 interface PeriodLocksPageProps {
   capabilities: string[];
@@ -15,6 +16,10 @@ export function canLockPeriod(capabilities: string[]) {
 
 export function canUnlockPeriod(capabilities: string[]) {
   return capabilities.includes("periodLocks.unlock");
+}
+
+export function periodLockLoadShouldApply(shouldApply: ShouldApplyLoad, apply: () => void) {
+  if (shouldApply()) apply();
 }
 
 export function PeriodLocksPage({ capabilities }: PeriodLocksPageProps) {
@@ -29,21 +34,32 @@ export function PeriodLocksPage({ capabilities }: PeriodLocksPageProps) {
   const lockAllowed = canLockPeriod(capabilities);
   const unlockAllowed = canUnlockPeriod(capabilities);
 
-  async function loadLocks() {
+  async function loadLocks(shouldApply: ShouldApplyLoad = () => true) {
     setLoadState("loading");
     setLocks([]);
     setError(null);
     try {
-      setLocks(await listPeriodLocks());
-      setLoadState("ready");
+      const nextLocks = await listPeriodLocks();
+      periodLockLoadShouldApply(shouldApply, () => {
+        setLocks(nextLocks);
+        setLoadState("ready");
+      });
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "读取锁账期间失败");
-      setLoadState("error");
+      periodLockLoadShouldApply(shouldApply, () => {
+        setError(loadError instanceof Error ? loadError.message : "读取锁账期间失败");
+        setLoadState("error");
+      });
     }
   }
 
   useEffect(() => {
-    void loadLocks();
+    let isCurrent = true;
+
+    void loadLocks(() => isCurrent);
+
+    return () => {
+      isCurrent = false;
+    };
   }, []);
 
   async function handleLock(event: React.FormEvent<HTMLFormElement>) {
