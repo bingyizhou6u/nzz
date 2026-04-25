@@ -3,7 +3,8 @@ import {
   buildDocumentPayload,
   formatLocalDateInputValue,
   formatLocalMonthInputValue,
-  isOriginalDocumentRequired
+  isOriginalDocumentRequired,
+  validateDocumentForm
 } from "./documents/documentEntryModel";
 import {
   canApproveDocument,
@@ -96,6 +97,61 @@ describe("document date defaults", () => {
       merchantId: "merchant_1",
       categoryId: "cat_income",
       lines: [{ lineType: "main", accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 10050 }]
+    });
+  });
+
+  it("omits createdBy when no actor is supplied", () => {
+    expect(
+      buildDocumentPayload({
+        documentType: "project_income",
+        actionType: "normal",
+        businessDate: "2026-04-24",
+        period: "2026-04",
+        originalDocumentId: "",
+        summary: "Income",
+        operatorPersonId: "",
+        projectId: "proj_1",
+        merchantId: "merchant_1",
+        categoryId: "cat_income",
+        accountId: "acct_usdt",
+        currencyCode: "USDT",
+        amountMajor: "100.50",
+        borrowerPersonId: "",
+        counterpartyAccountId: "",
+        personId: "",
+        usdtAmountMajor: ""
+      }, "")
+    ).not.toHaveProperty("createdBy");
+  });
+
+  it("omits createdBy from reversal payloads when no actor is supplied", () => {
+    expect(
+      buildDocumentPayload({
+        documentType: "project_income",
+        actionType: "reversal",
+        businessDate: "2026-04-24",
+        period: "2026-04",
+        originalDocumentId: "doc_1",
+        summary: "Reverse income",
+        operatorPersonId: "",
+        projectId: "",
+        merchantId: "",
+        categoryId: "",
+        accountId: "",
+        currencyCode: "USDT",
+        amountMajor: "",
+        borrowerPersonId: "",
+        counterpartyAccountId: "",
+        personId: "",
+        usdtAmountMajor: ""
+      }, "")
+    ).toEqual({
+      documentType: "project_income",
+      actionType: "reversal",
+      businessDate: "2026-04-24",
+      period: "2026-04",
+      originalDocumentId: "doc_1",
+      summary: "Reverse income"
     });
   });
 
@@ -224,10 +280,62 @@ describe("document date defaults", () => {
     expect(canApproveDocument("approved")).toBe(false);
   });
 
-  it("uses selected people ids for workflow actions", () => {
+  it("uses selected people ids for workflow actions when supplied", () => {
     expect(workflowActionBody("submit", "person_finance")).toEqual({ actor: "person_finance" });
     expect(workflowActionBody("approve", "person_manager")).toEqual({ reviewer: "person_manager" });
     expect(workflowActionBody("reject", "person_manager")).toEqual({ actor: "person_manager", reason: "退回修改" });
+  });
+
+  it("omits workflow actor fields when no actor is supplied", () => {
+    expect(workflowActionBody("submit", "")).toEqual({});
+    expect(workflowActionBody("approve", "")).toEqual({});
+    expect(workflowActionBody("reject", "")).toEqual({ reason: "退回修改" });
+  });
+
+  it("does not require a current actor to validate document drafts", () => {
+    const errors = validateDocumentForm(
+      {
+        documentType: "project_income",
+        actionType: "normal",
+        businessDate: "2026-04-24",
+        period: "2026-04",
+        originalDocumentId: "",
+        summary: "Income",
+        operatorPersonId: "person_1",
+        projectId: "proj_1",
+        merchantId: "merchant_1",
+        categoryId: "cat_income",
+        accountId: "acct_usdt",
+        currencyCode: "USDT",
+        amountMajor: "100.50",
+        borrowerPersonId: "",
+        counterpartyAccountId: "",
+        personId: "",
+        usdtAmountMajor: ""
+      },
+      {
+        people: [{ id: "person_1", name: "Alice", alias: null, roles_json: "[\"finance_entry\"]", is_enabled: 1 }],
+        projects: [],
+        merchants: [],
+        accounts: [
+          {
+            id: "acct_usdt",
+            name: "USDT",
+            currency_code: "USDT",
+            account_type: "usdt_wallet",
+            owner_person_id: null,
+            is_company_account: 1,
+            allow_negative: 0,
+            status: "active"
+          }
+        ],
+        currencies: [{ code: "USDT", name: "Tether", minor_units: 2, is_enabled: 1 }],
+        categories: []
+      },
+      ""
+    );
+
+    expect(errors).not.toContain("请选择当前操作人");
   });
 
   it("loads loan origin documents for normal loan settlement documents", () => {

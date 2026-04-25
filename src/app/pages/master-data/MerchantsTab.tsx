@@ -38,13 +38,11 @@ export function MerchantsTab({
   rows,
   people,
   projects,
-  currentActorId,
   onChanged
 }: {
   rows: MerchantRow[];
   people: PersonRow[];
   projects: ProjectRow[];
-  currentActorId: string;
   onChanged: () => void;
 }) {
   const [form, setForm] = useState<MerchantForm>(emptyForm);
@@ -61,7 +59,7 @@ export function MerchantsTab({
 
   async function save(nextForm: MerchantForm, row: MerchantRow | null) {
     const url = row ? `/api/master-data/merchants/${encodeURIComponent(row.id)}` : "/api/master-data/merchants";
-    await writeMasterData(url, row ? "PATCH" : "POST", buildMerchantPayload(nextForm, currentActorId));
+    await writeMasterData(url, row ? "PATCH" : "POST", buildMerchantPayload(nextForm));
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -156,12 +154,10 @@ export function MerchantsTab({
         <FormActions
           isSubmitting={isSubmitting}
           submitLabel={editingRow ? "保存商户" : "创建商户"}
-          submitDisabled={!currentActorId}
           onCancel={editingRow ? resetForm : undefined}
         />
       </form>
       {projectDisabled ? <FieldHint>已有引用，受保护字段不能修改。</FieldHint> : null}
-      {!currentActorId ? <FieldHint>请选择当前操作人后再提交。</FieldHint> : null}
       <MessageLine error={error} message={message} />
       <MasterDataTable
         rows={rows}
@@ -193,7 +189,7 @@ export function MerchantsTab({
                 <button type="button" className="secondary-button" onClick={() => { setEditingRow(row); setForm(rowToForm(row)); }}>
                   编辑
                 </button>
-                <button type="button" className="secondary-button" onClick={() => void toggleArchive(row)} disabled={!currentActorId || isSubmitting}>
+                <button type="button" className="secondary-button" onClick={() => void toggleArchive(row)} disabled={isSubmitting}>
                   {row.status === "active" ? "归档" : "恢复"}
                 </button>
               </div>

@@ -42,11 +42,9 @@ function rowToForm(row: CategoryRow): CategoryForm {
 
 export function CategoriesTab({
   rows,
-  currentActorId,
   onChanged
 }: {
   rows: CategoryRow[];
-  currentActorId: string;
   onChanged: () => void;
 }) {
   const [form, setForm] = useState<CategoryForm>(emptyForm);
@@ -72,7 +70,7 @@ export function CategoriesTab({
 
   async function save(nextForm: CategoryForm, row: CategoryRow | null) {
     const url = row ? `/api/master-data/categories/${encodeURIComponent(row.id)}` : "/api/master-data/categories";
-    await writeMasterData(url, row ? "PATCH" : "POST", buildCategoryPayload(nextForm, currentActorId));
+    await writeMasterData(url, row ? "PATCH" : "POST", buildCategoryPayload(nextForm));
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -214,12 +212,10 @@ export function CategoriesTab({
         <FormActions
           isSubmitting={isSubmitting}
           submitLabel={editingRow ? "保存科目" : "创建科目"}
-          submitDisabled={!currentActorId}
           onCancel={editingRow ? resetForm : undefined}
         />
       </form>
       {hasProtectedDisabled ? <FieldHint>已有引用，受保护字段不能修改。</FieldHint> : null}
-      {!currentActorId ? <FieldHint>请选择当前操作人后再提交。</FieldHint> : null}
       <MessageLine error={error} message={message} />
       <MasterDataTable
         rows={rows}
@@ -250,7 +246,7 @@ export function CategoriesTab({
                 <button type="button" className="secondary-button" onClick={() => { setEditingRow(row); setForm(rowToForm(row)); }}>
                   编辑
                 </button>
-                <button type="button" className="secondary-button" onClick={() => void toggleEnabled(row)} disabled={!currentActorId || isSubmitting}>
+                <button type="button" className="secondary-button" onClick={() => void toggleEnabled(row)} disabled={isSubmitting}>
                   {row.is_enabled ? "停用" : "启用"}
                 </button>
               </div>

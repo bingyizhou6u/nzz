@@ -228,7 +228,6 @@ export function validateDocumentForm(
   entryState?: { requiredFields: DocumentFieldKey[]; validationErrors: string[] }
 ): string[] {
   const errors: string[] = [];
-  if (!currentActorId.trim()) errors.push("请选择当前操作人");
   if (options.people.length === 0) errors.push("请先到基础资料维护人员");
   if (options.currencies.length === 0) errors.push("请先到基础资料维护币种");
   if (isOriginalDocumentFieldRequired(form.documentType, form.actionType) && !form.originalDocumentId.trim()) {
@@ -274,16 +273,19 @@ function getLegacyValidationFieldKeys(form: DocumentEntryForm): DocumentFieldKey
 }
 
 export function buildDocumentPayload(form: DocumentEntryForm, currentActorId: string) {
+  const actor = currentActorId.trim();
+
   if (form.actionType === "reversal") {
-    return {
+    const reversalPayload: Record<string, unknown> = {
       documentType: form.documentType,
       actionType: form.actionType,
       businessDate: form.businessDate,
       period: form.period,
       originalDocumentId: form.originalDocumentId.trim(),
-      summary: form.summary.trim(),
-      createdBy: currentActorId.trim()
+      summary: form.summary.trim()
     };
+    if (actor) reversalPayload.createdBy = actor;
+    return reversalPayload;
   }
 
   const line: Record<string, unknown> = {
@@ -304,9 +306,9 @@ export function buildDocumentPayload(form: DocumentEntryForm, currentActorId: st
     businessDate: form.businessDate,
     period: form.period,
     summary: form.summary.trim(),
-    createdBy: currentActorId.trim(),
     lines: [line]
   };
+  if (actor) payload.createdBy = actor;
 
   for (const [key, value] of Object.entries({
     originalDocumentId: optionalString(form.originalDocumentId),

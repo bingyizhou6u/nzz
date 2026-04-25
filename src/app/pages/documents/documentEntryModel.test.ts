@@ -180,9 +180,9 @@ describe("document entry model", () => {
     ]);
   });
 
-  it("requires current actor before creating payloads", () => {
+  it("does not require current actor before creating payloads", () => {
     const form = createInitialDocumentForm(new Date("2026-04-24T10:00:00Z"));
-    expect(validateDocumentForm(form, options, "")).toContain("请选择当前操作人");
+    expect(validateDocumentForm(form, options, "")).not.toContain("请选择当前操作人");
   });
 
   it("rejects account transfers with the same source and destination account", () => {

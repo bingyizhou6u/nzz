@@ -34,7 +34,6 @@ export function MasterDataPage() {
   const [data, setData] = useState<MasterDataSnapshot>(emptySnapshot);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentActorId, setCurrentActorId] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -47,10 +46,6 @@ export function MasterDataPage() {
         const response = await getJson<ApiEnvelope<MasterDataSnapshot>>("/api/master-data");
         if (isCurrent) {
           setData(response.data);
-          setCurrentActorId((current) => {
-            if (response.data.people.some((person) => person.id === current && person.is_enabled)) return current;
-            return response.data.people.find((person) => person.is_enabled)?.id || "";
-          });
         }
       } catch (loadError) {
         if (isCurrent) {
@@ -91,36 +86,6 @@ export function MasterDataPage() {
         {error ? <div className="notice error">{error}</div> : <MasterDataOverview data={data} />}
       </section>
 
-      <section className="panel master-data-actor-panel">
-        <div className="panel-header">
-          <h2>当前操作人</h2>
-          <div className="status-slot" role="status" aria-live="polite">
-            {isLoading ? "读取中" : currentActorId ? "已选择" : "未选择"}
-          </div>
-        </div>
-        <div className="actor-panel">
-          <label>
-            当前操作人
-            <select
-              value={currentActorId}
-              onChange={(event) => setCurrentActorId(event.target.value)}
-              required
-              disabled={isLoading || Boolean(error)}
-            >
-              <option value="">请选择操作人</option>
-              {data.people
-                .filter((person) => person.is_enabled)
-                .map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.alias ? `${person.name} / ${person.alias}` : person.name}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <div className="document-entry-notice">创建、修改、启停和归档都会使用当前操作人，并写入审计。</div>
-        </div>
-      </section>
-
       <section className="panel">
         <div className="master-data-tabs" role="tablist" aria-label="基础资料分类">
           {tabs.map((tab) => (
@@ -137,13 +102,12 @@ export function MasterDataPage() {
           ))}
         </div>
         {activeTab === "people" ? (
-          <PeopleTab rows={data.people} currentActorId={currentActorId} onChanged={refreshMasterData} />
+          <PeopleTab rows={data.people} onChanged={refreshMasterData} />
         ) : null}
         {activeTab === "projects" ? (
           <ProjectsTab
             rows={data.projects}
             people={data.people}
-            currentActorId={currentActorId}
             onChanged={refreshMasterData}
           />
         ) : null}
@@ -152,7 +116,6 @@ export function MasterDataPage() {
             rows={data.merchants}
             people={data.people}
             projects={data.projects}
-            currentActorId={currentActorId}
             onChanged={refreshMasterData}
           />
         ) : null}
@@ -161,15 +124,14 @@ export function MasterDataPage() {
             rows={data.accounts}
             people={data.people}
             currencies={data.currencies}
-            currentActorId={currentActorId}
             onChanged={refreshMasterData}
           />
         ) : null}
         {activeTab === "currencies" ? (
-          <CurrenciesTab rows={data.currencies} currentActorId={currentActorId} onChanged={refreshMasterData} />
+          <CurrenciesTab rows={data.currencies} onChanged={refreshMasterData} />
         ) : null}
         {activeTab === "categories" ? (
-          <CategoriesTab rows={data.categories} currentActorId={currentActorId} onChanged={refreshMasterData} />
+          <CategoriesTab rows={data.categories} onChanged={refreshMasterData} />
         ) : null}
       </section>
     </div>

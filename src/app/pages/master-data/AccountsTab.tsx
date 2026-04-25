@@ -36,13 +36,11 @@ export function AccountsTab({
   rows,
   people,
   currencies,
-  currentActorId,
   onChanged
 }: {
   rows: AccountRow[];
   people: PersonRow[];
   currencies: CurrencyRow[];
-  currentActorId: string;
   onChanged: () => void;
 }) {
   const [form, setForm] = useState<AccountForm>(emptyForm);
@@ -61,7 +59,7 @@ export function AccountsTab({
 
   async function save(nextForm: AccountForm, row: AccountRow | null) {
     const url = row ? `/api/master-data/accounts/${encodeURIComponent(row.id)}` : "/api/master-data/accounts";
-    await writeMasterData(url, row ? "PATCH" : "POST", buildAccountPayload(nextForm, currentActorId));
+    await writeMasterData(url, row ? "PATCH" : "POST", buildAccountPayload(nextForm));
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -178,12 +176,10 @@ export function AccountsTab({
         <FormActions
           isSubmitting={isSubmitting}
           submitLabel={editingRow ? "保存账户" : "创建账户"}
-          submitDisabled={!currentActorId}
           onCancel={editingRow ? resetForm : undefined}
         />
       </form>
       {protectedField ? <FieldHint>已有引用，受保护字段不能修改。</FieldHint> : null}
-      {!currentActorId ? <FieldHint>请选择当前操作人后再提交。</FieldHint> : null}
       <MessageLine error={error} message={message} />
       <MasterDataTable
         rows={rows}
@@ -214,7 +210,7 @@ export function AccountsTab({
                 <button type="button" className="secondary-button" onClick={() => { setEditingRow(row); setForm(rowToForm(row)); }}>
                   编辑
                 </button>
-                <button type="button" className="secondary-button" onClick={() => void toggleArchive(row)} disabled={!currentActorId || isSubmitting}>
+                <button type="button" className="secondary-button" onClick={() => void toggleArchive(row)} disabled={isSubmitting}>
                   {row.status === "active" ? "归档" : "恢复"}
                 </button>
               </div>

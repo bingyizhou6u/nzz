@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { FieldHint, FormActions, MessageLine } from "./MasterDataForm";
+import { FormActions, MessageLine } from "./MasterDataForm";
 import { MasterDataTable } from "./MasterDataTable";
 import { buildPersonPayload, parseRoles, personRoleLabels, personRoles } from "./masterDataModel";
 import { writeMasterData } from "./masterDataRequests";
@@ -18,11 +18,9 @@ function rowToForm(row: PersonRow): PersonForm {
 
 export function PeopleTab({
   rows,
-  currentActorId,
   onChanged
 }: {
   rows: PersonRow[];
-  currentActorId: string;
   onChanged: () => void;
 }) {
   const [form, setForm] = useState<PersonForm>(emptyForm);
@@ -52,7 +50,7 @@ export function PeopleTab({
       const url = editingRow
         ? `/api/master-data/people/${encodeURIComponent(editingRow.id)}`
         : "/api/master-data/people";
-      await writeMasterData(url, editingRow ? "PATCH" : "POST", buildPersonPayload(form, currentActorId));
+      await writeMasterData(url, editingRow ? "PATCH" : "POST", buildPersonPayload(form));
       setMessage(editingRow ? "已更新人员" : "已创建人员");
       resetForm();
       onChanged();
@@ -71,7 +69,7 @@ export function PeopleTab({
       await writeMasterData(
         `/api/master-data/people/${encodeURIComponent(row.id)}`,
         "PATCH",
-        buildPersonPayload({ ...rowToForm(row), isEnabled: !row.is_enabled }, currentActorId)
+        buildPersonPayload({ ...rowToForm(row), isEnabled: !row.is_enabled })
       );
       setMessage(row.is_enabled ? "已停用人员" : "已启用人员");
       onChanged();
@@ -119,11 +117,9 @@ export function PeopleTab({
         <FormActions
           isSubmitting={isSubmitting}
           submitLabel={editingRow ? "保存人员" : "创建人员"}
-          submitDisabled={!currentActorId}
           onCancel={editingRow ? resetForm : undefined}
         />
       </form>
-      {!currentActorId ? <FieldHint>请选择当前操作人后再提交。</FieldHint> : null}
       <MessageLine error={error} message={message} />
       <MasterDataTable
         rows={rows}
@@ -154,7 +150,7 @@ export function PeopleTab({
                 <button type="button" className="secondary-button" onClick={() => { setEditingRow(row); setForm(rowToForm(row)); }}>
                   编辑
                 </button>
-                <button type="button" className="secondary-button" onClick={() => void toggleStatus(row)} disabled={!currentActorId || isSubmitting}>
+                <button type="button" className="secondary-button" onClick={() => void toggleStatus(row)} disabled={isSubmitting}>
                   {row.is_enabled ? "停用" : "启用"}
                 </button>
               </div>

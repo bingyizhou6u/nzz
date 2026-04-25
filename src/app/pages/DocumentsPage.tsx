@@ -2,7 +2,6 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import type { ActionType, DocumentType } from "../../domain/types";
 import { getJson, postJson, type ApiEnvelope } from "../api";
 import { DocumentTypeFields } from "./documents/DocumentTypeFields";
-import { personLabel, SelectField } from "./documents/DocumentEntrySelectors";
 import {
   buildDocumentPayload,
   createInitialDocumentForm,
@@ -90,9 +89,9 @@ export function canApproveDocument(status: string) {
 
 export function workflowActionBody(action: WorkflowAction, actorId: string) {
   const actor = actorId.trim();
-  if (action === "approve") return { reviewer: actor };
-  if (action === "reject") return { actor, reason: "退回修改" };
-  return { actor };
+  if (action === "approve") return actor ? { reviewer: actor } : {};
+  if (action === "reject") return actor ? { actor, reason: "退回修改" } : { reason: "退回修改" };
+  return actor ? { actor } : {};
 }
 
 export function originalDocumentQueryType(documentType: DocumentType, actionType: ActionType): DocumentType | null {
@@ -129,7 +128,6 @@ export function DocumentsPage() {
   const [areOriginalDocumentsLoading, setAreOriginalDocumentsLoading] = useState(false);
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const [originalDocumentsError, setOriginalDocumentsError] = useState<string | null>(null);
-  const [currentActorId, setCurrentActorId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [result, setResult] = useState<DocumentResponse | null>(null);
@@ -149,7 +147,6 @@ export function DocumentsPage() {
         const response = await getJson<ApiEnvelope<DocumentEntryOptions>>("/api/document-entry/options");
         if (isCurrent) {
           setEntryOptions(response.data);
-          setCurrentActorId((current) => current || response.data.people[0]?.id || "");
         }
       } catch (loadOptionsError) {
         if (isCurrent) {
@@ -250,7 +247,7 @@ export function DocumentsPage() {
     setResult(null);
     setError(null);
 
-    const validationErrors = validateDocumentForm(form, entryOptions, currentActorId, entryState);
+    const validationErrors = validateDocumentForm(form, entryOptions, "", entryState);
     if (validationErrors.length > 0) {
       setError(validationErrors.join("；"));
       return;
@@ -269,7 +266,7 @@ export function DocumentsPage() {
     try {
       const response = await postJson<ApiEnvelope<DocumentResponse>>(
         "/api/documents",
-        buildDocumentPayload(form, currentActorId)
+        buildDocumentPayload(form, "")
       );
       setResult(response.data);
       setForm((current) => ({
@@ -292,18 +289,13 @@ export function DocumentsPage() {
     setResult(null);
     setError(null);
 
-    if (!currentActorId.trim()) {
-      setError("请选择当前操作人");
-      return;
-    }
-
     const nextActionKey = `${document.id}:${action}`;
     setActionKey(nextActionKey);
 
     try {
       const response = await postJson<ApiEnvelope<DocumentActionResponse>>(
         `/api/documents/${encodeURIComponent(document.id)}/${action}`,
-        workflowActionBody(action, currentActorId)
+        workflowActionBody(action, "")
       );
       setResult({ id: response.data.id, documentNo: document.document_no, status: response.data.status });
       refreshDocuments();
@@ -316,31 +308,6 @@ export function DocumentsPage() {
 
   return (
     <div className="page-stack">
-      <section className="panel">
-        <div className="panel-header">
-          <h2>当前操作人</h2>
-          <div className="status-slot" role="status" aria-live="polite">
-            {areOptionsLoading ? "读取中" : optionsError ? "失败" : currentActorId ? "已选择" : "未选择"}
-          </div>
-        </div>
-        <div className="actor-panel">
-          <SelectField
-            label="当前操作人"
-            value={currentActorId}
-            options={entryOptions.people}
-            getValue={(person) => person.id}
-            getLabel={personLabel}
-            onChange={setCurrentActorId}
-            required
-            disabled={areOptionsLoading || Boolean(optionsError)}
-          />
-          <div className="document-entry-notice">
-            创建、提交、审核、驳回都会使用当前操作人，并保存为人员主数据 ID。
-          </div>
-        </div>
-        {optionsError ? <div className="notice error">{optionsError}</div> : null}
-      </section>
-
       <section className="panel">
         <div className="panel-header">
           <h2>单据列表</h2>
@@ -444,6 +411,7 @@ export function DocumentsPage() {
             {isSubmitting ? "提交中" : actionKey ? "处理中" : error ? "失败" : result ? "完成" : "待提交"}
           </div>
         </div>
+        {optionsError ? <div className="notice error">{optionsError}</div> : null}
 
         <form className="form-grid document-form" onSubmit={handleSubmit}>
           <label>
@@ -534,8 +502,7 @@ export function DocumentsPage() {
                 areOptionsLoading ||
                 areOriginalDocumentsLoading ||
                 Boolean(optionsError) ||
-                Boolean(originalDocumentsError) ||
-                !currentActorId
+                Boolean(originalDocumentsError)
               }
             >
               {isSubmitting ? "提交中" : "创建草稿"}

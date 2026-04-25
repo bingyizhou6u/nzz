@@ -25,14 +25,13 @@ describe("master data model", () => {
     expect(parseRoles("[1,\"admin\"]")).toEqual(["admin"]);
   });
 
-  it("builds people payloads with trimmed fields and actor", () => {
+  it("builds people payloads with trimmed fields", () => {
     expect(
       buildPersonPayload(
         { name: " Alice ", alias: " ali ", roles: ["finance_entry"], isEnabled: true },
         "person_admin"
       )
     ).toEqual({
-      actor: "person_admin",
       name: "Alice",
       alias: "ali",
       roles: ["finance_entry"],
@@ -55,7 +54,6 @@ describe("master data model", () => {
         "person_admin"
       )
     ).toEqual({
-      actor: "person_admin",
       name: "Bob AED Petty",
       accountType: "petty_cash",
       currencyCode: "AED",
@@ -77,14 +75,13 @@ describe("master data model", () => {
     expect(categoryTypeLabels.loss).toBe("损失");
   });
 
-  it("builds project payloads with uppercase code and actor", () => {
+  it("builds project payloads with uppercase code", () => {
     expect(
       buildProjectPayload(
         { code: " p1 ", name: " Project ", ownerPersonId: "", status: "active", note: "" },
         "person_admin"
       )
     ).toEqual({
-      actor: "person_admin",
       code: "P1",
       name: "Project",
       ownerPersonId: null,
@@ -109,7 +106,6 @@ describe("master data model", () => {
         "person_admin"
       )
     ).toEqual({
-      actor: "person_admin",
       code: "M1",
       name: "Merchant",
       projectId: "proj_1",
@@ -123,7 +119,6 @@ describe("master data model", () => {
 
   it("builds currency and category payloads", () => {
     expect(buildCurrencyPayload({ code: " aed ", name: "Dirham", minorUnits: "2", isEnabled: true }, "person_admin")).toEqual({
-      actor: "person_admin",
       code: "AED",
       name: "Dirham",
       minorUnits: 2,
@@ -146,7 +141,6 @@ describe("master data model", () => {
         "person_admin"
       )
     ).toMatchObject({
-      actor: "person_admin",
       name: "Travel",
       parentId: null,
       categoryType: "expense",

@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { FieldHint, FormActions, MessageLine } from "./MasterDataForm";
+import { FormActions, MessageLine } from "./MasterDataForm";
 import { MasterDataTable } from "./MasterDataTable";
 import { activeStatusLabels, buildProjectPayload } from "./masterDataModel";
 import { writeMasterData } from "./masterDataRequests";
@@ -25,12 +25,10 @@ function personName(people: PersonRow[], personId: string | null) {
 export function ProjectsTab({
   rows,
   people,
-  currentActorId,
   onChanged
 }: {
   rows: ProjectRow[];
   people: PersonRow[];
-  currentActorId: string;
   onChanged: () => void;
 }) {
   const [form, setForm] = useState<ProjectForm>(emptyForm);
@@ -46,7 +44,7 @@ export function ProjectsTab({
 
   async function save(nextForm: ProjectForm, row: ProjectRow | null) {
     const url = row ? `/api/master-data/projects/${encodeURIComponent(row.id)}` : "/api/master-data/projects";
-    await writeMasterData(url, row ? "PATCH" : "POST", buildProjectPayload(nextForm, currentActorId));
+    await writeMasterData(url, row ? "PATCH" : "POST", buildProjectPayload(nextForm));
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -120,11 +118,9 @@ export function ProjectsTab({
         <FormActions
           isSubmitting={isSubmitting}
           submitLabel={editingRow ? "保存项目" : "创建项目"}
-          submitDisabled={!currentActorId}
           onCancel={editingRow ? resetForm : undefined}
         />
       </form>
-      {!currentActorId ? <FieldHint>请选择当前操作人后再提交。</FieldHint> : null}
       <MessageLine error={error} message={message} />
       <MasterDataTable
         rows={rows}
@@ -151,7 +147,7 @@ export function ProjectsTab({
                 <button type="button" className="secondary-button" onClick={() => { setEditingRow(row); setForm(rowToForm(row)); }}>
                   编辑
                 </button>
-                <button type="button" className="secondary-button" onClick={() => void toggleArchive(row)} disabled={!currentActorId || isSubmitting}>
+                <button type="button" className="secondary-button" onClick={() => void toggleArchive(row)} disabled={isSubmitting}>
                   {row.status === "active" ? "归档" : "恢复"}
                 </button>
               </div>

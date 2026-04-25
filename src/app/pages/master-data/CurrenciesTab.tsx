@@ -18,11 +18,9 @@ function rowToForm(row: CurrencyRow): CurrencyForm {
 
 export function CurrenciesTab({
   rows,
-  currentActorId,
   onChanged
 }: {
   rows: CurrencyRow[];
-  currentActorId: string;
   onChanged: () => void;
 }) {
   const [form, setForm] = useState<CurrencyForm>(emptyForm);
@@ -39,7 +37,7 @@ export function CurrenciesTab({
 
   async function save(nextForm: CurrencyForm, row: CurrencyRow | null) {
     const url = row ? `/api/master-data/currencies/${encodeURIComponent(row.code)}` : "/api/master-data/currencies";
-    await writeMasterData(url, row ? "PATCH" : "POST", buildCurrencyPayload(nextForm, currentActorId));
+    await writeMasterData(url, row ? "PATCH" : "POST", buildCurrencyPayload(nextForm));
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -116,12 +114,10 @@ export function CurrenciesTab({
         <FormActions
           isSubmitting={isSubmitting}
           submitLabel={editingRow ? "保存币种" : "创建币种"}
-          submitDisabled={!currentActorId}
           onCancel={editingRow ? resetForm : undefined}
         />
       </form>
       {minorUnitsDisabled ? <FieldHint>已有引用，受保护字段不能修改。</FieldHint> : null}
-      {!currentActorId ? <FieldHint>请选择当前操作人后再提交。</FieldHint> : null}
       <MessageLine error={error} message={message} />
       <MasterDataTable
         rows={rows}
@@ -148,7 +144,7 @@ export function CurrenciesTab({
                 <button type="button" className="secondary-button" onClick={() => { setEditingRow(row); setForm(rowToForm(row)); }}>
                   编辑
                 </button>
-                <button type="button" className="secondary-button" onClick={() => void toggleEnabled(row)} disabled={!currentActorId || isSubmitting}>
+                <button type="button" className="secondary-button" onClick={() => void toggleEnabled(row)} disabled={isSubmitting}>
                   {row.is_enabled ? "停用" : "启用"}
                 </button>
               </div>

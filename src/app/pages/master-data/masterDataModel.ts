@@ -110,9 +110,8 @@ function nullableText(value: string) {
   return trimmed ? trimmed : null;
 }
 
-export function buildPersonPayload(form: PersonForm, actor: string): Record<string, unknown> {
+export function buildPersonPayload(form: PersonForm, _actor?: string): Record<string, unknown> {
   return {
-    actor: actor.trim(),
     name: form.name.trim(),
     alias: nullableText(form.alias),
     roles: form.roles,
@@ -120,9 +119,8 @@ export function buildPersonPayload(form: PersonForm, actor: string): Record<stri
   };
 }
 
-export function buildProjectPayload(form: ProjectForm, actor: string): Record<string, unknown> {
+export function buildProjectPayload(form: ProjectForm, _actor?: string): Record<string, unknown> {
   return {
-    actor: actor.trim(),
     code: normalizeCode(form.code),
     name: form.name.trim(),
     ownerPersonId: nullableText(form.ownerPersonId),
@@ -131,9 +129,8 @@ export function buildProjectPayload(form: ProjectForm, actor: string): Record<st
   };
 }
 
-export function buildMerchantPayload(form: MerchantForm, actor: string): Record<string, unknown> {
+export function buildMerchantPayload(form: MerchantForm, _actor?: string): Record<string, unknown> {
   return {
-    actor: actor.trim(),
     code: normalizeCode(form.code),
     name: form.name.trim(),
     projectId: form.projectId.trim(),
@@ -145,9 +142,8 @@ export function buildMerchantPayload(form: MerchantForm, actor: string): Record<
   };
 }
 
-export function buildAccountPayload(form: AccountForm, actor: string): Record<string, unknown> {
+export function buildAccountPayload(form: AccountForm, _actor?: string): Record<string, unknown> {
   return {
-    actor: actor.trim(),
     name: form.name.trim(),
     accountType: form.accountType,
     currencyCode: normalizeCode(form.currencyCode),
@@ -158,9 +154,8 @@ export function buildAccountPayload(form: AccountForm, actor: string): Record<st
   };
 }
 
-export function buildCurrencyPayload(form: CurrencyForm, actor: string): Record<string, unknown> {
+export function buildCurrencyPayload(form: CurrencyForm, _actor?: string): Record<string, unknown> {
   return {
-    actor: actor.trim(),
     code: normalizeCode(form.code),
     name: form.name.trim(),
     minorUnits: Number(form.minorUnits),
@@ -168,9 +163,8 @@ export function buildCurrencyPayload(form: CurrencyForm, actor: string): Record<
   };
 }
 
-export function buildCategoryPayload(form: CategoryForm, actor: string): Record<string, unknown> {
+export function buildCategoryPayload(form: CategoryForm, _actor?: string): Record<string, unknown> {
   return {
-    actor: actor.trim(),
     name: form.name.trim(),
     parentId: nullableText(form.parentId),
     categoryType: form.categoryType,
