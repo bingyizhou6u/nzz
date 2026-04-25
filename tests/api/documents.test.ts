@@ -132,6 +132,14 @@ const financeManagerActor: AuthenticatedActor = {
   roles: ["finance_manager"]
 };
 
+const readonlyActor: AuthenticatedActor = {
+  personId: "readonly_1",
+  name: "Reader",
+  alias: null,
+  email: "reader@example.com",
+  roles: ["readonly"]
+};
+
 function mockEnv(
   options: {
     runResult?: D1Result;
@@ -313,6 +321,57 @@ describe("documents API", () => {
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: "请求中的操作人和当前登录人不一致" });
+  });
+
+  it("rejects document creation without create permission", async () => {
+    const response = await createDocument({
+      request: new Request("https://ledger.test/api/documents", {
+        method: "POST",
+        body: JSON.stringify({
+          documentType: "project_income",
+          businessDate: "2026-04-24",
+          period: "2026-04",
+          summary: "Initial income",
+          lines: [validLine()]
+        })
+      }),
+      env: mockEnv(),
+      params: {},
+      actor: readonlyActor
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "权限不足" });
+  });
+
+  it("rejects document submission without submit permission", async () => {
+    const response = await submitDocument({
+      request: new Request("https://ledger.test/api/documents/doc_1/submit", {
+        method: "POST",
+        body: JSON.stringify({})
+      }),
+      env: mockEnv(),
+      params: { id: "doc_1" },
+      actor: readonlyActor
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "权限不足" });
+  });
+
+  it("rejects document rejection without reject permission", async () => {
+    const response = await rejectDocument({
+      request: new Request("https://ledger.test/api/documents/doc_1/reject", {
+        method: "POST",
+        body: JSON.stringify({ reason: "Missing receipt" })
+      }),
+      env: mockEnv(),
+      params: { id: "doc_1" },
+      actor: readonlyActor
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "权限不足" });
   });
 
   it("creates draft documents", async () => {

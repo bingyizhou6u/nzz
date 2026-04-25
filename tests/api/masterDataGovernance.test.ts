@@ -6,6 +6,7 @@ import {
   listMasterDataAccounts,
   listMasterDataMerchants,
   masterDataReferenceSummary,
+  updateMasterDataPerson,
   updateMasterDataAccount,
   updateMasterDataCurrency,
   updateMasterDataMerchant,
@@ -141,6 +142,14 @@ const adminActor: AuthenticatedActor = {
   roles: ["admin"]
 };
 
+const financeManagerActor: AuthenticatedActor = {
+  personId: "person_manager",
+  name: "Manager",
+  alias: null,
+  email: "manager@example.com",
+  roles: ["finance_manager"]
+};
+
 describe("master data governance API", () => {
   it("returns a full master data snapshot", async () => {
     const response = await listMasterDataSnapshot({
@@ -249,6 +258,38 @@ describe("master data governance write API", () => {
     expect(body.data.id).toMatch(/^person_/);
     expect(body.data.name).toBe("Alice");
     expect(body.data.roles_json).toBe("[\"finance_entry\"]");
+  });
+
+  it("lets finance managers update an admin person when admin role is retained", async () => {
+    const existingAdmin = {
+      id: "person_admin_target",
+      name: "Admin Target",
+      alias: "old",
+      roles_json: "[\"admin\"]",
+      is_enabled: 1,
+      login_email: "target@example.com",
+      access_subject: null,
+      last_login_at: null,
+      created_at: "2026-04-25T00:00:00.000Z",
+      referenceCount: 0
+    };
+    const response = await updateMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people/person_admin_target", {
+        method: "PATCH",
+        body: JSON.stringify({
+          actor: "person_manager",
+          name: "Admin Target Renamed",
+          alias: "new",
+          roles: ["admin"],
+          isEnabled: true
+        })
+      }),
+      env: writeMockEnv({ firstRows: [existingAdmin, existingAdmin] }),
+      params: { id: "person_admin_target" },
+      actor: financeManagerActor
+    });
+
+    expect(response.status).toBe(200);
   });
 
   it("rejects merchant creation for archived projects", async () => {

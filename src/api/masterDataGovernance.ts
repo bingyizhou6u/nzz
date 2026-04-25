@@ -432,7 +432,9 @@ function assertCanManageAdminRoleChanges(
   beforeRoles: PersonRole[],
   afterRoles: PersonRole[]
 ) {
-  if (afterRoles.includes("admin") || (beforeRoles.includes("admin") && !afterRoles.includes("admin"))) {
+  const addsAdmin = !beforeRoles.includes("admin") && afterRoles.includes("admin");
+  const removesAdmin = beforeRoles.includes("admin") && !afterRoles.includes("admin");
+  if (addsAdmin || removesAdmin) {
     if (!actor) throw new AuthError(401, "Unauthorized");
     assertCan(actor, "masterData.managePeopleRoles");
   }

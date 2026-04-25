@@ -93,6 +93,31 @@ describe("AuditLogRepository", () => {
     ]);
   });
 
+  it("binds audit metadata when provided", async () => {
+    let boundValues: unknown[] = [];
+    const repo = new AuditLogRepository(mockDb({ onBind: (values) => (boundValues = values) }));
+
+    await repo.record({
+      actor: "user_1",
+      action: "document.submit",
+      entityType: "document",
+      entityId: "doc_1",
+      actorPersonId: "user_1",
+      actorEmail: "user@example.com",
+      requestId: "req_1",
+      ipAddress: "203.0.113.10",
+      userAgent: "Vitest"
+    });
+
+    expect(boundValues.slice(8, 13)).toEqual([
+      "user_1",
+      "user@example.com",
+      "req_1",
+      "203.0.113.10",
+      "Vitest"
+    ]);
+  });
+
   it("binds omitted snapshots and omitted reason as null", async () => {
     let boundValues: unknown[] = [];
     const repo = new AuditLogRepository(mockDb({ onBind: (values) => (boundValues = values) }));
