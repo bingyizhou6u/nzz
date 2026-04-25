@@ -352,10 +352,13 @@ describe("master data governance write API", () => {
     });
 
     expect(response.status).toBe(201);
-    const body = (await response.json()) as { data: { id: string; name: string; roles_json: string } };
+    const body = (await response.json()) as {
+      data: { id: string; name: string; roles_json: string; login_email: string | null };
+    };
     expect(body.data.id).toMatch(/^person_/);
     expect(body.data.name).toBe("Alice");
     expect(body.data.roles_json).toBe("[\"finance_entry\"]");
+    expect(body.data.login_email).toBeNull();
     const auditBindings = runBindings.find((values) => values.includes("master_data.person.create"));
     expect(auditBindings?.slice(8, 13)).toEqual([
       "person_admin",
@@ -399,6 +402,7 @@ describe("master data governance write API", () => {
   });
 
   it("lets finance managers update non-role person fields when roles are unchanged", async () => {
+    const runBindings: unknown[][] = [];
     const existingPerson = {
       id: "person_entry",
       name: "Entry",
@@ -422,12 +426,13 @@ describe("master data governance write API", () => {
           isEnabled: false
         })
       }),
-      env: writeMockEnv({ firstRows: [existingPerson, existingPerson] }),
+      env: writeMockEnv({ firstRows: [existingPerson, existingPerson], onRunBindings: (values) => runBindings.push(values) }),
       params: { id: "person_entry" },
       actor: financeManagerActor
     });
 
     expect(response.status).toBe(200);
+    expect(runBindings).toContainEqual(["Entry Renamed", "new", "[\"finance_entry\"]", 0, "entry@example.com", "person_entry"]);
   });
 
   it("rejects admin role removal from actors without role management permission", async () => {

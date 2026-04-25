@@ -99,7 +99,8 @@ export const createMasterDataPerson: Handler = async ({ request, env, actor: con
       name: requiredText(body, "name"),
       alias: optionalText(body, "alias"),
       roles,
-      isEnabled: booleanField(body, "isEnabled", true)
+      isEnabled: booleanField(body, "isEnabled", true),
+      loginEmail: null
     });
     await auditRepo(env).record({
       ...auditFieldsForRequest(actor, request),
@@ -130,7 +131,8 @@ export const updateMasterDataPerson: Handler = async ({ request, env, params, ac
       name: requiredText(body, "name"),
       alias: optionalText(body, "alias"),
       roles,
-      isEnabled: booleanField(body, "isEnabled", true)
+      isEnabled: booleanField(body, "isEnabled", true),
+      loginEmail: before.login_email ?? null
     });
     await auditRepo(env).record({
       ...auditFieldsForRequest(actor, request),
