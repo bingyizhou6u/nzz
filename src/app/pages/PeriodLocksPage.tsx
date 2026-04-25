@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listPeriodLocks, lockPeriod, unlockPeriod } from "./period-locks/periodLockApi";
 import type { PeriodLockRow } from "./period-locks/periodLockTypes";
 
 type LoadState = "loading" | "ready" | "error";
 type ActionKey = "lock" | `unlock:${string}` | null;
-type ShouldApplyLoad = () => boolean;
 
 interface PeriodLocksPageProps {
   capabilities: string[];
@@ -18,10 +17,6 @@ export function canUnlockPeriod(capabilities: string[]) {
   return capabilities.includes("periodLocks.unlock");
 }
 
-export function periodLockLoadShouldApply(shouldApply: ShouldApplyLoad, apply: () => void) {
-  if (shouldApply()) apply();
-}
-
 export function PeriodLocksPage({ capabilities }: PeriodLocksPageProps) {
   const [locks, setLocks] = useState<PeriodLockRow[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -33,34 +28,43 @@ export function PeriodLocksPage({ capabilities }: PeriodLocksPageProps) {
   const [message, setMessage] = useState<string | null>(null);
   const lockAllowed = canLockPeriod(capabilities);
   const unlockAllowed = canUnlockPeriod(capabilities);
+  const isMountedRef = useRef(true);
 
-  async function loadLocks(shouldApply: ShouldApplyLoad = () => true) {
-    setLoadState("loading");
-    setLocks([]);
-    setError(null);
+  const isMounted = useCallback(() => isMountedRef.current, []);
+  const applyIfMounted = useCallback((apply: () => void) => {
+    if (isMountedRef.current) apply();
+  }, []);
+
+  const loadLocks = useCallback(async () => {
+    applyIfMounted(() => {
+      setLoadState("loading");
+      setLocks([]);
+      setError(null);
+    });
+
     try {
       const nextLocks = await listPeriodLocks();
-      periodLockLoadShouldApply(shouldApply, () => {
+      applyIfMounted(() => {
         setLocks(nextLocks);
         setLoadState("ready");
       });
     } catch (loadError) {
-      periodLockLoadShouldApply(shouldApply, () => {
+      applyIfMounted(() => {
         setError(loadError instanceof Error ? loadError.message : "读取锁账期间失败");
         setLoadState("error");
       });
     }
-  }
+  }, [applyIfMounted]);
 
   useEffect(() => {
-    let isCurrent = true;
+    isMountedRef.current = true;
 
-    void loadLocks(() => isCurrent);
+    void loadLocks();
 
     return () => {
-      isCurrent = false;
+      isMountedRef.current = false;
     };
-  }, []);
+  }, [loadLocks]);
 
   async function handleLock(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -77,13 +81,20 @@ export function PeriodLocksPage({ capabilities }: PeriodLocksPageProps) {
     setMessage(null);
     try {
       await lockPeriod(nextPeriod, note.trim());
-      setNote("");
-      setMessage(`已锁定 ${nextPeriod}`);
+      if (!isMounted()) return;
+      applyIfMounted(() => {
+        setNote("");
+        setMessage(`已锁定 ${nextPeriod}`);
+      });
       await loadLocks();
     } catch (lockError) {
-      setError(lockError instanceof Error ? lockError.message : "锁定期间失败");
+      applyIfMounted(() => {
+        setError(lockError instanceof Error ? lockError.message : "锁定期间失败");
+      });
     } finally {
-      setActionKey(null);
+      applyIfMounted(() => {
+        setActionKey(null);
+      });
     }
   }
 
@@ -102,17 +113,24 @@ export function PeriodLocksPage({ capabilities }: PeriodLocksPageProps) {
     setMessage(null);
     try {
       await unlockPeriod(lock.period, reason);
-      setUnlockReasons((current) => {
-        const next = { ...current };
-        delete next[lock.period];
-        return next;
+      if (!isMounted()) return;
+      applyIfMounted(() => {
+        setUnlockReasons((current) => {
+          const next = { ...current };
+          delete next[lock.period];
+          return next;
+        });
+        setMessage(`已解锁 ${lock.period}`);
       });
-      setMessage(`已解锁 ${lock.period}`);
       await loadLocks();
     } catch (unlockError) {
-      setError(unlockError instanceof Error ? unlockError.message : "解锁期间失败");
+      applyIfMounted(() => {
+        setError(unlockError instanceof Error ? unlockError.message : "解锁期间失败");
+      });
     } finally {
-      setActionKey(null);
+      applyIfMounted(() => {
+        setActionKey(null);
+      });
     }
   }
 

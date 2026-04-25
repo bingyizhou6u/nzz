@@ -3,7 +3,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PeriodLocksPage, canLockPeriod, canUnlockPeriod, periodLockLoadShouldApply } from "./PeriodLocksPage";
+import { PeriodLocksPage, canLockPeriod, canUnlockPeriod } from "./PeriodLocksPage";
 import { unlockPeriod } from "./period-locks/periodLockApi";
 import type { PeriodLockRow } from "./period-locks/periodLockTypes";
 
@@ -36,16 +36,6 @@ describe("period lock permissions", () => {
     expect(canUnlockPeriod(["periodLocks.view", "periodLocks.unlock"])).toBe(true);
     expect(canUnlockPeriod(["periodLocks.view", "periodLocks.lock"])).toBe(false);
     expect(canUnlockPeriod([])).toBe(false);
-  });
-});
-
-describe("period lock load guard", () => {
-  it("does not apply async load results after the effect is stale", () => {
-    const apply = vi.fn();
-
-    periodLockLoadShouldApply(() => false, apply);
-
-    expect(apply).not.toHaveBeenCalled();
   });
 });
 
@@ -83,6 +73,56 @@ describe("PeriodLocksPage component", () => {
       await Promise.resolve();
     });
 
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it("does not refresh or report state updates when lock resolves after unmount", async () => {
+    let resolveLock: (response: Response) => void = () => undefined;
+    const fetchMock = vi.fn<FetchHandler>().mockImplementation((input, init) => {
+      if (String(input) === "/api/period-locks" && !init?.method) {
+        return Promise.resolve(jsonResponse({ data: [] }));
+      }
+
+      if (String(input) === "/api/period-locks" && init?.method === "POST") {
+        return new Promise<Response>((resolve) => {
+          resolveLock = resolve;
+        });
+      }
+
+      throw new Error(`Unexpected request: ${String(input)}`);
+    });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(PeriodLocksPage, { capabilities: ["periodLocks.lock", "periodLocks.unlock"] }));
+    });
+
+    await waitFor(() => {
+      expect(buttonByText(container, "锁定期间").disabled).toBe(false);
+    });
+
+    await act(async () => {
+      buttonByText(container, "锁定期间").click();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      root?.unmount();
+      root = null;
+    });
+
+    await act(async () => {
+      resolveLock(jsonResponse({ data: { period: "2026-04", status: "locked" } }));
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(consoleError).not.toHaveBeenCalled();
   });
 });
@@ -138,4 +178,34 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
       ...init?.headers
     }
   });
+}
+
+async function waitFor(assertion: () => void): Promise<void> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+  }
+
+  throw lastError;
+}
+
+function buttonByText(container: HTMLElement, text: string): HTMLButtonElement {
+  const button = Array.from(container.querySelectorAll("button")).find(
+    (candidate) => candidate.textContent?.trim() === text
+  );
+
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`Button not found: ${text}`);
+  }
+
+  return button;
 }
