@@ -8,6 +8,11 @@ export interface AuditLogInput {
   before?: unknown;
   after?: unknown;
   reason?: string | null;
+  actorPersonId?: string | null;
+  actorEmail?: string | null;
+  requestId?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
 }
 
 const SNAPSHOT_SERIALIZATION_ERROR = "Audit snapshot must be JSON-serializable";
@@ -25,8 +30,9 @@ export class AuditLogRepository {
     return this.db
       .prepare(
         `INSERT INTO audit_logs (
-          id, actor, action, entity_type, entity_id, before_json, after_json, reason, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          id, actor, action, entity_type, entity_id, before_json, after_json, reason,
+          actor_person_id, actor_email, request_id, ip_address, user_agent, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(...this.recordBindings(input));
   }
@@ -35,9 +41,10 @@ export class AuditLogRepository {
     return this.db
       .prepare(
         `INSERT INTO audit_logs (
-          id, actor, action, entity_type, entity_id, before_json, after_json, reason, created_at
+          id, actor, action, entity_type, entity_id, before_json, after_json, reason,
+          actor_person_id, actor_email, request_id, ip_address, user_agent, created_at
         )
-        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         WHERE ${condition.sql}`
       )
       .bind(...this.recordBindings(input), ...condition.bindings);
@@ -53,6 +60,11 @@ export class AuditLogRepository {
       this.serializeSnapshot(input.before),
       this.serializeSnapshot(input.after),
       input.reason ?? null,
+      input.actorPersonId ?? null,
+      input.actorEmail ?? null,
+      input.requestId ?? null,
+      input.ipAddress ?? null,
+      input.userAgent ?? null,
       nowIso()
     ];
   }

@@ -1,4 +1,6 @@
 import { AuditLogRepository } from "../repositories/auditLogRepository";
+import { assertCan } from "../auth/permissions";
+import { AuthError, type AuthenticatedActor } from "../auth/types";
 import {
   ACCOUNT_TYPES,
   ACTIVE_STATUSES,
@@ -13,6 +15,8 @@ import {
   type PersonRole
 } from "../repositories/masterDataGovernanceRepository";
 import type { Handler } from "../worker/env";
+
+const spoofedActorError = "请求中的操作人和当前登录人不一致";
 
 function repo(env: { DB: D1Database }) {
   return new MasterDataGovernanceRepository(env.DB);
@@ -82,14 +86,15 @@ export const masterDataReferenceSummary: Handler = async ({ env }) => {
   });
 };
 
-export const createMasterDataPerson: Handler = async ({ request, env }) => {
+export const createMasterDataPerson: Handler = async ({ request, env, actor: contextActor }) => {
   const body = await readBody(request);
   if (!body) return badRequest("request body is required");
 
   try {
     const repository = repo(env);
-    const actor = await repository.requireEnabledPerson(requiredText(body, "actor"), "actor");
+    const actor = requireWriteActor(contextActor, body);
     const roles = personRoles(body);
+    assertCanManageAdminRoleChanges(contextActor, [], roles);
     const person = await repository.createPerson({
       name: requiredText(body, "name"),
       alias: optionalText(body, "alias"),
@@ -105,24 +110,26 @@ export const createMasterDataPerson: Handler = async ({ request, env }) => {
     });
     return Response.json({ data: person }, { status: 201 });
   } catch (error) {
-    return badRequest(errorMessage(error));
+    return errorResponse(error);
   }
 };
 
-export const updateMasterDataPerson: Handler = async ({ request, env, params }) => {
+export const updateMasterDataPerson: Handler = async ({ request, env, params, actor: contextActor }) => {
   const body = await readBody(request);
   if (!body) return badRequest("request body is required");
 
   try {
     const id = requiredParam(params, "id");
     const repository = repo(env);
-    const actor = await repository.requireEnabledPerson(requiredText(body, "actor"), "actor");
+    const actor = requireWriteActor(contextActor, body);
     const before = await repository.getPerson(id);
     if (!before) throw new Error("person not found");
+    const roles = personRoles(body);
+    assertCanManageAdminRoleChanges(contextActor, rolesFromJson(before.roles_json), roles);
     const person = await repository.updatePerson(id, {
       name: requiredText(body, "name"),
       alias: optionalText(body, "alias"),
-      roles: personRoles(body),
+      roles,
       isEnabled: booleanField(body, "isEnabled", true)
     });
     await auditRepo(env).record({
@@ -135,17 +142,17 @@ export const updateMasterDataPerson: Handler = async ({ request, env, params }) 
     });
     return Response.json({ data: person });
   } catch (error) {
-    return badRequest(errorMessage(error));
+    return errorResponse(error);
   }
 };
 
-export const createMasterDataProject: Handler = async ({ request, env }) => {
+export const createMasterDataProject: Handler = async ({ request, env, actor: contextActor }) => {
   const body = await readBody(request);
   if (!body) return badRequest("request body is required");
 
   try {
     const repository = repo(env);
-    const actor = await repository.requireEnabledPerson(requiredText(body, "actor"), "actor");
+    const actor = requireWriteActor(contextActor, body);
     const input = await projectInput(repository, body);
     const project = await repository.createProject(input);
     await auditRepo(env).record({
@@ -157,18 +164,18 @@ export const createMasterDataProject: Handler = async ({ request, env }) => {
     });
     return Response.json({ data: project }, { status: 201 });
   } catch (error) {
-    return badRequest(errorMessage(error));
+    return errorResponse(error);
   }
 };
 
-export const updateMasterDataProject: Handler = async ({ request, env, params }) => {
+export const updateMasterDataProject: Handler = async ({ request, env, params, actor: contextActor }) => {
   const body = await readBody(request);
   if (!body) return badRequest("request body is required");
 
   try {
     const id = requiredParam(params, "id");
     const repository = repo(env);
-    const actor = await repository.requireEnabledPerson(requiredText(body, "actor"), "actor");
+    const actor = requireWriteActor(contextActor, body);
     const before = await repository.getProject(id);
     if (!before) throw new Error("project not found");
     const input = await projectInput(repository, body, before);
@@ -183,17 +190,17 @@ export const updateMasterDataProject: Handler = async ({ request, env, params })
     });
     return Response.json({ data: project });
   } catch (error) {
-    return badRequest(errorMessage(error));
+    return errorResponse(error);
   }
 };
 
-export const createMasterDataMerchant: Handler = async ({ request, env }) => {
+export const createMasterDataMerchant: Handler = async ({ request, env, actor: contextActor }) => {
   const body = await readBody(request);
   if (!body) return badRequest("request body is required");
 
   try {
     const repository = repo(env);
-    const actor = await repository.requireEnabledPerson(requiredText(body, "actor"), "actor");
+    const actor = requireWriteActor(contextActor, body);
     const input = await merchantInput(repository, body);
     const merchant = await repository.createMerchant(input);
     await auditRepo(env).record({
@@ -205,18 +212,18 @@ export const createMasterDataMerchant: Handler = async ({ request, env }) => {
     });
     return Response.json({ data: merchant }, { status: 201 });
   } catch (error) {
-    return badRequest(errorMessage(error));
+    return errorResponse(error);
   }
 };
 
-export const updateMasterDataMerchant: Handler = async ({ request, env, params }) => {
+export const updateMasterDataMerchant: Handler = async ({ request, env, params, actor: contextActor }) => {
   const body = await readBody(request);
   if (!body) return badRequest("request body is required");
 
   try {
     const id = requiredParam(params, "id");
     const repository = repo(env);
-    const actor = await repository.requireEnabledPerson(requiredText(body, "actor"), "actor");
+    const actor = requireWriteActor(contextActor, body);
     const existing = await repository.getMerchant(id);
     if (!existing) throw new Error("merchant not found");
     const input = await merchantInput(repository, body, existing);
@@ -232,17 +239,17 @@ export const updateMasterDataMerchant: Handler = async ({ request, env, params }
     });
     return Response.json({ data: merchant });
   } catch (error) {
-    return badRequest(errorMessage(error));
+    return errorResponse(error);
   }
 };
 
-export const createMasterDataAccount: Handler = async ({ request, env }) => {
+export const createMasterDataAccount: Handler = async ({ request, env, actor: contextActor }) => {
   const body = await readBody(request);
   if (!body) return badRequest("request body is required");
 
   try {
     const repository = repo(env);
-    const actor = await repository.requireEnabledPerson(requiredText(body, "actor"), "actor");
+    const actor = requireWriteActor(contextActor, body);
     const input = await accountInput(repository, body);
     const account = await repository.createAccount(input);
     await auditRepo(env).record({
@@ -254,18 +261,18 @@ export const createMasterDataAccount: Handler = async ({ request, env }) => {
     });
     return Response.json({ data: account }, { status: 201 });
   } catch (error) {
-    return badRequest(errorMessage(error));
+    return errorResponse(error);
   }
 };
 
-export const updateMasterDataAccount: Handler = async ({ request, env, params }) => {
+export const updateMasterDataAccount: Handler = async ({ request, env, params, actor: contextActor }) => {
   const body = await readBody(request);
   if (!body) return badRequest("request body is required");
 
   try {
     const id = requiredParam(params, "id");
     const repository = repo(env);
-    const actor = await repository.requireEnabledPerson(requiredText(body, "actor"), "actor");
+    const actor = requireWriteActor(contextActor, body);
     const existing = await repository.getAccount(id);
     if (!existing) throw new Error("account not found");
     const input = await accountInput(repository, body, existing);
@@ -281,17 +288,17 @@ export const updateMasterDataAccount: Handler = async ({ request, env, params })
     });
     return Response.json({ data: account });
   } catch (error) {
-    return badRequest(errorMessage(error));
+    return errorResponse(error);
   }
 };
 
-export const createMasterDataCurrency: Handler = async ({ request, env }) => {
+export const createMasterDataCurrency: Handler = async ({ request, env, actor: contextActor }) => {
   const body = await readBody(request);
   if (!body) return badRequest("request body is required");
 
   try {
     const repository = repo(env);
-    const actor = await repository.requireEnabledPerson(requiredText(body, "actor"), "actor");
+    const actor = requireWriteActor(contextActor, body);
     const input = currencyInput(body);
     const currency = await repository.createCurrency(input);
     await auditRepo(env).record({
@@ -303,17 +310,17 @@ export const createMasterDataCurrency: Handler = async ({ request, env }) => {
     });
     return Response.json({ data: currency }, { status: 201 });
   } catch (error) {
-    return badRequest(errorMessage(error));
+    return errorResponse(error);
   }
 };
 
-export const updateMasterDataCurrency: Handler = async ({ request, env, params }) => {
+export const updateMasterDataCurrency: Handler = async ({ request, env, params, actor: contextActor }) => {
   const body = await readBody(request);
   if (!body) return badRequest("request body is required");
 
   try {
     const repository = repo(env);
-    const actor = await repository.requireEnabledPerson(requiredText(body, "actor"), "actor");
+    const actor = requireWriteActor(contextActor, body);
     const code = requiredParam(params, "code");
     const input = currencyInput(body, code);
     const before = await repository.assertCurrencyProtectedFieldsUnchanged(input.code, {
@@ -330,17 +337,17 @@ export const updateMasterDataCurrency: Handler = async ({ request, env, params }
     });
     return Response.json({ data: currency });
   } catch (error) {
-    return badRequest(errorMessage(error));
+    return errorResponse(error);
   }
 };
 
-export const createMasterDataCategory: Handler = async ({ request, env }) => {
+export const createMasterDataCategory: Handler = async ({ request, env, actor: contextActor }) => {
   const body = await readBody(request);
   if (!body) return badRequest("request body is required");
 
   try {
     const repository = repo(env);
-    const actor = await repository.requireEnabledPerson(requiredText(body, "actor"), "actor");
+    const actor = requireWriteActor(contextActor, body);
     const input = await categoryInput(repository, body);
     const category = await repository.createCategory(input);
     await auditRepo(env).record({
@@ -352,18 +359,18 @@ export const createMasterDataCategory: Handler = async ({ request, env }) => {
     });
     return Response.json({ data: category }, { status: 201 });
   } catch (error) {
-    return badRequest(errorMessage(error));
+    return errorResponse(error);
   }
 };
 
-export const updateMasterDataCategory: Handler = async ({ request, env, params }) => {
+export const updateMasterDataCategory: Handler = async ({ request, env, params, actor: contextActor }) => {
   const body = await readBody(request);
   if (!body) return badRequest("request body is required");
 
   try {
     const id = requiredParam(params, "id");
     const repository = repo(env);
-    const actor = await repository.requireEnabledPerson(requiredText(body, "actor"), "actor");
+    const actor = requireWriteActor(contextActor, body);
     const existing = await repository.getCategory(id);
     if (!existing) throw new Error("category not found");
     const input = await categoryInput(repository, body, id, existing);
@@ -379,7 +386,7 @@ export const updateMasterDataCategory: Handler = async ({ request, env, params }
     });
     return Response.json({ data: category });
   } catch (error) {
-    return badRequest(errorMessage(error));
+    return errorResponse(error);
   }
 };
 
@@ -397,8 +404,47 @@ function badRequest(error: string) {
   return Response.json({ error }, { status: 400 });
 }
 
+function errorResponse(error: unknown) {
+  if (error instanceof AuthError) return Response.json({ error: error.message }, { status: error.status });
+  return badRequest(errorMessage(error));
+}
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Request failed";
+}
+
+function requireWriteActor(actor: AuthenticatedActor | null, body: Record<string, unknown>) {
+  if (!actor) throw new AuthError(401, "Unauthorized");
+  assertCan(actor, "masterData.write");
+  rejectSpoofedActor(body, "actor", actor.personId);
+  return actor.personId;
+}
+
+function rejectSpoofedActor(body: Record<string, unknown>, key: string, personId: string) {
+  const value = body[key];
+  if (typeof value === "string" && value.trim() && value.trim() !== personId) {
+    throw new AuthError(403, spoofedActorError);
+  }
+}
+
+function assertCanManageAdminRoleChanges(
+  actor: AuthenticatedActor | null,
+  beforeRoles: PersonRole[],
+  afterRoles: PersonRole[]
+) {
+  if (afterRoles.includes("admin") || (beforeRoles.includes("admin") && !afterRoles.includes("admin"))) {
+    if (!actor) throw new AuthError(401, "Unauthorized");
+    assertCan(actor, "masterData.managePeopleRoles");
+  }
+}
+
+function rolesFromJson(value: string): PersonRole[] {
+  try {
+    const roles = JSON.parse(value);
+    return Array.isArray(roles) ? roles.filter((role): role is PersonRole => PERSON_ROLES.includes(role as PersonRole)) : [];
+  } catch {
+    return [];
+  }
 }
 
 function optionalQuery(url: URL, key: string) {

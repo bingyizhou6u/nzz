@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createMasterDataMerchant,
   createMasterDataPerson,
+  createMasterDataProject,
   listMasterDataAccounts,
   listMasterDataMerchants,
   masterDataReferenceSummary,
@@ -11,6 +12,7 @@ import {
   updateMasterDataProject,
   listMasterDataSnapshot
 } from "../../src/api/masterDataGovernance";
+import type { AuthenticatedActor } from "../../src/auth/types";
 import { route } from "../../src/worker/router";
 import type { Env } from "../../src/worker/env";
 
@@ -131,6 +133,14 @@ function writeMockEnv(
   };
 }
 
+const adminActor: AuthenticatedActor = {
+  personId: "person_admin",
+  name: "Admin",
+  alias: null,
+  email: "admin@example.com",
+  roles: ["admin"]
+};
+
 describe("master data governance API", () => {
   it("returns a full master data snapshot", async () => {
     const response = await listMasterDataSnapshot({
@@ -202,6 +212,21 @@ describe("master data governance API", () => {
 });
 
 describe("master data governance write API", () => {
+  it("rejects master data writes from readonly actors", async () => {
+    const response = await createMasterDataProject({
+      request: new Request("https://ledger.test/api/master-data/projects", {
+        method: "POST",
+        body: JSON.stringify({ code: "P1", name: "Project" })
+      }),
+      env: writeMockEnv(),
+      params: {},
+      actor: { personId: "person_readonly", name: "Reader", alias: null, email: "reader@example.com", roles: ["readonly"] }
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "权限不足" });
+  });
+
   it("creates people with actor audit", async () => {
     const response = await createMasterDataPerson({
       request: new Request("https://ledger.test/api/master-data/people", {
@@ -216,7 +241,7 @@ describe("master data governance write API", () => {
       }),
       env: writeMockEnv({ enabledPeople: ["person_admin"] }),
       params: {},
-      actor: null
+      actor: adminActor
     });
 
     expect(response.status).toBe(201);
@@ -240,7 +265,7 @@ describe("master data governance write API", () => {
       }),
       env: writeMockEnv({ enabledPeople: ["person_admin"], projectStatuses: { proj_archived: "archived" } }),
       params: {},
-      actor: null
+      actor: adminActor
     });
 
     expect(response.status).toBe(400);
@@ -255,7 +280,7 @@ describe("master data governance write API", () => {
       }),
       env: writeMockEnv({ enabledPeople: ["person_admin"] }),
       params: { code: "USDT" },
-      actor: null
+      actor: adminActor
     });
 
     expect(response.status).toBe(400);
@@ -293,7 +318,7 @@ describe("master data governance write API", () => {
         onRunBindings: (values) => runBindings.push(values)
       }),
       params: { id: "proj_1" },
-      actor: null
+      actor: adminActor
     });
 
     expect(response.status).toBe(200);
@@ -313,7 +338,7 @@ describe("master data governance write API", () => {
       }),
       env: writeMockEnv({ enabledPeople: ["person_admin"] }),
       params: { id: "proj_missing" },
-      actor: null
+      actor: adminActor
     });
 
     expect(response.status).toBe(400);
@@ -365,7 +390,7 @@ describe("master data governance write API", () => {
         ]
       }),
       params: { id: "merc_1" },
-      actor: null
+      actor: adminActor
     });
 
     expect(response.status).toBe(200);
@@ -407,7 +432,7 @@ describe("master data governance write API", () => {
         ]
       }),
       params: { id: "acct_1" },
-      actor: null
+      actor: adminActor
     });
 
     expect(response.status).toBe(400);
@@ -459,7 +484,7 @@ describe("master data governance write API", () => {
         ]
       }),
       params: { id: "merc_1" },
-      actor: null
+      actor: adminActor
     });
 
     expect(response.status).toBe(400);
@@ -477,7 +502,7 @@ describe("master data governance write API", () => {
         firstRows: [{ code: "AED", name: "Dirham", minor_units: 2, is_enabled: 1, referenceCount: 1 }]
       }),
       params: { code: "AED" },
-      actor: null
+      actor: adminActor
     });
 
     expect(response.status).toBe(400);
@@ -489,7 +514,6 @@ describe("master data governance write API", () => {
       new Request("https://ledger.test/api/master-data/accounts", {
         method: "POST",
         body: JSON.stringify({
-          actor: "person_admin",
           name: "AED Reserve",
           accountType: "currency_reserve",
           currencyCode: "AED",

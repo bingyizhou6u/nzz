@@ -36,7 +36,9 @@ describe("AuditLogRepository", () => {
 
     expect(statement).toBeDefined();
     expect(sql.replace(/\s+/g, " ").toLowerCase()).toContain("insert into audit_logs");
-    expect(sql.replace(/\s+/g, " ").toLowerCase()).toContain("select ?, ?, ?, ?, ?, ?, ?, ?, ?");
+    expect(sql.replace(/\s+/g, " ").toLowerCase()).toContain(
+      "select ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?"
+    );
     expect(sql.replace(/\s+/g, " ")).toContain("WHERE EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending')");
     expect(boundValues).toEqual([
       expect.stringMatching(/^audit_/),
@@ -46,6 +48,11 @@ describe("AuditLogRepository", () => {
       "doc_1",
       JSON.stringify({ status: "pending" }),
       JSON.stringify({ status: "approved" }),
+      null,
+      null,
+      null,
+      null,
+      null,
       null,
       expect.any(String),
       "doc_1"
@@ -77,6 +84,11 @@ describe("AuditLogRepository", () => {
       JSON.stringify({ status: "draft" }),
       JSON.stringify({ status: "pending" }),
       "ready",
+      null,
+      null,
+      null,
+      null,
+      null,
       expect.any(String)
     ]);
   });

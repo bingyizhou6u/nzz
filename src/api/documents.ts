@@ -3,14 +3,13 @@ import { DocumentRepository } from "../repositories/documentRepository";
 import { MasterDataRepository } from "../repositories/masterDataRepository";
 import type { RawDocumentLine } from "../domain/documentLines";
 import type { ActionType, DocumentType } from "../domain/types";
+import { assertCan } from "../auth/permissions";
+import { AuthError, type AuthenticatedActor } from "../auth/types";
 import { DocumentService } from "../services/documentService";
 import type { Handler } from "../worker/env";
 
 const requiredDocumentFieldsResponse = () =>
-  Response.json(
-    { error: "documentType, businessDate, period, summary, and createdBy are required" },
-    { status: 400 }
-  );
+  Response.json({ error: "documentType, businessDate, period, and summary are required" }, { status: 400 });
 
 const invalidDocumentTypeOrActionTypeResponse = () =>
   Response.json({ error: "Invalid document type or action type" }, { status: 400 });
@@ -27,6 +26,10 @@ const requiredOriginalDocumentResponse = () =>
 const badRequestResponse = (error: string) => Response.json({ error }, { status: 400 });
 
 const notFoundResponse = () => Response.json({ error: "Document not found" }, { status: 404 });
+
+const authErrorResponse = (error: AuthError) => Response.json({ error: error.message }, { status: error.status });
+
+const spoofedActorError = "请求中的操作人和当前登录人不一致";
 
 const documentTypes = new Set<DocumentType>([
   "project_income",
@@ -77,24 +80,18 @@ function documentService(env: { DB: D1Database }) {
   return new DocumentService(documentRepository(env), new AuditLogRepository(env.DB), new MasterDataRepository(env.DB));
 }
 
-async function requireEnabledPerson(env: { DB: D1Database }, id: string, label: string) {
-  const normalizedId = id.trim();
-  const person = await env.DB
-    .prepare(
-      `
-        SELECT id
-        FROM people
-        WHERE id = ? AND is_enabled = 1
-      `
-    )
-    .bind(normalizedId)
-    .first<{ id: string }>();
+function requireActor(actor: AuthenticatedActor | null) {
+  if (!actor) throw new AuthError(401, "Unauthorized");
+  return actor;
+}
 
-  if (!person) {
-    throw new Error(`${label} must reference an enabled person`);
+function rejectSpoofedActor(body: Record<string, unknown>, keys: string[], personId: string) {
+  for (const key of keys) {
+    const value = body[key];
+    if (typeof value === "string" && value.trim() && value.trim() !== personId) {
+      throw new AuthError(403, spoofedActorError);
+    }
   }
-
-  return normalizedId;
 }
 
 async function readObjectBody(request: Request): Promise<Record<string, unknown> | null> {
@@ -140,7 +137,7 @@ export const getDocument: Handler = async ({ env, params }) => {
   return Response.json({ data: { document, lines } });
 };
 
-export const createDocument: Handler = async ({ request, env }) => {
+export const createDocument: Handler = async ({ request, env, actor: contextActor }) => {
   const body = await readObjectBody(request);
   if (!body) {
     return requiredDocumentFieldsResponse();
@@ -157,7 +154,6 @@ export const createDocument: Handler = async ({ request, env }) => {
     categoryId,
     originalDocumentId,
     summary,
-    createdBy,
     lines
   } = body;
 
@@ -166,14 +162,22 @@ export const createDocument: Handler = async ({ request, env }) => {
     typeof businessDate !== "string" ||
     typeof period !== "string" ||
     typeof summary !== "string" ||
-    typeof createdBy !== "string" ||
     !documentType.trim() ||
     !businessDate.trim() ||
     !period.trim() ||
-    !summary.trim() ||
-    !createdBy.trim()
+    !summary.trim()
   ) {
     return requiredDocumentFieldsResponse();
+  }
+
+  let actor: AuthenticatedActor;
+  try {
+    actor = requireActor(contextActor);
+    assertCan(actor, "documents.create");
+    rejectSpoofedActor(body, ["createdBy"], actor.personId);
+  } catch (error) {
+    if (error instanceof AuthError) return authErrorResponse(error);
+    return badRequestResponse(errorMessage(error));
   }
 
   if (!isDocumentType(documentType)) {
@@ -205,7 +209,6 @@ export const createDocument: Handler = async ({ request, env }) => {
   }
 
   try {
-    const normalizedCreatedBy = await requireEnabledPerson(env, createdBy, "createdBy");
     const document = await documentService(env).createDraft({
       documentType,
       actionType: normalizedActionType,
@@ -217,7 +220,7 @@ export const createDocument: Handler = async ({ request, env }) => {
       categoryId: typeof categoryId === "string" ? categoryId : null,
       originalDocumentId: normalizedOriginalDocumentId,
       summary,
-      createdBy: normalizedCreatedBy,
+      createdBy: actor.personId,
       lines: lines as RawDocumentLine[]
     });
     return Response.json({ data: document }, { status: 201 });
@@ -226,61 +229,63 @@ export const createDocument: Handler = async ({ request, env }) => {
   }
 };
 
-export const submitDocument: Handler = async ({ request, env, params }) => {
+export const submitDocument: Handler = async ({ request, env, params, actor: contextActor }) => {
   if (!params.id) {
     return badRequestResponse("id is required");
   }
 
-  const body = await readObjectBody(request);
-  if (!body) {
-    return badRequestResponse("actor is required");
-  }
+  const body = (await readObjectBody(request)) ?? {};
 
   try {
-    const actor = await requireEnabledPerson(env, requiredString(body, "actor"), "actor");
-    await documentService(env).submit(params.id, actor);
+    const actor = requireActor(contextActor);
+    assertCan(actor, "documents.submit");
+    rejectSpoofedActor(body, ["actor"], actor.personId);
+    await documentService(env).submit(params.id, actor.personId);
     return Response.json({ data: { id: params.id, status: "pending" } });
   } catch (error) {
+    if (error instanceof AuthError) return authErrorResponse(error);
     return badRequestResponse(errorMessage(error));
   }
 };
 
-export const approveDocument: Handler = async ({ request, env, params }) => {
+export const approveDocument: Handler = async ({ request, env, params, actor: contextActor }) => {
   if (!params.id) {
     return badRequestResponse("id is required");
   }
 
-  const body = await readObjectBody(request);
-  if (!body) {
-    return badRequestResponse("reviewer is required");
-  }
+  const body = (await readObjectBody(request)) ?? {};
 
   try {
-    const reviewer = await requireEnabledPerson(env, requiredString(body, "reviewer"), "reviewer");
-    await documentService(env).approve(params.id, reviewer);
+    const actor = requireActor(contextActor);
+    assertCan(actor, "documents.approve");
+    rejectSpoofedActor(body, ["reviewer"], actor.personId);
+    await documentService(env).approve(params.id, actor.personId);
     return Response.json({ data: { id: params.id, status: "approved" } });
   } catch (error) {
+    if (error instanceof AuthError) return authErrorResponse(error);
     return badRequestResponse(errorMessage(error));
   }
 };
 
-export const rejectDocument: Handler = async ({ request, env, params }) => {
+export const rejectDocument: Handler = async ({ request, env, params, actor: contextActor }) => {
   if (!params.id) {
     return badRequestResponse("id is required");
   }
 
   const body = await readObjectBody(request);
   if (!body) {
-    return badRequestResponse("actor is required");
+    return badRequestResponse("reason is required");
   }
 
   try {
-    const actor = requiredString(body, "actor");
+    const actor = requireActor(contextActor);
+    assertCan(actor, "documents.reject");
+    rejectSpoofedActor(body, ["actor"], actor.personId);
     const reason = requiredString(body, "reason");
-    const enabledActor = await requireEnabledPerson(env, actor, "actor");
-    await documentService(env).reject(params.id, enabledActor, reason);
+    await documentService(env).reject(params.id, actor.personId, reason);
     return Response.json({ data: { id: params.id, status: "rejected" } });
   } catch (error) {
+    if (error instanceof AuthError) return authErrorResponse(error);
     return badRequestResponse(errorMessage(error));
   }
 };

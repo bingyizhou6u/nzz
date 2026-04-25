@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { approveDocument, createDocument, getDocument, rejectDocument, submitDocument } from "../../src/api/documents";
+import type { AuthenticatedActor } from "../../src/auth/types";
 import { route } from "../../src/worker/router";
 import type { Env } from "../../src/worker/env";
 
@@ -115,6 +116,22 @@ function projectIncomeMasterDataResults() {
   ];
 }
 
+const financeEntryActor: AuthenticatedActor = {
+  personId: "user_1",
+  name: "User",
+  alias: null,
+  email: "user@example.com",
+  roles: ["finance_entry"]
+};
+
+const financeManagerActor: AuthenticatedActor = {
+  personId: "reviewer_1",
+  name: "Reviewer",
+  alias: null,
+  email: "reviewer@example.com",
+  roles: ["finance_manager"]
+};
+
 function mockEnv(
   options: {
     runResult?: D1Result;
@@ -181,7 +198,7 @@ function mockEnv(
 
 describe("documents API", () => {
   const requiredDocumentFieldsError = {
-    error: "documentType, businessDate, period, summary, and createdBy are required"
+    error: "documentType, businessDate, period, and summary are required"
   };
   const invalidDocumentTypeOrActionTypeError = { error: "Invalid document type or action type" };
   const invalidBusinessDateOrPeriodError = { error: "Invalid business date or period" };
@@ -189,7 +206,49 @@ describe("documents API", () => {
     error: "originalDocumentId is required for reversal, loan repayment, or loan writeoff"
   };
 
-  it("rejects document creation when createdBy is not an enabled person", async () => {
+  it("uses authenticated actor instead of body createdBy on document creation", async () => {
+    const response = await createDocument({
+      request: new Request("https://ledger.test/api/documents", {
+        method: "POST",
+        body: JSON.stringify({
+          documentType: "project_income",
+          businessDate: "2026-04-24",
+          period: "2026-04",
+          summary: "Initial income",
+          createdBy: "spoofed_person",
+          lines: [validLine()]
+        })
+      }),
+      env: mockEnv(),
+      params: {},
+      actor: financeEntryActor
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "请求中的操作人和当前登录人不一致" });
+  });
+
+  it("lets authenticated actor create when body actor is omitted", async () => {
+    const response = await createDocument({
+      request: new Request("https://ledger.test/api/documents", {
+        method: "POST",
+        body: JSON.stringify({
+          documentType: "project_income",
+          businessDate: "2026-04-24",
+          period: "2026-04",
+          summary: "Initial income",
+          lines: [validLine()]
+        })
+      }),
+      env: mockEnv({ allResultsQueue: projectIncomeMasterDataResults() }),
+      params: {},
+      actor: financeEntryActor
+    });
+
+    expect(response.status).toBe(201);
+  });
+
+  it("rejects document creation when body createdBy does not match authenticated actor", async () => {
     const response = await createDocument({
       request: new Request("https://ledger.test/api/documents", {
         method: "POST",
@@ -204,14 +263,14 @@ describe("documents API", () => {
       }),
       env: mockEnv(),
       params: {},
-      actor: null
+      actor: financeEntryActor
     });
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: "createdBy must reference an enabled person" });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "请求中的操作人和当前登录人不一致" });
   });
 
-  it("rejects document submission when actor is not an enabled person", async () => {
+  it("rejects document submission when body actor does not match authenticated actor", async () => {
     const response = await submitDocument({
       request: new Request("https://ledger.test/api/documents/doc_1/submit", {
         method: "POST",
@@ -219,14 +278,14 @@ describe("documents API", () => {
       }),
       env: mockEnv(),
       params: { id: "doc_1" },
-      actor: null
+      actor: financeEntryActor
     });
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: "actor must reference an enabled person" });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "请求中的操作人和当前登录人不一致" });
   });
 
-  it("rejects document approval when reviewer is not an enabled person", async () => {
+  it("rejects document approval when body reviewer does not match authenticated actor", async () => {
     const response = await approveDocument({
       request: new Request("https://ledger.test/api/documents/doc_1/approve", {
         method: "POST",
@@ -234,14 +293,14 @@ describe("documents API", () => {
       }),
       env: mockEnv(),
       params: { id: "doc_1" },
-      actor: null
+      actor: financeManagerActor
     });
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: "reviewer must reference an enabled person" });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "请求中的操作人和当前登录人不一致" });
   });
 
-  it("rejects document rejection when actor is not an enabled person", async () => {
+  it("rejects document rejection when body actor does not match authenticated actor", async () => {
     const response = await rejectDocument({
       request: new Request("https://ledger.test/api/documents/doc_1/reject", {
         method: "POST",
@@ -249,11 +308,11 @@ describe("documents API", () => {
       }),
       env: mockEnv(),
       params: { id: "doc_1" },
-      actor: null
+      actor: financeManagerActor
     });
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: "actor must reference an enabled person" });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "请求中的操作人和当前登录人不一致" });
   });
 
   it("creates draft documents", async () => {
@@ -266,7 +325,6 @@ describe("documents API", () => {
           businessDate: "2026-04-24",
           period: "2026-04",
           summary: "Initial income",
-          createdBy: "user_1",
           lines: [validLine()]
         })
       }),
@@ -276,7 +334,7 @@ describe("documents API", () => {
         }
       }),
       params: {},
-      actor: null
+      actor: financeEntryActor
     });
 
     expect(response.status).toBe(201);
@@ -309,7 +367,7 @@ describe("documents API", () => {
         }
       }),
       params: {},
-      actor: null
+      actor: financeEntryActor
     });
 
     expect(response.status).toBe(201);
@@ -331,7 +389,7 @@ describe("documents API", () => {
       }),
       env: mockEnv(),
       params: {},
-      actor: null
+      actor: financeEntryActor
     });
 
     expect(response.status).toBe(400);
@@ -353,7 +411,7 @@ describe("documents API", () => {
       }),
       env: mockEnv(),
       params: {},
-      actor: null
+      actor: financeEntryActor
     });
 
     expect(response.status).toBe(400);
@@ -376,7 +434,7 @@ describe("documents API", () => {
       }),
       env: mockEnv(),
       params: {},
-      actor: null
+      actor: financeEntryActor
     });
 
     expect(response.status).toBe(400);
@@ -402,7 +460,7 @@ describe("documents API", () => {
       }),
       env: mockEnv(),
       params: {},
-      actor: null
+      actor: financeEntryActor
     });
 
     expect(response.status).toBe(400);
@@ -426,7 +484,7 @@ describe("documents API", () => {
       }),
       env: mockEnv(),
       params: {},
-      actor: null
+      actor: financeEntryActor
     });
 
     expect(response.status).toBe(400);
@@ -453,7 +511,7 @@ describe("documents API", () => {
         }),
         env: mockEnv(),
         params: {},
-        actor: null
+        actor: financeEntryActor
       });
 
       expect(response.status).toBe(400);
@@ -470,7 +528,6 @@ describe("documents API", () => {
           businessDate: "2026-04-24",
           period: "2026-04",
           summary: "Initial income",
-          createdBy: "user_1",
           lines: [validLine()]
         })
       }),
@@ -489,8 +546,7 @@ describe("documents API", () => {
           documentType: "project_income",
           businessDate: "2026-04-24",
           period: "2026-04",
-          summary: "Header-only income",
-          createdBy: "user_1"
+          summary: "Header-only income"
         })
       }),
       mockEnv({ onBatch: () => (batchCalled = true) })
@@ -525,7 +581,7 @@ describe("documents API", () => {
         }
       }),
       params: {},
-      actor: null
+      actor: financeEntryActor
     });
 
     expect(response.status).toBe(201);
@@ -548,7 +604,7 @@ describe("documents API", () => {
       }),
       env: mockEnv(),
       params: {},
-      actor: null
+      actor: financeEntryActor
     });
 
     expect(response.status).toBe(400);
@@ -566,7 +622,7 @@ describe("documents API", () => {
     const response = await route(
       new Request("https://ledger.test/api/documents/doc_1/submit", {
         method: "POST",
-        body: JSON.stringify({ actor: "user_1" })
+        body: JSON.stringify({})
       }),
       mockEnv({
         firstResult: validProjectIncomeDocumentRow({ status: "draft" }),
@@ -589,7 +645,7 @@ describe("documents API", () => {
         allResultsQueue: [[lineRow()]]
       }),
       params: { id: "doc_1" },
-      actor: null
+      actor: financeEntryActor
     });
 
     expect(response.status).toBe(400);
@@ -600,7 +656,7 @@ describe("documents API", () => {
     const response = await route(
       new Request("https://ledger.test/api/documents/doc_1/approve", {
         method: "POST",
-        body: JSON.stringify({ reviewer: "reviewer_1" })
+        body: JSON.stringify({})
       }),
       mockEnv({
         firstResults: [validProjectIncomeDocumentRow({ status: "pending" }), null],
@@ -632,7 +688,7 @@ describe("documents API", () => {
         ]
       }),
       params: { id: "doc_1" },
-      actor: null
+      actor: financeManagerActor
     });
 
     expect(response.status).toBe(400);
@@ -645,7 +701,7 @@ describe("documents API", () => {
     const response = await route(
       new Request("https://ledger.test/api/documents/doc_reversal/approve", {
         method: "POST",
-        body: JSON.stringify({ reviewer: "reviewer_1" })
+        body: JSON.stringify({})
       }),
       mockEnv({
         firstResults: [
@@ -693,7 +749,7 @@ describe("documents API", () => {
     const response = await route(
       new Request("https://ledger.test/api/documents/doc_1/reject", {
         method: "POST",
-        body: JSON.stringify({ actor: "reviewer_1", reason: "Missing receipt" })
+        body: JSON.stringify({ reason: "Missing receipt" })
       }),
       mockEnv({ firstResult: documentRow({ status: "pending" }) })
     );
@@ -706,7 +762,7 @@ describe("documents API", () => {
     const response = await route(
       new Request("https://ledger.test/api/documents/%E0%A4%A/submit", {
         method: "POST",
-        body: JSON.stringify({ actor: "user_1" })
+        body: JSON.stringify({})
       }),
       mockEnv()
     );
@@ -742,7 +798,7 @@ describe("documents API", () => {
     await expect(response.json()).resolves.toEqual({ error: "Document not found" });
   });
 
-  it("requires reviewer to approve documents", async () => {
+  it("rejects document approval without approval permission", async () => {
     const response = await approveDocument({
       request: new Request("https://ledger.test/api/documents/doc_1/approve", {
         method: "POST",
@@ -750,22 +806,22 @@ describe("documents API", () => {
       }),
       env: mockEnv(),
       params: { id: "doc_1" },
-      actor: null
+      actor: financeEntryActor
     });
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: "reviewer is required" });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "权限不足" });
   });
 
   it("requires actor and reason to reject documents", async () => {
     const response = await rejectDocument({
       request: new Request("https://ledger.test/api/documents/doc_1/reject", {
         method: "POST",
-        body: JSON.stringify({ actor: "user_1" })
+        body: JSON.stringify({})
       }),
       env: mockEnv(),
       params: { id: "doc_1" },
-      actor: null
+      actor: financeManagerActor
     });
 
     expect(response.status).toBe(400);
