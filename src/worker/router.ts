@@ -8,6 +8,7 @@ import {
 } from "../api/documents";
 import { listDocumentEntryOptions, listOriginalDocuments } from "../api/documentEntryOptions";
 import { createProject, listCurrencies } from "../api/masterData";
+import { getMe } from "../api/me";
 import {
   createMasterDataAccount,
   createMasterDataCategory,
@@ -48,6 +49,8 @@ import {
   projectIncome,
   projectProfitLoss
 } from "../api/reports";
+import { authenticateRequest } from "../auth/authenticate";
+import { AuthError } from "../auth/types";
 import type { Env, Handler } from "./env";
 
 interface Route {
@@ -56,11 +59,12 @@ interface Route {
   handler: Handler;
   regex: RegExp;
   paramNames: string[];
+  auth: "optional" | "required";
 }
 
-function defineRoute(method: string, pathname: string, handler: Handler): Route {
+function defineRoute(method: string, pathname: string, handler: Handler, auth: "optional" | "required" = "required"): Route {
   const { regex, paramNames } = compilePath(pathname);
-  return { method, pathname, handler, regex, paramNames };
+  return { method, pathname, handler, regex, paramNames, auth };
 }
 
 function compilePath(pathname: string) {
@@ -80,6 +84,7 @@ function compilePath(pathname: string) {
 }
 
 const routes: Route[] = [
+  defineRoute("GET", "/api/me", getMe),
   defineRoute("GET", "/api/currencies", listCurrencies),
   defineRoute("GET", "/api/reports/account-balances", accountBalances),
   defineRoute("GET", "/api/reports/petty-cash-pending", pettyCashPendingMatches),
@@ -150,5 +155,17 @@ export async function route(request: Request, env: Env): Promise<Response> {
     throw error;
   }
 
-  return match.candidate.handler({ request, env, params, actor: null });
+  let actor = null;
+  if (match.candidate.auth === "required") {
+    try {
+      actor = await authenticateRequest(request, env);
+    } catch (error) {
+      if (error instanceof AuthError) {
+        return Response.json({ error: error.message }, { status: error.status });
+      }
+      throw error;
+    }
+  }
+
+  return match.candidate.handler({ request, env, params, actor });
 }

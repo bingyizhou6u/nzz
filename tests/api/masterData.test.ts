@@ -5,14 +5,31 @@ import type { Env } from "../../src/worker/env";
 
 function mockEnv(options: { rows?: unknown[]; runResult?: D1Result } = {}): Env {
   return {
+    AUTH_MODE: "development",
+    DEV_ACTOR_EMAIL: "finance@example.test",
+    CF_ACCESS_TEAM_DOMAIN: "",
+    CF_ACCESS_AUD: "",
     DB: {
-      prepare: () =>
+      prepare: (sql: string) =>
         ({
           bind() {
             return this;
           },
           all: async () => ({ success: true, results: options.rows ?? [] }),
-          first: async () => null,
+          first: async () => {
+            const normalizedSql = sql.replace(/\s+/g, " ").toLowerCase();
+            if (normalizedSql.includes("where lower(login_email) = ?") && normalizedSql.includes("is_enabled = 1")) {
+              return {
+                id: "person_finance",
+                name: "Finance",
+                alias: "fin",
+                login_email: "finance@example.test",
+                roles_json: "[\"finance_manager\"]",
+                is_enabled: 1
+              };
+            }
+            return null;
+          },
           run: async () => options.runResult ?? ({ success: true } as D1Result)
         }) as unknown as D1PreparedStatement
     } as unknown as D1Database,

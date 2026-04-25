@@ -25,16 +25,36 @@ function mockEnvWithSql(rows: unknown[] = []): { env: Env; sql: string[]; bindin
   const bindings: unknown[][] = [];
   return {
     env: {
+      AUTH_MODE: "development",
+      DEV_ACTOR_EMAIL: "finance@example.test",
+      CF_ACCESS_TEAM_DOMAIN: "",
+      CF_ACCESS_AUD: "",
       DB: {
         prepare: (query: string) => {
-          sql.push(query);
+          const normalizedQuery = query.replace(/\s+/g, " ").toLowerCase();
+          const isAuthQuery =
+            normalizedQuery.includes("where lower(login_email) = ?") ||
+            normalizedQuery.includes("update people set last_login_at = ?");
+          if (!isAuthQuery) sql.push(query);
           return {
             bind(...values: unknown[]) {
-              bindings.push(values);
+              if (!isAuthQuery) bindings.push(values);
               return this;
             },
             all: async () => ({ success: true, results: rows }),
-            first: async () => null,
+            first: async () => {
+              if (normalizedQuery.includes("where lower(login_email) = ?") && normalizedQuery.includes("is_enabled = 1")) {
+                return {
+                  id: "person_finance",
+                  name: "Finance",
+                  alias: "fin",
+                  login_email: "finance@example.test",
+                  roles_json: "[\"finance_manager\"]",
+                  is_enabled: 1
+                };
+              }
+              return null;
+            },
             run: async () => ({ success: true } as D1Result)
           } as unknown as D1PreparedStatement;
         }

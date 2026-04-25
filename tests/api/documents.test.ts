@@ -131,6 +131,10 @@ function mockEnv(
   const enabledPersonIds = options.enabledPersonIds ?? ["user_1", "reviewer_1"];
 
   return {
+    AUTH_MODE: "development",
+    DEV_ACTOR_EMAIL: "finance@example.test",
+    CF_ACCESS_TEAM_DOMAIN: "",
+    CF_ACCESS_AUD: "",
     DB: {
       prepare: (sql: string) => {
         const statement = {
@@ -144,6 +148,16 @@ function mockEnv(
           all: async () => ({ success: true, results: options.allResultsQueue?.shift() ?? options.allResults ?? [] }),
           first(this: PreparedMock) {
             const normalizedSql = sql.replace(/\s+/g, " ").toLowerCase();
+            if (normalizedSql.includes("where lower(login_email) = ?") && normalizedSql.includes("is_enabled = 1")) {
+              return Promise.resolve({
+                id: "person_finance",
+                name: "Finance",
+                alias: "fin",
+                login_email: "finance@example.test",
+                roles_json: "[\"finance_manager\"]",
+                is_enabled: 1
+              });
+            }
             if (normalizedSql.includes("from people") && normalizedSql.includes("is_enabled = 1")) {
               const personId = this.bindings[0];
               return Promise.resolve(
