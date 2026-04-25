@@ -31,6 +31,7 @@ import type { Lot } from "../domain/types";
 import type { ActionType, DocumentType } from "../domain/types";
 import type { AuditLogRepository } from "../repositories/auditLogRepository";
 import type {
+  ApproveDocumentWithPostingsInput,
   DocumentDetailRow,
   DocumentLineRow,
   DocumentRepository,
@@ -54,6 +55,24 @@ export interface CreateDraftRequest {
   createdBy: string;
   lines?: RawDocumentLine[];
 }
+
+export interface ApprovalPreview {
+  accountEntries: ApproveDocumentWithPostingsInput["accountEntries"];
+  loanEntries: ApproveDocumentWithPostingsInput["loanEntries"];
+  lotCreations: NonNullable<ApproveDocumentWithPostingsInput["lotCreations"]>;
+  lotUpdates: NonNullable<ApproveDocumentWithPostingsInput["lotUpdates"]>;
+  lotMovements: NonNullable<ApproveDocumentWithPostingsInput["lotMovements"]>;
+  pendingCostCreations: NonNullable<ApproveDocumentWithPostingsInput["pendingCostCreations"]>;
+  pendingCostUpdates: NonNullable<ApproveDocumentWithPostingsInput["pendingCostUpdates"]>;
+  pendingCostApplications: NonNullable<ApproveDocumentWithPostingsInput["pendingCostApplications"]>;
+  loanItemCreations: NonNullable<ApproveDocumentWithPostingsInput["loanItemCreations"]>;
+  loanItemUpdates: NonNullable<ApproveDocumentWithPostingsInput["loanItemUpdates"]>;
+  loanAllocations: NonNullable<ApproveDocumentWithPostingsInput["loanAllocations"]>;
+}
+
+type ApprovalPostingEffects = ApprovalPreview & {
+  reversalOriginalDocumentId?: string | null;
+};
 
 type DocumentWorkflowRepository = Pick<
   DocumentRepository,
@@ -280,6 +299,47 @@ export class DocumentService {
   }
 
   async approve(id: string, reviewer: string) {
+    const { document, approvalPeriod, effects } = await this.planApproval(id);
+    const auditLogStatement = this.auditLogs.prepareRecordWhen(
+      {
+        actor: reviewer,
+        action: "document.approve",
+        entityType: "document",
+        entityId: document.id,
+        before: { status: document.status },
+        after: effects.reversalOriginalDocumentId
+          ? { status: "approved", originalDocumentId: effects.reversalOriginalDocumentId }
+          : { status: "approved" }
+      },
+      this.approvalAuditCondition(document, approvalPeriod, effects.reversalOriginalDocumentId)
+    );
+
+    await this.documents.approveWithPostings({
+      documentId: document.id,
+      period: approvalPeriod,
+      reviewer,
+      reversalOriginalDocumentId: effects.reversalOriginalDocumentId,
+      accountEntries: effects.accountEntries,
+      loanEntries: effects.loanEntries,
+      lotCreations: effects.lotCreations,
+      lotUpdates: effects.lotUpdates,
+      lotMovements: effects.lotMovements,
+      pendingCostCreations: effects.pendingCostCreations,
+      pendingCostUpdates: effects.pendingCostUpdates,
+      pendingCostApplications: effects.pendingCostApplications,
+      loanItemCreations: effects.loanItemCreations,
+      loanItemUpdates: effects.loanItemUpdates,
+      loanAllocations: effects.loanAllocations,
+      auditLogStatement
+    });
+  }
+
+  async previewApproval(id: string): Promise<ApprovalPreview> {
+    const { effects } = await this.planApproval(id);
+    return approvalPreviewFromEffects(effects);
+  }
+
+  private async planApproval(id: string) {
     const document = await this.requireDocument(id);
     assertDocumentTransition(document.status, "approved", "approve");
 
@@ -290,13 +350,15 @@ export class DocumentService {
     }
 
     const validated = await this.validatePersistedDocument(document, "approve");
+    const effects =
+      document.action_type === "reversal"
+        ? await this.planReversalApprovalEffects(document, validated.originalDocument)
+        : await this.planNormalApprovalEffects(document, validated.lines);
 
-    if (document.action_type === "reversal") {
-      await this.approveReversal(document, reviewer, approvalPeriod, validated.originalDocument);
-      return;
-    }
+    return { document, approvalPeriod, effects };
+  }
 
-    const lines = validated.lines;
+  private async planNormalApprovalEffects(document: DocumentDetailRow, lines: DocumentLineRow[]): Promise<ApprovalPostingEffects> {
     assertSingleLineFifoApproval(document.document_type, lines);
     const borrowerPersonId = borrowerForLoanDocument(document.document_type, lines);
     const posting = entriesForApprovedDocument({
@@ -321,25 +383,8 @@ export class DocumentService {
       posting.loanEntries,
       totalLoanAllocationUsdtCost(loanEffects)
     );
-    const auditLogStatement = this.auditLogs.prepareRecordWhen(
-      {
-        actor: reviewer,
-        action: "document.approve",
-        entityType: "document",
-        entityId: id,
-        before: { status: document.status },
-        after: { status: "approved" }
-      },
-      {
-        sql: "EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending' AND NOT EXISTS (SELECT 1 FROM period_locks WHERE period = ?))",
-        bindings: [id, approvalPeriod]
-      }
-    );
 
-    await this.documents.approveWithPostings({
-      documentId: id,
-      period: approvalPeriod,
-      reviewer,
+    return {
       accountEntries: posting.accountEntries,
       loanEntries,
       lotCreations: fifoEffects.lotCreations,
@@ -350,17 +395,14 @@ export class DocumentService {
       pendingCostApplications: fifoEffects.pendingCostApplications ?? [],
       loanItemCreations: loanEffects.loanItemCreations,
       loanItemUpdates: loanEffects.loanItemUpdates,
-      loanAllocations: loanEffects.loanAllocations,
-      auditLogStatement
-    });
+      loanAllocations: loanEffects.loanAllocations
+    };
   }
 
-  private async approveReversal(
+  private async planReversalApprovalEffects(
     document: DocumentDetailRow,
-    reviewer: string,
-    approvalPeriod: string,
     validatedOriginal: DocumentDetailRow | null
-  ) {
+  ): Promise<ApprovalPostingEffects> {
     const originalDocumentId = document.original_document_id?.trim() ?? "";
     if (!originalDocumentId) {
       throw new Error("originalDocumentId is required for reversal approval");
@@ -396,16 +438,30 @@ export class DocumentService {
 
     const fifoEffects = await this.planFifoReversalEffects(document.id, original, document.business_date);
     const loanEffects = await this.planLoanReversalEffects(document.id, original, document.business_date);
-    const auditLogStatement = this.auditLogs.prepareRecordWhen(
-      {
-        actor: reviewer,
-        action: "document.approve",
-        entityType: "document",
-        entityId: document.id,
-        before: { status: document.status },
-        after: { status: "approved", originalDocumentId }
-      },
-      {
+
+    return {
+      reversalOriginalDocumentId: originalDocumentId,
+      accountEntries: posting.accountEntries,
+      loanEntries: posting.loanEntries,
+      lotCreations: fifoEffects.lotCreations,
+      lotUpdates: fifoEffects.lotUpdates,
+      lotMovements: fifoEffects.lotMovements,
+      pendingCostCreations: fifoEffects.pendingCostCreations,
+      pendingCostUpdates: fifoEffects.pendingCostUpdates,
+      pendingCostApplications: fifoEffects.pendingCostApplications ?? [],
+      loanItemCreations: loanEffects.loanItemCreations,
+      loanItemUpdates: loanEffects.loanItemUpdates,
+      loanAllocations: loanEffects.loanAllocations
+    };
+  }
+
+  private approvalAuditCondition(
+    document: DocumentDetailRow,
+    approvalPeriod: string,
+    reversalOriginalDocumentId: string | null | undefined
+  ) {
+    if (reversalOriginalDocumentId) {
+      return {
         sql: `EXISTS (
           SELECT 1 FROM documents
           WHERE id = ?
@@ -419,28 +475,14 @@ export class DocumentService {
                 AND id <> ?
             )
         )`,
-        bindings: [document.id, approvalPeriod, originalDocumentId, document.id]
-      }
-    );
+        bindings: [document.id, approvalPeriod, reversalOriginalDocumentId, document.id]
+      };
+    }
 
-    await this.documents.approveWithPostings({
-      documentId: document.id,
-      period: approvalPeriod,
-      reviewer,
-      reversalOriginalDocumentId: originalDocumentId,
-      accountEntries: posting.accountEntries,
-      loanEntries: posting.loanEntries,
-      lotCreations: fifoEffects.lotCreations,
-      lotUpdates: fifoEffects.lotUpdates,
-      lotMovements: fifoEffects.lotMovements,
-      pendingCostCreations: fifoEffects.pendingCostCreations,
-      pendingCostUpdates: fifoEffects.pendingCostUpdates,
-      pendingCostApplications: fifoEffects.pendingCostApplications ?? [],
-      loanItemCreations: loanEffects.loanItemCreations,
-      loanItemUpdates: loanEffects.loanItemUpdates,
-      loanAllocations: loanEffects.loanAllocations,
-      auditLogStatement
-    });
+    return {
+      sql: "EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = 'pending' AND NOT EXISTS (SELECT 1 FROM period_locks WHERE period = ?))",
+      bindings: [document.id, approvalPeriod]
+    };
   }
 
   private async planFifoReversalEffects(reversalDocumentId: string, original: DocumentDetailRow, reversalDate: string) {
@@ -859,6 +901,22 @@ function mapLoanItemReversalRow(row: LoanItemReversalRow) {
     remainingAmountMinor: row.remaining_amount_minor,
     originalUsdtCostMinor: row.original_usdt_cost_minor,
     remainingUsdtCostMinor: row.remaining_usdt_cost_minor
+  };
+}
+
+function approvalPreviewFromEffects(effects: ApprovalPostingEffects): ApprovalPreview {
+  return {
+    accountEntries: effects.accountEntries,
+    loanEntries: effects.loanEntries,
+    lotCreations: effects.lotCreations,
+    lotUpdates: effects.lotUpdates,
+    lotMovements: effects.lotMovements,
+    pendingCostCreations: effects.pendingCostCreations,
+    pendingCostUpdates: effects.pendingCostUpdates,
+    pendingCostApplications: effects.pendingCostApplications,
+    loanItemCreations: effects.loanItemCreations,
+    loanItemUpdates: effects.loanItemUpdates,
+    loanAllocations: effects.loanAllocations
   };
 }
 

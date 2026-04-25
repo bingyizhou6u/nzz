@@ -704,6 +704,67 @@ describe("DocumentService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
+  it("previews pending project income approval without posting or audit writes", async () => {
+    const { repo, audit, service } = createMocks({
+      getDocument: vi.fn(async () => documentRow({ status: "pending" })),
+      getDocumentLines: vi.fn(async () => [lineRow({ amount_minor: 15000 })])
+    });
+
+    const preview = await service.previewApproval("doc_1");
+
+    expect(repo.isPeriodLocked).toHaveBeenCalledWith("2026-04");
+    expect(preview).toEqual({
+      accountEntries: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 15000, entryDate: "2026-04-24" }],
+      loanEntries: [],
+      lotCreations: [],
+      lotUpdates: [],
+      lotMovements: [],
+      pendingCostCreations: [],
+      pendingCostUpdates: [],
+      pendingCostApplications: [],
+      loanItemCreations: [],
+      loanItemUpdates: [],
+      loanAllocations: []
+    });
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
+    expect(repo.markApproved).not.toHaveBeenCalled();
+    expect(audit.prepareRecordWhen).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("previews normal exchange approval effects", async () => {
+    const { service } = createMocks({
+      getDocument: vi.fn(async () =>
+        documentRow({ status: "pending", document_type: "exchange", category_id: "cat_exchange" })
+      ),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({
+          account_id: "acct_aed_reserve",
+          counterparty_account_id: "acct_usdt_main",
+          currency_code: "AED",
+          amount_minor: 367000,
+          usdt_amount_minor: 100000
+        })
+      ])
+    });
+
+    const preview = await service.previewApproval("doc_1");
+
+    expect(preview.accountEntries).toEqual([
+      { accountId: "acct_usdt_main", currencyCode: "USDT", amountMinor: -100000, entryDate: "2026-04-24" },
+      { accountId: "acct_aed_reserve", currencyCode: "AED", amountMinor: 367000, entryDate: "2026-04-24" }
+    ]);
+    expect(preview.lotCreations).toEqual([
+      expect.objectContaining({
+        clientLotId: "doc_1:lot:1",
+        currentAccountId: "acct_aed_reserve",
+        currencyCode: "AED",
+        remainingAmountMinor: 367000,
+        remainingUsdtCostMinor: 100000
+      })
+    ]);
+  });
+
   it("rejects approval when the period is locked", async () => {
     const { repo, audit, service } = createMocks({
       getDocument: vi.fn(async () => documentRow({ status: "pending" })),
@@ -1588,6 +1649,70 @@ describe("DocumentService", () => {
         }
       ]
     }));
+  });
+
+  it("previews reversals from original approved entries without posting or audit writes", async () => {
+    const { repo, audit, service } = createMocks({
+      getDocument: vi
+        .fn()
+        .mockResolvedValueOnce(documentRow({
+          id: "doc_rev",
+          status: "pending",
+          action_type: "reversal",
+          document_type: "loan_out",
+          original_document_id: "doc_original",
+          business_date: "2026-04-25"
+        }))
+        .mockResolvedValueOnce(documentRow({
+          id: "doc_original",
+          status: "approved",
+          document_type: "loan_out",
+          action_type: "normal",
+          business_date: "2026-04-20"
+        })),
+      listAccountEntriesForDocument: vi.fn(async () => [
+        { account_id: "acct_usdt_main", currency_code: "USDT", amount_minor: -120000 }
+      ]),
+      listLoanEntriesForDocument: vi.fn(async () => [
+        { borrower_person_id: "person_borrower", currency_code: "USDT", amount_minor: 120000, usdt_cost_minor: 120000 }
+      ]),
+      listLoanItemsCreatedByDocument: vi.fn(async () => [
+        {
+          id: "loan_item_original",
+          original_amount_minor: 120000,
+          remaining_amount_minor: 120000,
+          original_usdt_cost_minor: 120000,
+          remaining_usdt_cost_minor: 120000
+        }
+      ])
+    });
+
+    const preview = await service.previewApproval("doc_rev");
+
+    expect(preview.accountEntries).toEqual([
+      { accountId: "acct_usdt_main", currencyCode: "USDT", amountMinor: 120000, entryDate: "2026-04-25" }
+    ]);
+    expect(preview.loanEntries).toEqual([
+      {
+        borrowerPersonId: "person_borrower",
+        currencyCode: "USDT",
+        amountMinor: -120000,
+        usdtCostMinor: -120000,
+        entryDate: "2026-04-25"
+      }
+    ]);
+    expect(preview.loanItemUpdates).toEqual([
+      {
+        loanItemId: "loan_item_original",
+        amountDeltaMinor: -120000,
+        usdtCostDeltaMinor: -120000,
+        expectedRemainingAmountMinor: 120000,
+        expectedRemainingUsdtCostMinor: 120000
+      }
+    ]);
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
+    expect(audit.prepareRecordWhen).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("rejects loan reversals when loan item snapshots are missing", async () => {

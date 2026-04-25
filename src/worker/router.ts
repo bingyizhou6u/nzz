@@ -11,6 +11,13 @@ import { listCurrencies } from "../api/masterData";
 import { getMe } from "../api/me";
 import { createPeriodLock, deletePeriodLock, listPeriodLocks } from "../api/periodLocks";
 import {
+  approveReviewDocument,
+  getReviewDocument,
+  listReviewDocuments,
+  previewReviewDocument,
+  rejectReviewDocument
+} from "../api/review";
+import {
   createMasterDataAccount,
   createMasterDataCategory,
   createMasterDataCurrency,
@@ -141,7 +148,12 @@ const routes: Route[] = [
   defineRoute("POST", "/api/documents", createDocument, "documents.create"),
   defineRoute("POST", "/api/documents/:id/submit", submitDocument, "documents.submit"),
   defineRoute("POST", "/api/documents/:id/approve", approveDocument, "documents.approve"),
-  defineRoute("POST", "/api/documents/:id/reject", rejectDocument, "documents.reject")
+  defineRoute("POST", "/api/documents/:id/reject", rejectDocument, "documents.reject"),
+  defineRoute("GET", "/api/review/documents", listReviewDocuments, "documents.approve"),
+  defineRoute("GET", "/api/review/documents/:id", getReviewDocument, "documents.approve"),
+  defineRoute("GET", "/api/review/documents/:id/preview", previewReviewDocument, "documents.previewApproval"),
+  defineRoute("POST", "/api/review/documents/:id/approve", approveReviewDocument, "documents.approve"),
+  defineRoute("POST", "/api/review/documents/:id/reject", rejectReviewDocument, "documents.reject")
 ];
 
 export async function route(request: Request, env: Env): Promise<Response> {
