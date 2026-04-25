@@ -168,6 +168,19 @@ export interface MonthlyOperatingSummaryRow {
   cost_status: "complete" | "incomplete";
 }
 
+export interface ExceptionCheckRow {
+  exception_type: string;
+  severity: "info" | "warning" | "critical";
+  entity_type: string;
+  entity_id: string;
+  period: string | null;
+  business_date: string | null;
+  currency_code: string | null;
+  amount_minor: number | null;
+  usdt_cost_minor: number | null;
+  message: string;
+}
+
 interface SqlFragment {
   sql: string;
   bindings: unknown[];
@@ -206,6 +219,30 @@ export class ReportRepository {
     }
 
     return { sql: clauses.length ? `AND ${clauses.join(" AND ")}` : "", bindings };
+  }
+
+  private workflowDocumentFilterSql(filters: ReportFilters): SqlFragment {
+    const documentFilter = this.reportFilterSql(filters, { documentAlias: "d" });
+    const clauses: string[] = [];
+    const bindings = [...documentFilter.bindings];
+
+    if (filters.personId) {
+      clauses.push("AND d.operator_person_id = ?");
+      bindings.push(filters.personId);
+    }
+    if (filters.currencyCode) {
+      clauses.push(`
+        AND EXISTS (
+          SELECT 1
+          FROM document_lines workflow_currency_line
+          WHERE workflow_currency_line.document_id = d.id
+            AND workflow_currency_line.currency_code = ?
+        )
+      `);
+      bindings.push(filters.currencyCode);
+    }
+
+    return { sql: [documentFilter.sql, ...clauses].filter(Boolean).join("\n"), bindings };
   }
 
   private expenseDetailsCteSql(filters: ReportFilters, cteName = "expense_detail_rows"): SqlFragment {
@@ -522,6 +559,178 @@ export class ReportRepository {
           ORDER BY period DESC
         `)
         .bind(...projectProfitLossCte.bindings)
+    );
+  }
+
+  exceptionChecks(filters: ReportFilters = {}): Promise<ExceptionCheckRow[]> {
+    const staleDays =
+      Number.isSafeInteger(filters.staleDays) && filters.staleDays !== undefined && filters.staleDays > 0
+        ? filters.staleDays
+        : 30;
+    const pendingCostFilter = this.reportFilterSql(filters, {
+      documentAlias: "d",
+      personColumn: "pcm.person_id",
+      currencyColumn: "pcm.currency_code"
+    });
+    const pettyCashFilter = this.reportFilterSql(filters, {
+      documentAlias: "d",
+      personColumn: "a.owner_person_id",
+      currencyColumn: "ae.currency_code"
+    });
+    const companyAccountFilter = this.reportFilterSql(filters, {
+      documentAlias: "d",
+      currencyColumn: "ae.currency_code"
+    });
+    const pendingDocumentFilter = this.workflowDocumentFilterSql(filters);
+    const draftDocumentFilter = this.workflowDocumentFilterSql(filters);
+    const staleLoanFilter = this.reportFilterSql(filters, {
+      documentAlias: "d",
+      personColumn: "li.borrower_person_id",
+      currencyColumn: "li.currency_code"
+    });
+
+    return all<ExceptionCheckRow>(
+      this.db
+        .prepare(`
+          SELECT *
+          FROM (
+            SELECT
+              'pending_cost' AS exception_type,
+              'warning' AS severity,
+              'pending_cost_match' AS entity_type,
+              pcm.id AS entity_id,
+              d.period AS period,
+              pcm.expense_date AS business_date,
+              pcm.currency_code AS currency_code,
+              pcm.remaining_amount_minor AS amount_minor,
+              NULL AS usdt_cost_minor,
+              'Pending cost has unmatched USDT cost' AS message
+            FROM pending_cost_matches pcm
+            JOIN documents d ON d.id = pcm.document_id
+            WHERE d.status = 'approved'
+              AND pcm.status IN ('open', 'partial')
+              AND pcm.remaining_amount_minor > 0
+              ${pendingCostFilter.sql}
+
+            UNION ALL
+
+            SELECT
+              'negative_petty_cash' AS exception_type,
+              'warning' AS severity,
+              'petty_cash_account' AS entity_type,
+              ae.account_id AS entity_id,
+              NULL AS period,
+              NULL AS business_date,
+              ae.currency_code AS currency_code,
+              COALESCE(SUM(ae.amount_minor), 0) AS amount_minor,
+              NULL AS usdt_cost_minor,
+              'Petty cash account balance is negative' AS message
+            FROM account_entries ae
+            JOIN documents d ON d.id = ae.document_id
+            JOIN accounts a ON a.id = ae.account_id
+            WHERE d.status = 'approved'
+              AND a.account_type = 'petty_cash'
+              ${pettyCashFilter.sql}
+            GROUP BY ae.account_id, a.owner_person_id, ae.currency_code
+            HAVING COALESCE(SUM(ae.amount_minor), 0) < 0
+
+            UNION ALL
+
+            SELECT
+              'negative_company_account' AS exception_type,
+              'critical' AS severity,
+              'account' AS entity_type,
+              ae.account_id AS entity_id,
+              NULL AS period,
+              NULL AS business_date,
+              ae.currency_code AS currency_code,
+              COALESCE(SUM(ae.amount_minor), 0) AS amount_minor,
+              NULL AS usdt_cost_minor,
+              'Company account balance is negative' AS message
+            FROM account_entries ae
+            JOIN documents d ON d.id = ae.document_id
+            JOIN accounts a ON a.id = ae.account_id
+            WHERE d.status = 'approved'
+              AND a.is_company_account = 1
+              AND a.allow_negative = 0
+              ${companyAccountFilter.sql}
+            GROUP BY ae.account_id, ae.currency_code
+            HAVING COALESCE(SUM(ae.amount_minor), 0) < 0
+
+            UNION ALL
+
+            SELECT
+              'stale_pending_document' AS exception_type,
+              'warning' AS severity,
+              'document' AS entity_type,
+              d.id AS entity_id,
+              d.period AS period,
+              d.business_date AS business_date,
+              NULL AS currency_code,
+              NULL AS amount_minor,
+              NULL AS usdt_cost_minor,
+              'Document has stayed pending beyond the stale threshold' AS message
+            FROM documents d
+            WHERE d.status = 'pending'
+              ${pendingDocumentFilter.sql}
+              AND julianday('now') - julianday(d.created_at) >= ?
+
+            UNION ALL
+
+            SELECT
+              'stale_draft_document' AS exception_type,
+              'info' AS severity,
+              'document' AS entity_type,
+              d.id AS entity_id,
+              d.period AS period,
+              d.business_date AS business_date,
+              NULL AS currency_code,
+              NULL AS amount_minor,
+              NULL AS usdt_cost_minor,
+              'Draft document has stayed open beyond the stale threshold' AS message
+            FROM documents d
+            WHERE d.status = 'draft'
+              ${draftDocumentFilter.sql}
+              AND julianday('now') - julianday(d.created_at) >= ?
+
+            UNION ALL
+
+            SELECT
+              'stale_loan' AS exception_type,
+              'warning' AS severity,
+              'loan_item' AS entity_type,
+              li.id AS entity_id,
+              d.period AS period,
+              li.loan_date AS business_date,
+              li.currency_code AS currency_code,
+              li.remaining_amount_minor AS amount_minor,
+              li.remaining_usdt_cost_minor AS usdt_cost_minor,
+              'Loan has remained open beyond the stale threshold' AS message
+            FROM loan_items li
+            JOIN documents d ON d.id = li.source_document_id
+            WHERE d.status = 'approved'
+              AND li.status IN ('open', 'partial')
+              AND li.remaining_amount_minor > 0
+              ${staleLoanFilter.sql}
+              AND julianday('now') - julianday(li.loan_date) >= ?
+          ) exception_rows
+          ORDER BY
+            CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
+            exception_type,
+            business_date,
+            entity_id
+        `)
+        .bind(
+          ...pendingCostFilter.bindings,
+          ...pettyCashFilter.bindings,
+          ...companyAccountFilter.bindings,
+          ...pendingDocumentFilter.bindings,
+          staleDays,
+          ...draftDocumentFilter.bindings,
+          staleDays,
+          ...staleLoanFilter.bindings,
+          staleDays
+        )
     );
   }
 

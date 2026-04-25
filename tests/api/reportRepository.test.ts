@@ -51,17 +51,22 @@ async function createSqliteReportDb(): Promise<{ db: D1Database; exec: (sql: str
       action_type TEXT NOT NULL DEFAULT 'normal',
       business_date TEXT NOT NULL,
       period TEXT NOT NULL,
+      operator_person_id TEXT,
       project_id TEXT,
       merchant_id TEXT,
       category_id TEXT,
       status TEXT NOT NULL,
-      original_document_id TEXT
+      original_document_id TEXT,
+      created_at TEXT NOT NULL DEFAULT '2026-04-25T00:00:00Z'
     );
 
     CREATE TABLE document_lines (
       id TEXT PRIMARY KEY,
       document_id TEXT NOT NULL,
+      account_id TEXT,
+      counterparty_account_id TEXT,
       person_id TEXT,
+      borrower_person_id TEXT,
       currency_code TEXT NOT NULL,
       amount_minor INTEGER NOT NULL
     );
@@ -76,7 +81,14 @@ async function createSqliteReportDb(): Promise<{ db: D1Database; exec: (sql: str
     CREATE TABLE pending_cost_matches (
       id TEXT PRIMARY KEY,
       document_id TEXT NOT NULL,
-      remaining_amount_minor INTEGER NOT NULL
+      person_id TEXT NOT NULL DEFAULT '',
+      account_id TEXT NOT NULL DEFAULT '',
+      currency_code TEXT NOT NULL DEFAULT '',
+      amount_minor INTEGER NOT NULL DEFAULT 0,
+      remaining_amount_minor INTEGER NOT NULL,
+      expense_date TEXT NOT NULL DEFAULT '1970-01-01',
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at TEXT NOT NULL DEFAULT '2026-04-25T00:00:00Z'
     );
 
     CREATE TABLE pending_cost_applications (
@@ -88,8 +100,17 @@ async function createSqliteReportDb(): Promise<{ db: D1Database; exec: (sql: str
 
     CREATE TABLE loan_items (
       id TEXT PRIMARY KEY,
+      source_document_id TEXT NOT NULL DEFAULT '',
+      source_line_id TEXT NOT NULL DEFAULT '',
       borrower_person_id TEXT NOT NULL,
-      currency_code TEXT NOT NULL
+      currency_code TEXT NOT NULL,
+      original_amount_minor INTEGER NOT NULL DEFAULT 0,
+      remaining_amount_minor INTEGER NOT NULL DEFAULT 0,
+      original_usdt_cost_minor INTEGER NOT NULL DEFAULT 0,
+      remaining_usdt_cost_minor INTEGER NOT NULL DEFAULT 0,
+      loan_date TEXT NOT NULL DEFAULT '1970-01-01',
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at TEXT NOT NULL DEFAULT '2026-04-25T00:00:00Z'
     );
 
     CREATE TABLE loan_allocations (
@@ -98,14 +119,31 @@ async function createSqliteReportDb(): Promise<{ db: D1Database; exec: (sql: str
       loan_item_id TEXT NOT NULL,
       allocation_type TEXT NOT NULL,
       amount_minor INTEGER NOT NULL,
-      usdt_cost_minor INTEGER NOT NULL
+      usdt_cost_minor INTEGER NOT NULL,
+      allocation_date TEXT NOT NULL DEFAULT '1970-01-01',
+      created_at TEXT NOT NULL DEFAULT '2026-04-25T00:00:00Z'
     );
 
     CREATE TABLE account_entries (
       id TEXT PRIMARY KEY,
       document_id TEXT NOT NULL,
+      account_id TEXT,
       currency_code TEXT NOT NULL,
-      amount_minor INTEGER NOT NULL
+      amount_minor INTEGER NOT NULL,
+      entry_date TEXT NOT NULL DEFAULT '1970-01-01',
+      created_at TEXT NOT NULL DEFAULT '2026-04-25T00:00:00Z'
+    );
+
+    CREATE TABLE accounts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      account_type TEXT NOT NULL,
+      currency_code TEXT NOT NULL,
+      owner_person_id TEXT,
+      is_company_account INTEGER NOT NULL DEFAULT 1,
+      allow_negative INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL DEFAULT '2026-04-25T00:00:00Z'
     );
   `);
 
@@ -498,6 +536,75 @@ describe("ReportRepository", () => {
     expect(normalized).toContain("as net_usdt_minor");
   });
 
+  it("returns formal exception checks from approved balances and workflow aging", async () => {
+    const rows = [{ exception_type: "pending_cost", severity: "warning", entity_id: "pending_1" }];
+    let sql = "";
+    let bindings: unknown[] = [];
+    const repo = new ReportRepository(mockDb(rows, (value) => (sql = value), (values) => (bindings = values)));
+
+    await expect(
+      repo.exceptionChecks({ period: "2026-04", personId: "person_1", currencyCode: "AED", staleDays: 45 })
+    ).resolves.toEqual(rows);
+
+    const normalized = normalizeSql(sql);
+    expect(normalized).toContain("pending_cost");
+    expect(normalized).toContain("negative_petty_cash");
+    expect(normalized).toContain("negative_company_account");
+    expect(normalized).toContain("stale_pending_document");
+    expect(normalized).toContain("stale_draft_document");
+    expect(normalized).toContain("stale_loan");
+    expect(normalized).toContain("from pending_cost_matches pcm");
+    expect(normalized).toContain("from account_entries ae");
+    expect(normalized).toContain("join accounts a on a.id = ae.account_id");
+    expect(normalized).toContain("a.account_type = 'petty_cash'");
+    expect(normalized).toContain("a.is_company_account = 1");
+    expect(normalized).toContain("a.allow_negative = 0");
+    expect(normalized).toContain("julianday('now') - julianday(d.created_at) >= ?");
+    expect(normalized).toContain("julianday('now') - julianday(li.loan_date) >= ?");
+    expect(bindings).toEqual([
+      "2026-04",
+      "person_1",
+      "AED",
+      "2026-04",
+      "person_1",
+      "AED",
+      "2026-04",
+      "AED",
+      "2026-04",
+      "person_1",
+      "AED",
+      45,
+      "2026-04",
+      "person_1",
+      "AED",
+      45,
+      "2026-04",
+      "person_1",
+      "AED",
+      45
+    ]);
+  });
+
+  it("binds default stale days unless the filter is a positive safe integer", async () => {
+    const rows: unknown[] = [];
+    const defaultBindings: unknown[][] = [];
+    const defaultRepo = new ReportRepository(
+      mockDb(rows, () => {}, (values) => defaultBindings.push(values))
+    );
+
+    await defaultRepo.exceptionChecks({ staleDays: 0 });
+
+    const customBindings: unknown[][] = [];
+    const customRepo = new ReportRepository(
+      mockDb(rows, () => {}, (values) => customBindings.push(values))
+    );
+
+    await customRepo.exceptionChecks({ staleDays: 12 });
+
+    expect(defaultBindings[0]).toEqual([30, 30, 30]);
+    expect(customBindings[0]).toEqual([12, 12, 12]);
+  });
+
   it("executes expense summary grouping loan writeoffs by borrower person", async () => {
     const sqliteDb = await createSqliteReportDb();
     try {
@@ -637,6 +744,155 @@ describe("ReportRepository", () => {
           pending_expense_minor: 0,
           net_usdt_minor: 15000,
           cost_status: "complete"
+        }
+      ]);
+    } finally {
+      sqliteDb.close();
+    }
+  });
+
+  it("executes exception checks for pending costs, negative company accounts, and default stale aging", async () => {
+    const sqliteDb = await createSqliteReportDb();
+    try {
+      sqliteDb.exec(`
+        INSERT INTO accounts (
+          id, name, account_type, currency_code, owner_person_id, is_company_account, allow_negative
+        ) VALUES
+          ('acct_company', 'Company AED', 'currency_reserve', 'AED', NULL, 1, 0),
+          ('acct_petty', 'Petty Cash', 'petty_cash', 'AED', 'person_1', 0, 0);
+
+        INSERT INTO documents (
+          id, document_type, action_type, business_date, period, operator_person_id,
+          project_id, merchant_id, category_id, status, original_document_id, created_at
+        ) VALUES
+          ('doc_pending_cost', 'petty_cash_reimbursement', 'normal', '2026-04-02', '2026-04', 'person_1', 'proj_1', NULL, 'cat_expense', 'approved', NULL, '2026-04-02T00:00:00Z'),
+          ('doc_company_negative', 'account_transfer', 'normal', '2026-04-03', '2026-04', 'person_2', 'proj_1', NULL, NULL, 'approved', NULL, '2026-04-03T00:00:00Z'),
+          ('doc_pending_old', 'project_income', 'normal', '2000-01-01', '2000-01', 'person_1', 'proj_1', NULL, NULL, 'pending', NULL, '2000-01-01T00:00:00Z'),
+          ('doc_draft_recent', 'project_income', 'normal', '2099-01-01', '2099-01', 'person_1', 'proj_1', NULL, NULL, 'draft', NULL, '2099-01-01T00:00:00Z');
+
+        INSERT INTO document_lines (id, document_id, person_id, currency_code, amount_minor) VALUES
+          ('line_pending_old', 'doc_pending_old', 'person_1', 'AED', 1000),
+          ('line_draft_recent', 'doc_draft_recent', 'person_1', 'AED', 1000);
+
+        INSERT INTO pending_cost_matches (
+          id, document_id, person_id, account_id, currency_code, amount_minor,
+          remaining_amount_minor, expense_date, status, created_at
+        ) VALUES
+          ('pending_1', 'doc_pending_cost', 'person_1', 'acct_petty', 'AED', 5000, 2000, '2026-04-02', 'partial', '2026-04-02T00:00:00Z');
+
+        INSERT INTO account_entries (id, document_id, account_id, currency_code, amount_minor, entry_date) VALUES
+          ('entry_company_negative', 'doc_company_negative', 'acct_company', 'AED', -3000, '2026-04-03');
+      `);
+
+      const repo = new ReportRepository(sqliteDb.db);
+
+      await expect(repo.exceptionChecks({ period: "2026-04", currencyCode: "AED", staleDays: 0 })).resolves.toEqual([
+        {
+          exception_type: "negative_company_account",
+          severity: "critical",
+          entity_type: "account",
+          entity_id: "acct_company",
+          period: null,
+          business_date: null,
+          currency_code: "AED",
+          amount_minor: -3000,
+          usdt_cost_minor: null,
+          message: "Company account balance is negative"
+        },
+        {
+          exception_type: "pending_cost",
+          severity: "warning",
+          entity_type: "pending_cost_match",
+          entity_id: "pending_1",
+          period: "2026-04",
+          business_date: "2026-04-02",
+          currency_code: "AED",
+          amount_minor: 2000,
+          usdt_cost_minor: null,
+          message: "Pending cost has unmatched USDT cost"
+        }
+      ]);
+
+      await expect(repo.exceptionChecks({ personId: "person_1", currencyCode: "AED", staleDays: Number.NaN })).resolves.toEqual([
+        {
+          exception_type: "negative_company_account",
+          severity: "critical",
+          entity_type: "account",
+          entity_id: "acct_company",
+          period: null,
+          business_date: null,
+          currency_code: "AED",
+          amount_minor: -3000,
+          usdt_cost_minor: null,
+          message: "Company account balance is negative"
+        },
+        {
+          exception_type: "pending_cost",
+          severity: "warning",
+          entity_type: "pending_cost_match",
+          entity_id: "pending_1",
+          period: "2026-04",
+          business_date: "2026-04-02",
+          currency_code: "AED",
+          amount_minor: 2000,
+          usdt_cost_minor: null,
+          message: "Pending cost has unmatched USDT cost"
+        },
+        {
+          exception_type: "stale_pending_document",
+          severity: "warning",
+          entity_type: "document",
+          entity_id: "doc_pending_old",
+          period: "2000-01",
+          business_date: "2000-01-01",
+          currency_code: null,
+          amount_minor: null,
+          usdt_cost_minor: null,
+          message: "Document has stayed pending beyond the stale threshold"
+        }
+      ]);
+    } finally {
+      sqliteDb.close();
+    }
+  });
+
+  it("executes negative petty cash checks without multiplying account entries by document lines", async () => {
+    const sqliteDb = await createSqliteReportDb();
+    try {
+      sqliteDb.exec(`
+        INSERT INTO accounts (
+          id, name, account_type, currency_code, owner_person_id, is_company_account, allow_negative
+        ) VALUES
+          ('acct_petty', 'Petty Cash', 'petty_cash', 'AED', 'person_1', 0, 0);
+
+        INSERT INTO documents (
+          id, document_type, action_type, business_date, period, operator_person_id,
+          project_id, merchant_id, category_id, status, original_document_id, created_at
+        ) VALUES
+          ('doc_petty_negative', 'petty_cash_reimbursement', 'normal', '2026-04-03', '2026-04', 'person_1', 'proj_1', NULL, 'cat_expense', 'approved', NULL, '2026-04-03T00:00:00Z');
+
+        INSERT INTO document_lines (id, document_id, account_id, person_id, currency_code, amount_minor) VALUES
+          ('line_petty_a', 'doc_petty_negative', 'acct_petty', 'person_1', 'AED', 1000),
+          ('line_petty_b', 'doc_petty_negative', 'acct_petty', 'person_1', 'AED', 1000);
+
+        INSERT INTO account_entries (id, document_id, account_id, currency_code, amount_minor, entry_date) VALUES
+          ('entry_petty_negative', 'doc_petty_negative', 'acct_petty', 'AED', -500, '2026-04-03');
+      `);
+
+      const repo = new ReportRepository(sqliteDb.db);
+
+      await expect(repo.exceptionChecks({ period: "2026-04", personId: "person_1", currencyCode: "AED" })).resolves.toEqual([
+        {
+          exception_type: "negative_petty_cash",
+          severity: "warning",
+          entity_type: "petty_cash_account",
+          entity_id: "acct_petty",
+          period: null,
+          business_date: null,
+          currency_code: "AED",
+          amount_minor: -500,
+          usdt_cost_minor: null,
+          message: "Petty cash account balance is negative"
         }
       ]);
     } finally {
