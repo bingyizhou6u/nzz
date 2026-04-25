@@ -42,6 +42,9 @@ export interface GovernancePersonRow extends ReferencedRow {
   alias: string | null;
   roles_json: string;
   is_enabled: number;
+  login_email: string | null;
+  access_subject: string | null;
+  last_login_at: string | null;
   created_at: string;
 }
 
@@ -208,7 +211,8 @@ export class MasterDataGovernanceRepository {
     return all<GovernancePersonRow>(
       this.db.prepare(`
         SELECT
-          p.id, p.name, p.alias, p.roles_json, p.is_enabled, p.created_at,
+          p.id, p.name, p.alias, p.roles_json, p.is_enabled,
+          p.login_email, p.access_subject, p.last_login_at, p.created_at,
           ${this.personReferenceCountSql("p")} AS referenceCount
         FROM people p
         ORDER BY p.is_enabled DESC, p.name, p.id
@@ -369,6 +373,9 @@ export class MasterDataGovernanceRepository {
       alias: input.alias,
       roles_json: rolesJson,
       is_enabled: input.isEnabled ? 1 : 0,
+      login_email: null,
+      access_subject: null,
+      last_login_at: null,
       created_at: createdAt,
       referenceCount: 0
     };
@@ -388,6 +395,9 @@ export class MasterDataGovernanceRepository {
       alias: input.alias,
       roles_json: rolesJson,
       is_enabled: input.isEnabled ? 1 : 0,
+      login_email: existing?.login_email ?? null,
+      access_subject: existing?.access_subject ?? null,
+      last_login_at: existing?.last_login_at ?? null,
       created_at: existing?.created_at ?? nowIso(),
       referenceCount: existing?.referenceCount ?? 0
     };
@@ -673,7 +683,8 @@ export class MasterDataGovernanceRepository {
   private personSelectSql() {
     return `
       SELECT
-        p.id, p.name, p.alias, p.roles_json, p.is_enabled, p.created_at,
+        p.id, p.name, p.alias, p.roles_json, p.is_enabled,
+        p.login_email, p.access_subject, p.last_login_at, p.created_at,
         ${this.personReferenceCountSql("p")} AS referenceCount
       FROM people p
     `;

@@ -59,6 +59,31 @@ describe("MasterDataGovernanceRepository read model", () => {
     expect(sql).toContain("referencecount");
   });
 
+  it("selects people login identity fields for governance rows", async () => {
+    let capturedSql = "";
+    const row = {
+      id: "person_1",
+      name: "Alice",
+      alias: "ali",
+      roles_json: "[\"admin\"]",
+      is_enabled: 1,
+      login_email: "alice@example.com",
+      access_subject: "sub_1",
+      last_login_at: "2026-04-25T00:00:00.000Z",
+      created_at: "2026-04-25T00:00:00.000Z",
+      referenceCount: 0
+    };
+    const repo = new MasterDataGovernanceRepository(
+      mockDb({ rows: [row], onSql: (sql) => (capturedSql = sql) })
+    );
+
+    await expect(repo.listPeople()).resolves.toEqual([row]);
+    const sql = normalizeSql(capturedSql);
+    expect(sql).toContain("login_email");
+    expect(sql).toContain("access_subject");
+    expect(sql).toContain("last_login_at");
+  });
+
   it("avoids compound selects for high fan-out reference counts", async () => {
     const capturedSql: string[] = [];
     const repo = new MasterDataGovernanceRepository(

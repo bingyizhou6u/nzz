@@ -13,5 +13,11 @@
       "database_name": "management-ledger-db",
       "database_id": "6e6da419-aca4-4226-b27f-15e20ef0920f"
     }
-  ]
+  ],
+  "vars": {
+    "AUTH_MODE": "development",
+    "CF_ACCESS_TEAM_DOMAIN": "",
+    "CF_ACCESS_AUD": "",
+    "DEV_ACTOR_EMAIL": "finance-demo@example.test"
+  }
 }
