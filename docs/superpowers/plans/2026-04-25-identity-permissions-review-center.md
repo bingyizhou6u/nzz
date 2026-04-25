@@ -373,6 +373,13 @@ describe("authenticateAccessIdentity", () => {
     ).rejects.toMatchObject({ status: 401, message: "Missing Cloudflare Access JWT" });
   });
 
+  it("defaults missing auth mode to Access authentication", async () => {
+    const { AUTH_MODE: _authMode, ...envWithoutMode } = baseEnv;
+    await expect(
+      authenticateAccessIdentity(new Request("https://ledger.test"), envWithoutMode as Env)
+    ).rejects.toMatchObject({ status: 401, message: "Missing Cloudflare Access JWT" });
+  });
+
   it("rejects development mode without explicit dev actor", async () => {
     await expect(
       authenticateAccessIdentity(new Request("https://ledger.test"), { ...baseEnv, DEV_ACTOR_EMAIL: "" })
@@ -529,7 +536,7 @@ interface AccessJwtPayload {
 }
 
 export async function authenticateAccessIdentity(request: Request, env: Env): Promise<AuthenticatedIdentity> {
-  const mode = env.AUTH_MODE ?? "development";
+  const mode = env.AUTH_MODE ?? "access";
   if (mode === "development") {
     const email = env.DEV_ACTOR_EMAIL?.trim().toLowerCase();
     if (!email) throw new AuthError(401, "Development actor email is not configured");
