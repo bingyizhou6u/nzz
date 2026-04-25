@@ -160,4 +160,72 @@ describe("document entry option API", () => {
     expect(optionsResponse.status).toBe(200);
     expect(originalsResponse.status).toBe(200);
   });
+
+  it("excludes archived governance rows from document entry options", async () => {
+    const response = await listDocumentEntryOptions({
+      request: new Request("https://ledger.test/api/document-entry/options"),
+      env: mockEnv({
+        allQueues: [
+          [{ id: "person_active", name: "Active", alias: null, roles_json: "[]", is_enabled: 1 }],
+          [{ id: "proj_active", code: "P1", name: "Active Project", owner_person_id: null, status: "active" }],
+          [
+            {
+              id: "merchant_active",
+              code: "M1",
+              name: "Active Merchant",
+              project_id: "proj_active",
+              merchant_type: "site",
+              status: "active"
+            }
+          ],
+          [
+            {
+              id: "acct_active",
+              name: "AED Reserve",
+              account_type: "currency_reserve",
+              currency_code: "AED",
+              owner_person_id: null,
+              is_company_account: 1,
+              allow_negative: 0,
+              status: "active"
+            }
+          ],
+          [{ code: "AED", name: "Dirham", minor_units: 2, is_enabled: 1 }],
+          [
+            {
+              id: "cat_active",
+              name: "Expense",
+              parent_id: null,
+              category_type: "expense",
+              direction: "out",
+              affects_expense_report: 1,
+              affects_project_report: 0,
+              requires_merchant: 0,
+              requires_person: 1,
+              requires_borrower: 0,
+              is_enabled: 1
+            }
+          ]
+        ]
+      }),
+      params: {}
+    });
+
+    const body = (await response.json()) as {
+      data: {
+        people: unknown[];
+        projects: unknown[];
+        merchants: unknown[];
+        accounts: unknown[];
+        currencies: unknown[];
+        categories: unknown[];
+      };
+    };
+    expect(body.data.people).toHaveLength(1);
+    expect(body.data.projects).toHaveLength(1);
+    expect(body.data.merchants).toHaveLength(1);
+    expect(body.data.accounts).toHaveLength(1);
+    expect(body.data.currencies).toHaveLength(1);
+    expect(body.data.categories).toHaveLength(1);
+  });
 });
