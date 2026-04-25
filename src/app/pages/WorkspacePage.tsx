@@ -24,16 +24,26 @@ const statusTones: Record<string, Tone> = {
 };
 
 export function WorkspacePage({ session, onNavigate }: WorkspacePageProps) {
+  const canViewDocuments = hasCapability(session.capabilities, "documents.view");
   const [documents, setDocuments] = useState<WorkspaceDocument[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(canViewDocuments);
   const [loadError, setLoadError] = useState<string | null>(null);
   const counts = useMemo(() => summarizeDocumentCounts(documents), [documents]);
   const tasks = useMemo(() => buildWorkspaceTasks(documents), [documents]);
   const quickActions = useMemo(() => buildQuickActions(session.capabilities, onNavigate), [onNavigate, session.capabilities]);
-  const workspaceStatus = isLoading ? "读取中" : loadError ? "读取失败" : "工作台已更新";
+  const workspaceStatus = !canViewDocuments ? "无权限" : isLoading ? "读取中" : loadError ? "读取失败" : "工作台已更新";
 
   useEffect(() => {
     let isCurrent = true;
+
+    if (!canViewDocuments) {
+      setDocuments([]);
+      setLoadError(null);
+      setIsLoading(false);
+      return () => {
+        isCurrent = false;
+      };
+    }
 
     async function loadDocuments() {
       setIsLoading(true);
@@ -60,7 +70,18 @@ export function WorkspacePage({ session, onNavigate }: WorkspacePageProps) {
     return () => {
       isCurrent = false;
     };
-  }, []);
+  }, [canViewDocuments]);
+
+  function navigateTask(status: "draft" | "pending" | "rejected") {
+    if (status === "pending" && hasCapability(session.capabilities, "documents.approve")) {
+      onNavigate("review");
+      return;
+    }
+
+    if (hasCapability(session.capabilities, "documents.view")) {
+      onNavigate("documents");
+    }
+  }
 
   return (
     <div className="page-stack">
@@ -71,11 +92,17 @@ export function WorkspacePage({ session, onNavigate }: WorkspacePageProps) {
         <article className="workspace-card">
           <div className="workspace-card-header">
             <SectionTitle title="待处理" />
-            <StatusTag tone={loadError ? "danger" : isLoading ? "muted" : "ok"}>{workspaceStatus}</StatusTag>
+            <StatusTag tone={!canViewDocuments ? "muted" : loadError ? "danger" : isLoading ? "muted" : "ok"}>
+              {workspaceStatus}
+            </StatusTag>
           </div>
 
-          {isLoading ? (
+          {!canViewDocuments ? (
+            <EmptyState title="无单据查看权限" message="当前账号没有单据查看权限，无法读取或打开待处理单据。" />
+          ) : isLoading ? (
             <EmptyState title="正在读取待处理单据" message="请稍候，系统正在读取现有单据。" />
+          ) : loadError ? (
+            <EmptyState title="无法读取单据" message="请稍后重试，或联系管理员检查单据服务状态。" />
           ) : tasks.length > 0 ? (
             <div className="task-list">
               {tasks.map((task) => (
@@ -83,7 +110,7 @@ export function WorkspacePage({ session, onNavigate }: WorkspacePageProps) {
                   key={task.id}
                   type="button"
                   className="task-row"
-                  onClick={() => onNavigate(task.status === "pending" ? "review" : "documents")}
+                  onClick={() => navigateTask(task.status)}
                 >
                   <span>{task.label}</span>
                   <small>{task.meta}</small>
@@ -98,12 +125,20 @@ export function WorkspacePage({ session, onNavigate }: WorkspacePageProps) {
 
         <article className="workspace-card">
           <SectionTitle title="单据快照" />
-          <div className="metric-grid">
-            <Metric label="草稿" value={counts.draft} tone="muted" />
-            <Metric label="待审核" value={counts.pending} tone="warning" />
-            <Metric label="已退回" value={counts.rejected} tone="danger" />
-            <Metric label="已审核" value={counts.approved} tone="ok" />
-          </div>
+          {!canViewDocuments ? (
+            <EmptyState title="无可查看单据" message="当前账号没有单据查看权限，单据快照不可用。" />
+          ) : isLoading ? (
+            <EmptyState title="正在读取单据快照" message="快照会在单据列表读取完成后显示。" />
+          ) : loadError ? (
+            <EmptyState title="无法读取单据快照" message="单据读取失败，暂不显示数量快照。" />
+          ) : (
+            <div className="metric-grid">
+              <Metric label="草稿" value={counts.draft} tone="muted" />
+              <Metric label="待审核" value={counts.pending} tone="warning" />
+              <Metric label="已退回" value={counts.rejected} tone="danger" />
+              <Metric label="已审核" value={counts.approved} tone="ok" />
+            </div>
+          )}
         </article>
 
         <article className="workspace-card">
@@ -150,7 +185,7 @@ const statusLabelsByMetric: Record<string, string> = {
 function buildQuickActions(capabilities: readonly Capability[], onNavigate: (page: PageKey) => void) {
   const actions: Array<{ label: string; page: PageKey; isPrimary?: boolean; onClick: () => void }> = [];
 
-  if (hasCapability(capabilities, "documents.create") || hasCapability(capabilities, "documents.view")) {
+  if (hasCapability(capabilities, "documents.view")) {
     actions.push({
       label: "单据中心",
       page: "documents",
