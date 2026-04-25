@@ -1,11 +1,13 @@
 import { assertCan, type Capability } from "../auth/permissions";
 import { AuthError, type AuthenticatedActor } from "../auth/types";
-import { AuditLogRepository } from "../repositories/auditLogRepository";
+import { AuditLogRepository, auditFieldsForRequest } from "../repositories/auditLogRepository";
 import { DocumentRepository } from "../repositories/documentRepository";
 import { MasterDataRepository } from "../repositories/masterDataRepository";
 import { ReviewRepository } from "../repositories/reviewRepository";
 import { DocumentService } from "../services/documentService";
 import type { Handler } from "../worker/env";
+
+const spoofedActorError = "请求中的操作人和当前登录人不一致";
 
 export const listReviewDocuments: Handler = async ({ env, actor: contextActor }) => {
   try {
@@ -42,12 +44,15 @@ export const previewReviewDocument: Handler = async ({ env, params, actor: conte
   }
 };
 
-export const approveReviewDocument: Handler = async ({ env, params, actor: contextActor }) => {
+export const approveReviewDocument: Handler = async ({ request, env, params, actor: contextActor }) => {
   if (!params.id) return badRequest("id is required");
+
+  const body = (await readBody(request)) ?? {};
 
   try {
     const actor = requireActorWithCapability(contextActor, "documents.approve");
-    await documentService(env).approve(params.id, actor.personId);
+    rejectSpoofedActor(body, ["reviewer", "actor"], actor.personId);
+    await documentService(env).approve(params.id, auditFieldsForRequest(actor, request));
     return Response.json({ data: { id: params.id, status: "approved" } });
   } catch (error) {
     return errorResponse(error);
@@ -62,8 +67,9 @@ export const rejectReviewDocument: Handler = async ({ request, env, params, acto
 
   try {
     const actor = requireActorWithCapability(contextActor, "documents.reject");
+    rejectSpoofedActor(body, ["reviewer", "actor"], actor.personId);
     const reason = requiredText(body.reason, "reason");
-    await documentService(env).reject(params.id, actor.personId, reason);
+    await documentService(env).reject(params.id, auditFieldsForRequest(actor, request), reason);
     return Response.json({ data: { id: params.id, status: "rejected" } });
   } catch (error) {
     return errorResponse(error);
@@ -97,6 +103,15 @@ async function readBody(request: Request): Promise<Record<string, unknown> | nul
 function requiredText(value: unknown, key: string) {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${key} is required`);
   return value.trim();
+}
+
+function rejectSpoofedActor(body: Record<string, unknown>, keys: string[], personId: string) {
+  for (const key of keys) {
+    const value = body[key];
+    if (typeof value === "string" && value.trim() && value.trim() !== personId) {
+      throw new AuthError(403, spoofedActorError);
+    }
+  }
 }
 
 function badRequest(error: string) {

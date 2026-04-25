@@ -15,10 +15,12 @@
     }
   ],
   "vars": {
-    // For local development, set AUTH_MODE=development and DEV_ACTOR_EMAIL in .dev.vars or wrangler dev env.
+    // For local development only, set AUTH_MODE=development, ALLOW_INSECURE_DEV_AUTH=true, and DEV_ACTOR_EMAIL in .dev.vars.
+    // Never set ALLOW_INSECURE_DEV_AUTH=true in production.
     "AUTH_MODE": "access",
     "CF_ACCESS_TEAM_DOMAIN": "",
     "CF_ACCESS_AUD": "",
+    "ALLOW_INSECURE_DEV_AUTH": "",
     "DEV_ACTOR_EMAIL": ""
   }
 }

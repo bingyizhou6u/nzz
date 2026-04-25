@@ -63,14 +63,25 @@ CF_ACCESS_AUD=<Application Audience AUD tag>
 
 The Worker validates the `Cf-Access-Jwt-Assertion` request header against the configured team domain and Access application audience before resolving the actor from `people.login_email`.
 
-Do not share the deployed hostname until Access is enabled and at least one `people.login_email` is mapped to an enabled admin account. For local development, use development auth with a local mapped login email:
+Do not share the deployed hostname until Access is enabled and at least one `people.login_email` is mapped to an enabled admin account.
+
+After Cloudflare Access is configured, bootstrap the first admin login mapping in remote D1 with placeholders replaced locally:
+
+```sh
+wrangler d1 execute management-ledger-db --remote --command "UPDATE people SET login_email = '<admin@example.com>' WHERE id = '<admin_person_id>'"
+```
+
+Run this only after Access is complete. Do not commit real email addresses or person ids.
+
+For local development, use development auth with a local mapped login email and the explicit unsafe-development switch:
 
 ```sh
 AUTH_MODE=development
+ALLOW_INSECURE_DEV_AUTH=true
 DEV_ACTOR_EMAIL=<local mapped people.login_email>
 ```
 
-Do not commit real email addresses, secrets, Access audience tags, or account-specific credentials to the repository. Keep `.dev.vars` local-only for developer environment values.
+Never set `ALLOW_INSECURE_DEV_AUTH=true` in production. Do not commit real email addresses, secrets, Access audience tags, or account-specific credentials to the repository. Keep `.dev.vars` local-only for developer environment values.
 
 ## Data Safety
 

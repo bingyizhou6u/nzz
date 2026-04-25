@@ -417,6 +417,37 @@ describe("DocumentService", () => {
     });
   });
 
+  it("records authenticated audit metadata when creating drafts", async () => {
+    const { audit, service } = createMocks();
+
+    await service.createDraft({
+      documentType: "project_income",
+      businessDate: "2026-04-24",
+      period: "2026-04",
+      summary: "Merchant income",
+      createdBy: "creator_1",
+      auditActor: {
+        actor: "creator_1",
+        actorPersonId: "creator_1",
+        actorEmail: "creator@example.com",
+        requestId: "ray_1",
+        ipAddress: "203.0.113.10",
+        userAgent: "Vitest"
+      }
+    });
+
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: "creator_1",
+        actorPersonId: "creator_1",
+        actorEmail: "creator@example.com",
+        requestId: "ray_1",
+        ipAddress: "203.0.113.10",
+        userAgent: "Vitest"
+      })
+    );
+  });
+
   it("keeps header-only draft creation flexible", async () => {
     const { repo, masterData, service } = createMocks();
 
@@ -644,6 +675,30 @@ describe("DocumentService", () => {
     });
   });
 
+  it("records authenticated audit metadata when submitting documents", async () => {
+    const { audit, service } = createMocks({ getDocument: vi.fn(async () => documentRow({ status: "draft" })) });
+
+    await service.submit("doc_1", {
+      actor: "submitter_1",
+      actorPersonId: "submitter_1",
+      actorEmail: "submitter@example.com",
+      requestId: "ray_2",
+      ipAddress: "203.0.113.11",
+      userAgent: "Vitest submit"
+    });
+
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: "submitter_1",
+        actorPersonId: "submitter_1",
+        actorEmail: "submitter@example.com",
+        requestId: "ray_2",
+        ipAddress: "203.0.113.11",
+        userAgent: "Vitest submit"
+      })
+    );
+  });
+
   it("rejects pending documents with a reason", async () => {
     const { repo, audit, service } = createMocks({ getDocument: vi.fn(async () => documentRow({ status: "pending" })) });
 
@@ -659,6 +714,34 @@ describe("DocumentService", () => {
       after: { status: "rejected" },
       reason: "Missing receipt"
     });
+  });
+
+  it("records authenticated audit metadata when rejecting documents", async () => {
+    const { audit, service } = createMocks({ getDocument: vi.fn(async () => documentRow({ status: "pending" })) });
+
+    await service.reject(
+      "doc_1",
+      {
+        actor: "reviewer_1",
+        actorPersonId: "reviewer_1",
+        actorEmail: "reviewer@example.com",
+        requestId: "ray_3",
+        ipAddress: "203.0.113.12",
+        userAgent: "Vitest reject"
+      },
+      "  Missing receipt  "
+    );
+
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: "reviewer_1",
+        actorPersonId: "reviewer_1",
+        actorEmail: "reviewer@example.com",
+        requestId: "ray_3",
+        ipAddress: "203.0.113.12",
+        userAgent: "Vitest reject"
+      })
+    );
   });
 
   it("approves pending project income with one atomic posting write", async () => {
@@ -702,6 +785,34 @@ describe("DocumentService", () => {
     expect(repo.insertLoanEntries).not.toHaveBeenCalled();
     expect(repo.markApproved).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("records authenticated audit metadata when approving documents", async () => {
+    const { audit, service } = createMocks({
+      getDocument: vi.fn(async () => documentRow({ status: "pending" })),
+      getDocumentLines: vi.fn(async () => [lineRow({ amount_minor: 15000 })])
+    });
+
+    await service.approve("doc_1", {
+      actor: "reviewer_1",
+      actorPersonId: "reviewer_1",
+      actorEmail: "reviewer@example.com",
+      requestId: "ray_4",
+      ipAddress: "203.0.113.13",
+      userAgent: "Vitest approve"
+    });
+
+    expect(audit.prepareRecordWhen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: "reviewer_1",
+        actorPersonId: "reviewer_1",
+        actorEmail: "reviewer@example.com",
+        requestId: "ray_4",
+        ipAddress: "203.0.113.13",
+        userAgent: "Vitest approve"
+      }),
+      expect.any(Object)
+    );
   });
 
   it("previews pending project income approval without posting or audit writes", async () => {

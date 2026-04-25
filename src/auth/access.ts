@@ -12,6 +12,9 @@ interface AccessJwtPayload {
 export async function authenticateAccessIdentity(request: Request, env: Env): Promise<AuthenticatedIdentity> {
   const mode = env.AUTH_MODE ?? "access";
   if (mode === "development") {
+    if (env.ALLOW_INSECURE_DEV_AUTH?.trim().toLowerCase() !== "true") {
+      throw new AuthError(401, "Development auth requires ALLOW_INSECURE_DEV_AUTH=true");
+    }
     const email = env.DEV_ACTOR_EMAIL?.trim().toLowerCase();
     if (!email) throw new AuthError(401, "Development actor email is not configured");
     return {

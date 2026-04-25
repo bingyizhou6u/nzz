@@ -1,4 +1,4 @@
-import { AuditLogRepository } from "../repositories/auditLogRepository";
+import { AuditLogRepository, auditFieldsForRequest } from "../repositories/auditLogRepository";
 import { assertCan } from "../auth/permissions";
 import { AuthError, type AuthenticatedActor } from "../auth/types";
 import {
@@ -94,7 +94,7 @@ export const createMasterDataPerson: Handler = async ({ request, env, actor: con
     const repository = repo(env);
     const actor = requireWriteActor(contextActor, body);
     const roles = personRoles(body);
-    assertCanManageAdminRoleChanges(contextActor, [], roles);
+    assertCanManageRoleChanges(actor, [], roles);
     const person = await repository.createPerson({
       name: requiredText(body, "name"),
       alias: optionalText(body, "alias"),
@@ -102,7 +102,7 @@ export const createMasterDataPerson: Handler = async ({ request, env, actor: con
       isEnabled: booleanField(body, "isEnabled", true)
     });
     await auditRepo(env).record({
-      actor,
+      ...auditFieldsForRequest(actor, request),
       action: "master_data.person.create",
       entityType: "person",
       entityId: person.id,
@@ -125,7 +125,7 @@ export const updateMasterDataPerson: Handler = async ({ request, env, params, ac
     const before = await repository.getPerson(id);
     if (!before) throw new Error("person not found");
     const roles = personRoles(body);
-    assertCanManageAdminRoleChanges(contextActor, rolesFromJson(before.roles_json), roles);
+    assertCanManageRoleChanges(actor, rolesFromJson(before.roles_json), roles);
     const person = await repository.updatePerson(id, {
       name: requiredText(body, "name"),
       alias: optionalText(body, "alias"),
@@ -133,7 +133,7 @@ export const updateMasterDataPerson: Handler = async ({ request, env, params, ac
       isEnabled: booleanField(body, "isEnabled", true)
     });
     await auditRepo(env).record({
-      actor,
+      ...auditFieldsForRequest(actor, request),
       action: statusAction("person", before.is_enabled, person.is_enabled),
       entityType: "person",
       entityId: person.id,
@@ -156,7 +156,7 @@ export const createMasterDataProject: Handler = async ({ request, env, actor: co
     const input = await projectInput(repository, body);
     const project = await repository.createProject(input);
     await auditRepo(env).record({
-      actor,
+      ...auditFieldsForRequest(actor, request),
       action: "master_data.project.create",
       entityType: "project",
       entityId: project.id,
@@ -181,7 +181,7 @@ export const updateMasterDataProject: Handler = async ({ request, env, params, a
     const input = await projectInput(repository, body, before);
     const project = await repository.updateProject(id, input);
     await auditRepo(env).record({
-      actor,
+      ...auditFieldsForRequest(actor, request),
       action: statusAction("project", before.status, project.status),
       entityType: "project",
       entityId: project.id,
@@ -204,7 +204,7 @@ export const createMasterDataMerchant: Handler = async ({ request, env, actor: c
     const input = await merchantInput(repository, body);
     const merchant = await repository.createMerchant(input);
     await auditRepo(env).record({
-      actor,
+      ...auditFieldsForRequest(actor, request),
       action: "master_data.merchant.create",
       entityType: "merchant",
       entityId: merchant.id,
@@ -230,7 +230,7 @@ export const updateMasterDataMerchant: Handler = async ({ request, env, params, 
     const before = await repository.assertMerchantProtectedFieldsUnchanged(id, { projectId: input.projectId });
     const merchant = await repository.updateMerchant(id, input);
     await auditRepo(env).record({
-      actor,
+      ...auditFieldsForRequest(actor, request),
       action: statusAction("merchant", before.status, merchant.status),
       entityType: "merchant",
       entityId: merchant.id,
@@ -253,7 +253,7 @@ export const createMasterDataAccount: Handler = async ({ request, env, actor: co
     const input = await accountInput(repository, body);
     const account = await repository.createAccount(input);
     await auditRepo(env).record({
-      actor,
+      ...auditFieldsForRequest(actor, request),
       action: "master_data.account.create",
       entityType: "account",
       entityId: account.id,
@@ -279,7 +279,7 @@ export const updateMasterDataAccount: Handler = async ({ request, env, params, a
     const before = await repository.assertAccountProtectedFieldsUnchanged(id, input);
     const account = await repository.updateAccount(id, input, before);
     await auditRepo(env).record({
-      actor,
+      ...auditFieldsForRequest(actor, request),
       action: statusAction("account", before.status, account.status),
       entityType: "account",
       entityId: account.id,
@@ -302,7 +302,7 @@ export const createMasterDataCurrency: Handler = async ({ request, env, actor: c
     const input = currencyInput(body);
     const currency = await repository.createCurrency(input);
     await auditRepo(env).record({
-      actor,
+      ...auditFieldsForRequest(actor, request),
       action: "master_data.currency.create",
       entityType: "currency",
       entityId: currency.code,
@@ -328,7 +328,7 @@ export const updateMasterDataCurrency: Handler = async ({ request, env, params, 
     });
     const currency = await repository.updateCurrency(input.code, input);
     await auditRepo(env).record({
-      actor,
+      ...auditFieldsForRequest(actor, request),
       action: statusAction("currency", before.is_enabled, currency.is_enabled),
       entityType: "currency",
       entityId: currency.code,
@@ -351,7 +351,7 @@ export const createMasterDataCategory: Handler = async ({ request, env, actor: c
     const input = await categoryInput(repository, body);
     const category = await repository.createCategory(input);
     await auditRepo(env).record({
-      actor,
+      ...auditFieldsForRequest(actor, request),
       action: "master_data.category.create",
       entityType: "management_category",
       entityId: category.id,
@@ -377,7 +377,7 @@ export const updateMasterDataCategory: Handler = async ({ request, env, params, 
     const before = await repository.assertCategoryProtectedFieldsUnchanged(id, input);
     const category = await repository.updateCategory(id, input, before);
     await auditRepo(env).record({
-      actor,
+      ...auditFieldsForRequest(actor, request),
       action: statusAction("category", before.is_enabled, category.is_enabled),
       entityType: "management_category",
       entityId: category.id,
@@ -417,7 +417,7 @@ function requireWriteActor(actor: AuthenticatedActor | null, body: Record<string
   if (!actor) throw new AuthError(401, "Unauthorized");
   assertCan(actor, "masterData.write");
   rejectSpoofedActor(body, "actor", actor.personId);
-  return actor.personId;
+  return actor;
 }
 
 function rejectSpoofedActor(body: Record<string, unknown>, key: string, personId: string) {
@@ -427,17 +427,21 @@ function rejectSpoofedActor(body: Record<string, unknown>, key: string, personId
   }
 }
 
-function assertCanManageAdminRoleChanges(
-  actor: AuthenticatedActor | null,
+function assertCanManageRoleChanges(
+  actor: AuthenticatedActor,
   beforeRoles: PersonRole[],
   afterRoles: PersonRole[]
 ) {
-  const addsAdmin = !beforeRoles.includes("admin") && afterRoles.includes("admin");
-  const removesAdmin = beforeRoles.includes("admin") && !afterRoles.includes("admin");
-  if (addsAdmin || removesAdmin) {
-    if (!actor) throw new AuthError(401, "Unauthorized");
+  if (roleSetsDiffer(beforeRoles, afterRoles)) {
     assertCan(actor, "masterData.managePeopleRoles");
   }
+}
+
+function roleSetsDiffer(beforeRoles: PersonRole[], afterRoles: PersonRole[]) {
+  const before = new Set(beforeRoles);
+  const after = new Set(afterRoles);
+  if (before.size !== after.size) return true;
+  return [...before].some((role) => !after.has(role));
 }
 
 function rolesFromJson(value: string): PersonRole[] {

@@ -159,6 +159,7 @@ function mockEnv(
 
   return {
     AUTH_MODE: "development",
+    ALLOW_INSECURE_DEV_AUTH: "true",
     DEV_ACTOR_EMAIL: "finance@example.test",
     CF_ACCESS_TEAM_DOMAIN: "",
     CF_ACCESS_AUD: "",
@@ -409,6 +410,50 @@ describe("documents API", () => {
     expect(body.data.status).toBe("draft");
     expect(boundValues[3]).toBe("normal");
     expect(boundValues[11]).toBeNull();
+  });
+
+  it("passes authenticated request audit metadata when creating documents", async () => {
+    let auditBindings: unknown[] = [];
+    const response = await createDocument({
+      request: new Request("https://ledger.test/api/documents", {
+        method: "POST",
+        headers: {
+          "cf-ray": "ray_doc_create",
+          "cf-connecting-ip": "203.0.113.20",
+          "user-agent": "Vitest documents"
+        },
+        body: JSON.stringify({
+          documentType: "project_income",
+          businessDate: "2026-04-24",
+          period: "2026-04",
+          summary: "Initial income",
+          lines: [validLine()]
+        })
+      }),
+      env: mockEnv({
+        onBind: (values, sql) => {
+          if (sql.toLowerCase().includes("insert into audit_logs")) auditBindings = values;
+        }
+      }),
+      params: {},
+      actor: financeEntryActor
+    });
+
+    expect(response.status).toBe(201);
+    expect(auditBindings.slice(1, 13)).toEqual([
+      "user_1",
+      "document.create",
+      "document",
+      expect.stringMatching(/^doc_/),
+      null,
+      expect.any(String),
+      null,
+      "user_1",
+      "user@example.com",
+      "ray_doc_create",
+      "203.0.113.20",
+      "Vitest documents"
+    ]);
   });
 
   it("stores trimmed original document linkage for reversal documents when provided", async () => {
@@ -714,6 +759,39 @@ describe("documents API", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ data: { id: "doc_1", status: "pending" } });
+  });
+
+  it("passes authenticated request audit metadata when submitting documents", async () => {
+    let auditBindings: unknown[] = [];
+    const response = await submitDocument({
+      request: new Request("https://ledger.test/api/documents/doc_1/submit", {
+        method: "POST",
+        headers: {
+          "x-request-id": "req_doc_submit",
+          "x-forwarded-for": "198.51.100.20",
+          "user-agent": "Vitest submit"
+        },
+        body: JSON.stringify({})
+      }),
+      env: mockEnv({
+        firstResult: validProjectIncomeDocumentRow({ status: "draft" }),
+        allResultsQueue: [[lineRow()], ...projectIncomeMasterDataResults()],
+        onBind: (values, sql) => {
+          if (sql.toLowerCase().includes("insert into audit_logs")) auditBindings = values;
+        }
+      }),
+      params: { id: "doc_1" },
+      actor: financeEntryActor
+    });
+
+    expect(response.status).toBe(200);
+    expect(auditBindings.slice(8, 13)).toEqual([
+      "user_1",
+      "user@example.com",
+      "req_doc_submit",
+      "198.51.100.20",
+      "Vitest submit"
+    ]);
   });
 
   it("returns 400 when submit governance rejects an incomplete draft", async () => {

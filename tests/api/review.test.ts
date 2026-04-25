@@ -142,6 +142,7 @@ function mockEnv(
 
   return {
     AUTH_MODE: "development",
+    ALLOW_INSECURE_DEV_AUTH: "true",
     DEV_ACTOR_EMAIL: "finance@example.test",
     CF_ACCESS_TEAM_DOMAIN: "",
     CF_ACCESS_AUD: "",
@@ -268,7 +269,7 @@ describe("review API", () => {
     const response = await approveReviewDocument({
       request: new Request("https://ledger.test/api/review/documents/doc_1/approve", {
         method: "POST",
-        body: JSON.stringify({ reviewer: "spoofed_reviewer" })
+        body: JSON.stringify({})
       }),
       env: mockEnv({
         firstRows: [pendingDocument, null],
@@ -285,12 +286,30 @@ describe("review API", () => {
     expect(bindings).not.toContain("spoofed_reviewer");
   });
 
+  it.each([
+    ["reviewer", { reviewer: "spoofed_reviewer" }],
+    ["actor", { actor: "spoofed_actor" }]
+  ])("rejects spoofed %s values on review approval", async (_field, body) => {
+    const response = await approveReviewDocument({
+      request: new Request("https://ledger.test/api/review/documents/doc_1/approve", {
+        method: "POST",
+        body: JSON.stringify(body)
+      }),
+      env: mockEnv(),
+      params: { id: "doc_1" },
+      actor: manager
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "请求中的操作人和当前登录人不一致" });
+  });
+
   it("rejects with a trimmed reason and the current actor", async () => {
     const bindCalls: Array<{ sql: string; bindings: unknown[] }> = [];
     const response = await rejectReviewDocument({
       request: new Request("https://ledger.test/api/review/documents/doc_1/reject", {
         method: "POST",
-        body: JSON.stringify({ actor: "spoofed_actor", reason: "  Missing receipt  " })
+        body: JSON.stringify({ actor: "manager_1", reason: "  Missing receipt  " })
       }),
       env: mockEnv({ firstRows: [pendingDocument], bindCalls }),
       params: { id: "doc_1" },
@@ -303,6 +322,24 @@ describe("review API", () => {
     expect(rejectUpdate?.bindings).toEqual(["Missing receipt", "doc_1"]);
     expect(auditInsert?.bindings[1]).toBe("manager_1");
     expect(auditInsert?.bindings).not.toContain("spoofed_actor");
+  });
+
+  it.each([
+    ["reviewer", { reviewer: "spoofed_reviewer", reason: "Missing receipt" }],
+    ["actor", { actor: "spoofed_actor", reason: "Missing receipt" }]
+  ])("rejects spoofed %s values on review rejection", async (_field, body) => {
+    const response = await rejectReviewDocument({
+      request: new Request("https://ledger.test/api/review/documents/doc_1/reject", {
+        method: "POST",
+        body: JSON.stringify(body)
+      }),
+      env: mockEnv(),
+      params: { id: "doc_1" },
+      actor: manager
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "请求中的操作人和当前登录人不一致" });
   });
 
   it("requires a nonblank rejection reason", async () => {

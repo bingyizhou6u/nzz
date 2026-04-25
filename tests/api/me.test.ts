@@ -5,6 +5,7 @@ import type { Env } from "../../src/worker/env";
 function env(firstRow: unknown): Env {
   return {
     AUTH_MODE: "development",
+    ALLOW_INSECURE_DEV_AUTH: "true",
     DEV_ACTOR_EMAIL: "finance@example.test",
     CF_ACCESS_TEAM_DOMAIN: "",
     CF_ACCESS_AUD: "",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AuditLogRepository } from "../../src/repositories/auditLogRepository";
+import { AuditLogRepository, auditFieldsForRequest } from "../../src/repositories/auditLogRepository";
 
 function mockDb(options: { onBind?: (values: unknown[]) => void; onSql?: (sql: string) => void } = {}): D1Database {
   return {
@@ -17,6 +17,58 @@ function mockDb(options: { onBind?: (values: unknown[]) => void; onSql?: (sql: s
 }
 
 describe("AuditLogRepository", () => {
+  it("builds audit metadata from authenticated actors and request headers", () => {
+    const metadata = auditFieldsForRequest(
+      {
+        personId: "user_1",
+        name: "User",
+        alias: null,
+        email: "user@example.com",
+        roles: ["finance_manager"]
+      },
+      new Request("https://ledger.test/api/documents", {
+        headers: {
+          "cf-ray": "ray_1",
+          "cf-connecting-ip": "203.0.113.10",
+          "user-agent": "Vitest"
+        }
+      })
+    );
+
+    expect(metadata).toEqual({
+      actor: "user_1",
+      actorPersonId: "user_1",
+      actorEmail: "user@example.com",
+      requestId: "ray_1",
+      ipAddress: "203.0.113.10",
+      userAgent: "Vitest"
+    });
+  });
+
+  it("falls back to alternate request id and ip headers for audit metadata", () => {
+    const metadata = auditFieldsForRequest(
+      {
+        personId: "user_1",
+        name: "User",
+        alias: null,
+        email: "user@example.com",
+        roles: ["finance_manager"]
+      },
+      new Request("https://ledger.test/api/documents", {
+        headers: {
+          "x-request-id": "req_1",
+          "x-forwarded-for": "198.51.100.5"
+        }
+      })
+    );
+
+    expect(metadata).toMatchObject({
+      requestId: "req_1",
+      ipAddress: "198.51.100.5",
+      userAgent: null
+    });
+  });
+
   it("prepares conditional audit inserts with audit bindings before condition bindings", () => {
     let sql = "";
     let boundValues: unknown[] = [];

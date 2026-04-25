@@ -5,6 +5,7 @@ import type { Env } from "../../src/worker/env";
 
 const baseEnv = {
   AUTH_MODE: "development",
+  ALLOW_INSECURE_DEV_AUTH: "true",
   DEV_ACTOR_EMAIL: "finance@example.test",
   CF_ACCESS_TEAM_DOMAIN: "https://team.cloudflareaccess.com",
   CF_ACCESS_AUD: "aud_1"
@@ -21,6 +22,15 @@ describe("authenticateAccessIdentity", () => {
       accessSubject: null,
       accessIssuer: "development",
       accessAudience: ["development"]
+    });
+  });
+
+  it("rejects development mode without the explicit insecure development auth switch", async () => {
+    const { ALLOW_INSECURE_DEV_AUTH: _allow, ...envWithoutSwitch } = baseEnv;
+
+    await expect(authenticateAccessIdentity(new Request("https://ledger.test"), envWithoutSwitch as Env)).rejects.toMatchObject({
+      status: 401,
+      message: "Development auth requires ALLOW_INSECURE_DEV_AUTH=true"
     });
   });
 

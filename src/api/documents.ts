@@ -1,4 +1,4 @@
-import { AuditLogRepository } from "../repositories/auditLogRepository";
+import { AuditLogRepository, auditFieldsForRequest } from "../repositories/auditLogRepository";
 import { DocumentRepository } from "../repositories/documentRepository";
 import { MasterDataRepository } from "../repositories/masterDataRepository";
 import type { RawDocumentLine } from "../domain/documentLines";
@@ -221,6 +221,7 @@ export const createDocument: Handler = async ({ request, env, actor: contextActo
       originalDocumentId: normalizedOriginalDocumentId,
       summary,
       createdBy: actor.personId,
+      auditActor: auditFieldsForRequest(actor, request),
       lines: lines as RawDocumentLine[]
     });
     return Response.json({ data: document }, { status: 201 });
@@ -240,7 +241,7 @@ export const submitDocument: Handler = async ({ request, env, params, actor: con
     const actor = requireActor(contextActor);
     assertCan(actor, "documents.submit");
     rejectSpoofedActor(body, ["actor"], actor.personId);
-    await documentService(env).submit(params.id, actor.personId);
+    await documentService(env).submit(params.id, auditFieldsForRequest(actor, request));
     return Response.json({ data: { id: params.id, status: "pending" } });
   } catch (error) {
     if (error instanceof AuthError) return authErrorResponse(error);
@@ -259,7 +260,7 @@ export const approveDocument: Handler = async ({ request, env, params, actor: co
     const actor = requireActor(contextActor);
     assertCan(actor, "documents.approve");
     rejectSpoofedActor(body, ["reviewer"], actor.personId);
-    await documentService(env).approve(params.id, actor.personId);
+    await documentService(env).approve(params.id, auditFieldsForRequest(actor, request));
     return Response.json({ data: { id: params.id, status: "approved" } });
   } catch (error) {
     if (error instanceof AuthError) return authErrorResponse(error);
@@ -282,7 +283,7 @@ export const rejectDocument: Handler = async ({ request, env, params, actor: con
     assertCan(actor, "documents.reject");
     rejectSpoofedActor(body, ["actor"], actor.personId);
     const reason = requiredString(body, "reason");
-    await documentService(env).reject(params.id, actor.personId, reason);
+    await documentService(env).reject(params.id, auditFieldsForRequest(actor, request), reason);
     return Response.json({ data: { id: params.id, status: "rejected" } });
   } catch (error) {
     if (error instanceof AuthError) return authErrorResponse(error);

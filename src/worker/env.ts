@@ -4,6 +4,7 @@ export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
   AUTH_MODE?: "development" | "access";
+  ALLOW_INSECURE_DEV_AUTH?: string;
   DEV_ACTOR_EMAIL?: string;
   CF_ACCESS_TEAM_DOMAIN?: string;
   CF_ACCESS_AUD?: string;

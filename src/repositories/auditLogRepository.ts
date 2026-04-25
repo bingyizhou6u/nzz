@@ -1,4 +1,5 @@
 import { newId, nowIso, run } from "./db";
+import type { AuthenticatedActor } from "../auth/types";
 
 export interface AuditLogInput {
   actor: string;
@@ -15,9 +16,49 @@ export interface AuditLogInput {
   userAgent?: string | null;
 }
 
+export type AuditActorInput =
+  | string
+  | {
+      actor: string;
+      actorPersonId?: string | null;
+      actorEmail?: string | null;
+      requestId?: string | null;
+      ipAddress?: string | null;
+      userAgent?: string | null;
+    };
+
+export function auditFieldsForActor(input: AuditActorInput): Pick<
+  AuditLogInput,
+  "actor" | "actorPersonId" | "actorEmail" | "requestId" | "ipAddress" | "userAgent"
+> {
+  return typeof input === "string" ? { actor: input } : input;
+}
+
+export function auditFieldsForRequest(
+  actor: AuthenticatedActor,
+  request: Request
+): Pick<AuditLogInput, "actor" | "actorPersonId" | "actorEmail" | "requestId" | "ipAddress" | "userAgent"> {
+  return {
+    actor: actor.personId,
+    actorPersonId: actor.personId,
+    actorEmail: actor.email,
+    requestId: firstHeader(request, ["cf-ray", "x-request-id"]),
+    ipAddress: firstHeader(request, ["cf-connecting-ip", "x-forwarded-for"]),
+    userAgent: firstHeader(request, ["user-agent"])
+  };
+}
+
 const SNAPSHOT_SERIALIZATION_ERROR = "Audit snapshot must be JSON-serializable";
 
 type JsonSnapshot = null | string | boolean | number | JsonSnapshot[] | { [key: string]: JsonSnapshot };
+
+function firstHeader(request: Request, names: string[]) {
+  for (const name of names) {
+    const value = request.headers.get(name)?.trim();
+    if (value) return value;
+  }
+  return null;
+}
 
 export class AuditLogRepository {
   constructor(private readonly db: D1Database) {}

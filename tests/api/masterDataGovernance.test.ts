@@ -23,6 +23,7 @@ function mockEnv(options: { queues?: unknown[][]; onBind?: (values: unknown[]) =
   const queues = [...(options.queues ?? [])];
   return {
     AUTH_MODE: "development",
+    ALLOW_INSECURE_DEV_AUTH: "true",
     DEV_ACTOR_EMAIL: "finance@example.test",
     CF_ACCESS_TEAM_DOMAIN: "",
     CF_ACCESS_AUD: "",
@@ -70,6 +71,7 @@ function writeMockEnv(
   const firstRows = [...(options.firstRows ?? [])];
   return {
     AUTH_MODE: "development",
+    ALLOW_INSECURE_DEV_AUTH: "true",
     DEV_ACTOR_EMAIL: "finance@example.test",
     CF_ACCESS_TEAM_DOMAIN: "",
     CF_ACCESS_AUD: "",
@@ -272,10 +274,70 @@ describe("master data governance write API", () => {
     await expect(response.json()).resolves.toEqual({ error: "权限不足" });
   });
 
-  it("creates people with actor audit", async () => {
+  it("rejects non-admin role creation from actors without role management permission", async () => {
     const response = await createMasterDataPerson({
       request: new Request("https://ledger.test/api/master-data/people", {
         method: "POST",
+        body: JSON.stringify({
+          actor: "person_manager",
+          name: "New Manager",
+          alias: null,
+          roles: ["finance_manager"],
+          isEnabled: true
+        })
+      }),
+      env: writeMockEnv(),
+      params: {},
+      actor: financeManagerActor
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "权限不足" });
+  });
+
+  it("rejects role changes from actors without role management permission", async () => {
+    const existingPerson = {
+      id: "person_target",
+      name: "Target",
+      alias: "old",
+      roles_json: "[\"finance_entry\"]",
+      is_enabled: 1,
+      login_email: "target@example.com",
+      access_subject: null,
+      last_login_at: null,
+      created_at: "2026-04-25T00:00:00.000Z",
+      referenceCount: 0
+    };
+    const response = await updateMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people/person_target", {
+        method: "PATCH",
+        body: JSON.stringify({
+          actor: "person_manager",
+          name: "Target",
+          alias: "old",
+          roles: ["finance_manager"],
+          isEnabled: true
+        })
+      }),
+      env: writeMockEnv({ firstRows: [existingPerson] }),
+      params: { id: "person_target" },
+      actor: financeManagerActor
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "权限不足" });
+  });
+
+  it("creates people with actor audit", async () => {
+    const runBindings: unknown[][] = [];
+    const response = await createMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people", {
+        method: "POST",
+        headers: {
+          "cf-ray": "ray_person_create",
+          "cf-connecting-ip": "203.0.113.30",
+          "user-agent": "Vitest master data"
+        },
         body: JSON.stringify({
           actor: "person_admin",
           name: "Alice",
@@ -284,7 +346,7 @@ describe("master data governance write API", () => {
           isEnabled: true
         })
       }),
-      env: writeMockEnv({ enabledPeople: ["person_admin"] }),
+      env: writeMockEnv({ enabledPeople: ["person_admin"], onRunBindings: (values) => runBindings.push(values) }),
       params: {},
       actor: adminActor
     });
@@ -294,6 +356,14 @@ describe("master data governance write API", () => {
     expect(body.data.id).toMatch(/^person_/);
     expect(body.data.name).toBe("Alice");
     expect(body.data.roles_json).toBe("[\"finance_entry\"]");
+    const auditBindings = runBindings.find((values) => values.includes("master_data.person.create"));
+    expect(auditBindings?.slice(8, 13)).toEqual([
+      "person_admin",
+      "admin@example.com",
+      "ray_person_create",
+      "203.0.113.30",
+      "Vitest master data"
+    ]);
   });
 
   it("lets finance managers update an admin person when admin role is retained", async () => {
@@ -322,6 +392,38 @@ describe("master data governance write API", () => {
       }),
       env: writeMockEnv({ firstRows: [existingAdmin, existingAdmin] }),
       params: { id: "person_admin_target" },
+      actor: financeManagerActor
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it("lets finance managers update non-role person fields when roles are unchanged", async () => {
+    const existingPerson = {
+      id: "person_entry",
+      name: "Entry",
+      alias: "old",
+      roles_json: "[\"finance_entry\"]",
+      is_enabled: 1,
+      login_email: "entry@example.com",
+      access_subject: null,
+      last_login_at: null,
+      created_at: "2026-04-25T00:00:00.000Z",
+      referenceCount: 0
+    };
+    const response = await updateMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people/person_entry", {
+        method: "PATCH",
+        body: JSON.stringify({
+          actor: "person_manager",
+          name: "Entry Renamed",
+          alias: "new",
+          roles: ["finance_entry"],
+          isEnabled: false
+        })
+      }),
+      env: writeMockEnv({ firstRows: [existingPerson, existingPerson] }),
+      params: { id: "person_entry" },
       actor: financeManagerActor
     });
 
@@ -402,6 +504,11 @@ describe("master data governance write API", () => {
     const response = await updateMasterDataProject({
       request: new Request("https://ledger.test/api/master-data/projects/proj_1", {
         method: "PATCH",
+        headers: {
+          "x-request-id": "req_project_status",
+          "x-forwarded-for": "198.51.100.30",
+          "user-agent": "Vitest project status"
+        },
         body: JSON.stringify({
           actor: "person_admin",
           code: "P1",
@@ -433,6 +540,14 @@ describe("master data governance write API", () => {
 
     expect(response.status).toBe(200);
     expect(runBindings.flat()).toContain("master_data.project.status");
+    const auditBindings = runBindings.find((values) => values.includes("master_data.project.status"));
+    expect(auditBindings?.slice(8, 13)).toEqual([
+      "person_admin",
+      "admin@example.com",
+      "req_project_status",
+      "198.51.100.30",
+      "Vitest project status"
+    ]);
   });
 
   it("rejects PATCH for missing projects", async () => {

@@ -22,6 +22,7 @@ function env(
   const firstRows = [...(options.firstRows ?? [])];
   return {
     AUTH_MODE: "development",
+    ALLOW_INSECURE_DEV_AUTH: "true",
     DEV_ACTOR_EMAIL: "admin@example.test",
     DB: {
       prepare: (sql: string) => {

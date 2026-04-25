@@ -29,7 +29,7 @@ import { entriesForApprovedDocument } from "../domain/posting";
 import { entriesForReversalDocument } from "../domain/reversalPosting";
 import type { Lot } from "../domain/types";
 import type { ActionType, DocumentType } from "../domain/types";
-import type { AuditLogRepository } from "../repositories/auditLogRepository";
+import { auditFieldsForActor, type AuditActorInput, type AuditLogRepository } from "../repositories/auditLogRepository";
 import type {
   ApproveDocumentWithPostingsInput,
   DocumentDetailRow,
@@ -53,6 +53,7 @@ export interface CreateDraftRequest {
   originalDocumentId?: string | null;
   summary: string;
   createdBy: string;
+  auditActor?: AuditActorInput;
   lines?: RawDocumentLine[];
 }
 
@@ -147,7 +148,7 @@ export class DocumentService {
     }
 
     await this.auditLogs.record({
-      actor: input.createdBy,
+      ...auditFieldsForActor(input.auditActor ?? input.createdBy),
       action: "document.create",
       entityType: "document",
       entityId: document.id,
@@ -157,14 +158,15 @@ export class DocumentService {
     return document;
   }
 
-  async submit(id: string, actor: string) {
+  async submit(id: string, actor: AuditActorInput) {
+    const auditActor = auditFieldsForActor(actor);
     const document = await this.requireDocument(id);
     assertDocumentTransition(document.status, "pending", "submit");
     await this.validatePersistedDocument(document, "submit");
 
     await this.documents.markSubmitted(id);
     await this.auditLogs.record({
-      actor,
+      ...auditActor,
       action: "document.submit",
       entityType: "document",
       entityId: id,
@@ -173,7 +175,8 @@ export class DocumentService {
     });
   }
 
-  async reject(id: string, actor: string, reason: string) {
+  async reject(id: string, actor: AuditActorInput, reason: string) {
+    const auditActor = auditFieldsForActor(actor);
     const document = await this.requireDocument(id);
     assertDocumentTransition(document.status, "rejected", "reject");
 
@@ -184,7 +187,7 @@ export class DocumentService {
 
     await this.documents.markRejected(id, trimmedReason);
     await this.auditLogs.record({
-      actor,
+      ...auditActor,
       action: "document.reject",
       entityType: "document",
       entityId: id,
@@ -298,11 +301,13 @@ export class DocumentService {
     };
   }
 
-  async approve(id: string, reviewer: string) {
+  async approve(id: string, reviewer: AuditActorInput) {
+    const auditActor = auditFieldsForActor(reviewer);
+    const reviewerPersonId = auditActor.actor;
     const { document, approvalPeriod, effects } = await this.planApproval(id);
     const auditLogStatement = this.auditLogs.prepareRecordWhen(
       {
-        actor: reviewer,
+        ...auditActor,
         action: "document.approve",
         entityType: "document",
         entityId: document.id,
@@ -317,7 +322,7 @@ export class DocumentService {
     await this.documents.approveWithPostings({
       documentId: document.id,
       period: approvalPeriod,
-      reviewer,
+      reviewer: reviewerPersonId,
       reversalOriginalDocumentId: effects.reversalOriginalDocumentId,
       accountEntries: effects.accountEntries,
       loanEntries: effects.loanEntries,
