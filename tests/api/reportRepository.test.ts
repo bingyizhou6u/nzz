@@ -20,6 +20,138 @@ function mockDb(rows: unknown[], onSql: (sql: string) => void, onBind: (values: 
   } as unknown as D1Database;
 }
 
+interface SqliteStatement {
+  all(...values: unknown[]): Record<string, unknown>[];
+  get(...values: unknown[]): Record<string, unknown> | undefined;
+  run(...values: unknown[]): unknown;
+}
+
+interface SqliteDatabase {
+  exec(sql: string): void;
+  prepare(sql: string): SqliteStatement;
+  close(): void;
+}
+
+type SqliteModule = {
+  DatabaseSync: new (filename: string) => SqliteDatabase;
+};
+
+const importSqlite = new Function("specifier", "return import(specifier)") as (
+  specifier: string
+) => Promise<SqliteModule>;
+
+async function createSqliteReportDb(): Promise<{ db: D1Database; exec: (sql: string) => void; close: () => void }> {
+  const { DatabaseSync } = await importSqlite("node:sqlite");
+  const sqlite = new DatabaseSync(":memory:");
+
+  sqlite.exec(`
+    CREATE TABLE documents (
+      id TEXT PRIMARY KEY,
+      document_type TEXT NOT NULL,
+      action_type TEXT NOT NULL DEFAULT 'normal',
+      business_date TEXT NOT NULL,
+      period TEXT NOT NULL,
+      project_id TEXT,
+      merchant_id TEXT,
+      category_id TEXT,
+      status TEXT NOT NULL,
+      original_document_id TEXT
+    );
+
+    CREATE TABLE document_lines (
+      id TEXT PRIMARY KEY,
+      document_id TEXT NOT NULL,
+      person_id TEXT,
+      currency_code TEXT NOT NULL,
+      amount_minor INTEGER NOT NULL
+    );
+
+    CREATE TABLE lot_movements (
+      id TEXT PRIMARY KEY,
+      document_id TEXT NOT NULL,
+      movement_type TEXT NOT NULL,
+      usdt_cost_minor INTEGER NOT NULL
+    );
+
+    CREATE TABLE pending_cost_matches (
+      id TEXT PRIMARY KEY,
+      document_id TEXT NOT NULL,
+      remaining_amount_minor INTEGER NOT NULL
+    );
+
+    CREATE TABLE pending_cost_applications (
+      id TEXT PRIMARY KEY,
+      pending_cost_match_id TEXT NOT NULL,
+      document_id TEXT NOT NULL,
+      usdt_cost_minor INTEGER NOT NULL
+    );
+
+    CREATE TABLE loan_items (
+      id TEXT PRIMARY KEY,
+      borrower_person_id TEXT NOT NULL,
+      currency_code TEXT NOT NULL
+    );
+
+    CREATE TABLE loan_allocations (
+      id TEXT PRIMARY KEY,
+      document_id TEXT NOT NULL,
+      loan_item_id TEXT NOT NULL,
+      allocation_type TEXT NOT NULL,
+      amount_minor INTEGER NOT NULL,
+      usdt_cost_minor INTEGER NOT NULL
+    );
+
+    CREATE TABLE account_entries (
+      id TEXT PRIMARY KEY,
+      document_id TEXT NOT NULL,
+      currency_code TEXT NOT NULL,
+      amount_minor INTEGER NOT NULL
+    );
+  `);
+
+  return {
+    db: {
+      prepare: (sql: string) => {
+        let bindings: unknown[] = [];
+
+        return {
+          bind(...values: unknown[]) {
+            bindings = values;
+            return this;
+          },
+          all: async () => {
+            try {
+              return { success: true, results: sqlite.prepare(sql).all(...bindings) };
+            } catch (error) {
+              return { success: false, error: error instanceof Error ? error.message : String(error), results: [] };
+            }
+          },
+          first: async () => {
+            try {
+              return { success: true, results: sqlite.prepare(sql).get(...bindings) ?? null };
+            } catch (error) {
+              return { success: false, error: error instanceof Error ? error.message : String(error), results: null };
+            }
+          },
+          run: async () => {
+            try {
+              sqlite.prepare(sql).run(...bindings);
+              return { success: true } as D1Result;
+            } catch (error) {
+              return {
+                success: false,
+                error: error instanceof Error ? error.message : String(error)
+              } as unknown as D1Result;
+            }
+          }
+        } as unknown as D1PreparedStatement;
+      }
+    } as unknown as D1Database,
+    exec: (sql: string) => sqlite.exec(sql),
+    close: () => sqlite.close()
+  };
+}
+
 describe("ReportRepository", () => {
   it("returns account balance rows grouped and ordered by account and currency", async () => {
     const rows = [{ account_id: "acct_1", currency_code: "AED", balance_minor: 1250 }];
@@ -332,7 +464,9 @@ describe("ReportRepository", () => {
     const normalized = normalizeSql(sql);
     expect(normalized).toContain("with direct_petty_cash_cost as");
     expect(normalized).toContain("from expense_detail_rows");
-    expect(normalized).toContain("group by period, project_id, category_id, person_id, currency_code");
+    expect(normalized).toContain("coalesce(person_id, borrower_person_id) as report_person_id");
+    expect(normalized).toContain("report_person_id as person_id");
+    expect(normalized).toContain("group by period, project_id, category_id, report_person_id, currency_code");
   });
 
   it("returns project profit loss rows from income and expense aggregates", async () => {
@@ -361,5 +495,137 @@ describe("ReportRepository", () => {
     expect(normalized).toContain("group by period");
     expect(normalized).toContain("sum(net_usdt_minor)");
     expect(normalized).toContain("as net_usdt_minor");
+  });
+
+  it("executes expense summary grouping loan writeoffs by borrower person", async () => {
+    const sqliteDb = await createSqliteReportDb();
+    try {
+      sqliteDb.exec(`
+        INSERT INTO documents (
+          id, document_type, action_type, business_date, period, project_id, merchant_id, category_id, status, original_document_id
+        ) VALUES
+          ('doc_writeoff_a', 'loan_writeoff', 'normal', '2026-04-04', '2026-04', 'proj_1', NULL, 'cat_expense', 'approved', NULL),
+          ('doc_writeoff_b', 'loan_writeoff', 'normal', '2026-04-05', '2026-04', 'proj_1', NULL, 'cat_expense', 'approved', NULL);
+
+        INSERT INTO loan_items (id, borrower_person_id, currency_code) VALUES
+          ('loan_item_a', 'person_a', 'AED'),
+          ('loan_item_b', 'person_b', 'AED');
+
+        INSERT INTO loan_allocations (
+          id, document_id, loan_item_id, allocation_type, amount_minor, usdt_cost_minor
+        ) VALUES
+          ('alloc_a', 'doc_writeoff_a', 'loan_item_a', 'writeoff', 1000, 270),
+          ('alloc_b', 'doc_writeoff_b', 'loan_item_b', 'writeoff', 2000, 540);
+      `);
+
+      const repo = new ReportRepository(sqliteDb.db);
+
+      await expect(repo.expenseSummary({ period: "2026-04" })).resolves.toEqual([
+        {
+          period: "2026-04",
+          project_id: "proj_1",
+          category_id: "cat_expense",
+          person_id: "person_a",
+          currency_code: "AED",
+          amount_minor: 1000,
+          matched_usdt_cost_minor: 270,
+          pending_amount_minor: 0
+        },
+        {
+          period: "2026-04",
+          project_id: "proj_1",
+          category_id: "cat_expense",
+          person_id: "person_b",
+          currency_code: "AED",
+          amount_minor: 2000,
+          matched_usdt_cost_minor: 540,
+          pending_amount_minor: 0
+        }
+      ]);
+    } finally {
+      sqliteDb.close();
+    }
+  });
+
+  it("executes expense details excluding reversed petty cash reimbursements", async () => {
+    const sqliteDb = await createSqliteReportDb();
+    try {
+      sqliteDb.exec(`
+        INSERT INTO documents (
+          id, document_type, action_type, business_date, period, project_id, merchant_id, category_id, status, original_document_id
+        ) VALUES
+          ('doc_petty_active', 'petty_cash_reimbursement', 'normal', '2026-04-03', '2026-04', 'proj_1', NULL, 'cat_expense', 'approved', NULL),
+          ('doc_petty_reversed', 'petty_cash_reimbursement', 'normal', '2026-04-02', '2026-04', 'proj_1', NULL, 'cat_expense', 'approved', NULL),
+          ('doc_petty_reversal', 'petty_cash_reimbursement', 'reversal', '2026-04-04', '2026-04', 'proj_1', NULL, 'cat_expense', 'approved', 'doc_petty_reversed');
+
+        INSERT INTO document_lines (id, document_id, person_id, currency_code, amount_minor) VALUES
+          ('line_active', 'doc_petty_active', 'person_1', 'AED', 8000),
+          ('line_reversed', 'doc_petty_reversed', 'person_2', 'AED', 12000);
+
+        INSERT INTO lot_movements (id, document_id, movement_type, usdt_cost_minor) VALUES
+          ('lot_move_active', 'doc_petty_active', 'petty_cash_reimbursement', 2400),
+          ('lot_move_reversed', 'doc_petty_reversed', 'petty_cash_reimbursement', 3600);
+      `);
+
+      const repo = new ReportRepository(sqliteDb.db);
+
+      await expect(repo.expenseDetails({ period: "2026-04" })).resolves.toEqual([
+        {
+          document_id: "doc_petty_active",
+          document_type: "petty_cash_reimbursement",
+          period: "2026-04",
+          business_date: "2026-04-03",
+          project_id: "proj_1",
+          merchant_id: null,
+          category_id: "cat_expense",
+          person_id: "person_1",
+          borrower_person_id: null,
+          currency_code: "AED",
+          amount_minor: 8000,
+          matched_usdt_cost_minor: 2400,
+          pending_amount_minor: 0,
+          cost_status: "complete"
+        }
+      ]);
+    } finally {
+      sqliteDb.close();
+    }
+  });
+
+  it("executes monthly operating summary with aggregated income and expenses", async () => {
+    const sqliteDb = await createSqliteReportDb();
+    try {
+      sqliteDb.exec(`
+        INSERT INTO documents (
+          id, document_type, action_type, business_date, period, project_id, merchant_id, category_id, status, original_document_id
+        ) VALUES
+          ('doc_income', 'project_income', 'normal', '2026-04-01', '2026-04', 'proj_1', 'merchant_1', 'cat_income', 'approved', NULL),
+          ('doc_expense', 'petty_cash_reimbursement', 'normal', '2026-04-02', '2026-04', 'proj_1', NULL, 'cat_expense', 'approved', NULL);
+
+        INSERT INTO account_entries (id, document_id, currency_code, amount_minor) VALUES
+          ('entry_income', 'doc_income', 'USDT', 20000);
+
+        INSERT INTO document_lines (id, document_id, person_id, currency_code, amount_minor) VALUES
+          ('line_expense', 'doc_expense', 'person_1', 'AED', 18000);
+
+        INSERT INTO lot_movements (id, document_id, movement_type, usdt_cost_minor) VALUES
+          ('lot_move_expense', 'doc_expense', 'petty_cash_reimbursement', 5000);
+      `);
+
+      const repo = new ReportRepository(sqliteDb.db);
+
+      await expect(repo.monthlyOperatingSummary({ period: "2026-04" })).resolves.toEqual([
+        {
+          period: "2026-04",
+          income_usdt_minor: 20000,
+          expense_usdt_minor: 5000,
+          pending_expense_minor: 0,
+          net_usdt_minor: 15000,
+          cost_status: "complete"
+        }
+      ]);
+    } finally {
+      sqliteDb.close();
+    }
   });
 });

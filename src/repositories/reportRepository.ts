@@ -274,6 +274,13 @@ export class ReportRepository {
           LEFT JOIN pending_cost_remaining ON pending_cost_remaining.document_id = d.id
           WHERE d.status = 'approved'
             AND d.document_type = 'petty_cash_reimbursement'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM documents reversal
+              WHERE reversal.original_document_id = d.id
+                AND reversal.action_type = 'reversal'
+                AND reversal.status = 'approved'
+            )
             ${pettyCashFilter.sql}
 
           UNION ALL
@@ -462,14 +469,19 @@ export class ReportRepository {
             period,
             project_id,
             category_id,
-            COALESCE(person_id, borrower_person_id) AS person_id,
+            report_person_id AS person_id,
             currency_code,
             COALESCE(SUM(amount_minor), 0) AS amount_minor,
             COALESCE(SUM(matched_usdt_cost_minor), 0) AS matched_usdt_cost_minor,
             COALESCE(SUM(pending_amount_minor), 0) AS pending_amount_minor
-          FROM expense_detail_rows
-          GROUP BY period, project_id, category_id, person_id, currency_code
-          ORDER BY period DESC, project_id, category_id, person_id, currency_code
+          FROM (
+            SELECT
+              *,
+              COALESCE(person_id, borrower_person_id) AS report_person_id
+            FROM expense_detail_rows
+          ) expense_summary_rows
+          GROUP BY period, project_id, category_id, report_person_id, currency_code
+          ORDER BY period DESC, project_id, category_id, report_person_id, currency_code
         `)
         .bind(...expenseDetailsCte.bindings)
     );
