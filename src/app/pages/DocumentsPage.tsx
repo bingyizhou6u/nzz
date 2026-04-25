@@ -9,6 +9,7 @@ import {
   isOriginalDocumentRequired,
   validateDocumentForm
 } from "./documents/documentEntryModel";
+import { deriveDocumentEntryState } from "./documents/documentEntryRules";
 import type { DocumentEntryForm, DocumentEntryOptions, OriginalDocumentOption } from "./documents/documentEntryTypes";
 
 interface DocumentResponse {
@@ -133,6 +134,10 @@ export function DocumentsPage() {
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [result, setResult] = useState<DocumentResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const entryState = useMemo(
+    () => deriveDocumentEntryState(form, entryOptions, originalDocuments),
+    [entryOptions, form, originalDocuments]
+  );
 
   useEffect(() => {
     let isCurrent = true;
@@ -245,7 +250,7 @@ export function DocumentsPage() {
     setResult(null);
     setError(null);
 
-    const validationErrors = validateDocumentForm(form, entryOptions, currentActorId);
+    const validationErrors = validateDocumentForm(form, entryOptions, currentActorId, entryState);
     if (validationErrors.length > 0) {
       setError(validationErrors.join("；"));
       return;
@@ -512,11 +517,14 @@ export function DocumentsPage() {
           <DocumentTypeFields
             form={form}
             setForm={setForm}
-            options={entryOptions}
+            entryState={entryState}
             originalDocuments={originalDocuments}
           />
 
           {originalDocumentsError ? <div className="notice error wide-field">{originalDocumentsError}</div> : null}
+          {entryState.validationErrors.length > 0 ? (
+            <div className="notice error wide-field">{entryState.validationErrors.join("；")}</div>
+          ) : null}
 
           <div className="form-actions">
             <button

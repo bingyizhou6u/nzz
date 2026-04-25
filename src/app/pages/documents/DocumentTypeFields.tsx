@@ -1,19 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
-import type {
-  AccountOption,
-  DocumentEntryForm,
-  DocumentEntryOptions,
-  OriginalDocumentOption
-} from "./documentEntryTypes";
-import {
-  accountCurrencyCode,
-  categoryOptionsForDocumentType,
-  companyAccounts,
-  getVisibleFieldKeys,
-  isOriginalDocumentFieldRequired,
-  merchantOptionsForProject,
-  pettyCashAccountsForPerson
-} from "./documentEntryModel";
+import type { DocumentEntryState } from "./documentEntryRules";
+import type { DocumentEntryForm, OriginalDocumentOption } from "./documentEntryTypes";
 import {
   accountLabel,
   categoryLabel,
@@ -28,29 +15,33 @@ import {
 interface DocumentTypeFieldsProps {
   form: DocumentEntryForm;
   setForm: Dispatch<SetStateAction<DocumentEntryForm>>;
-  options: DocumentEntryOptions;
+  entryState: DocumentEntryState;
   originalDocuments: OriginalDocumentOption[];
 }
 
-function accountsWithCurrency(accounts: AccountOption[], currencyCode: string) {
-  if (!currencyCode) return accounts;
-  return accounts.filter((account) => account.currency_code === currencyCode);
-}
-
-export function DocumentTypeFields({ form, setForm, options, originalDocuments }: DocumentTypeFieldsProps) {
-  const fields = getVisibleFieldKeys(form.documentType, form.actionType);
-  const selectedAccountCurrency = accountCurrencyCode(options, form.accountId);
-  const companyAccountOptions = companyAccounts(options);
-  const personPettyCashAccountOptions = pettyCashAccountsForPerson(options, form.personId);
-  const accountOptions =
-    form.documentType === "petty_cash_return" || form.documentType === "petty_cash_reimbursement"
-      ? personPettyCashAccountOptions
-      : companyAccountOptions;
-  const counterpartyAccountOptions = getCounterpartyAccountOptions();
-  const isProjectRequired = fields.includes("projectId") && form.documentType !== "loan_writeoff";
+export function DocumentTypeFields({ form, setForm, entryState, originalDocuments }: DocumentTypeFieldsProps) {
+  const fields = entryState.visibleFields;
+  const optionsByField = entryState.optionsByField;
 
   function updateField<K extends keyof DocumentEntryForm>(key: K, value: DocumentEntryForm[K]) {
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateProject(value: string) {
+    setForm((current) => ({ ...current, projectId: value, merchantId: "" }));
+  }
+
+  function updatePerson(value: string) {
+    setForm((current) => ({ ...current, personId: value, accountId: "", counterpartyAccountId: "" }));
+  }
+
+  function updateCategory(value: string) {
+    setForm((current) => ({
+      ...current,
+      categoryId: value,
+      merchantId: "",
+      borrowerPersonId: current.documentType === "petty_cash_reimbursement" ? "" : current.borrowerPersonId
+    }));
   }
 
   function updateAccount(key: "accountId" | "counterpartyAccountId", value: string) {
@@ -58,27 +49,12 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
       ...current,
       [key]: value,
       currencyCode:
-        key === "accountId" && value ? accountCurrencyCode(options, value) || current.currencyCode : current.currencyCode,
+        key === "accountId" && value
+          ? entryState.optionsByField.accountId?.find((account) => account.id === value)?.currency_code ??
+            current.currencyCode
+          : current.currencyCode,
       counterpartyAccountId: key === "accountId" ? "" : value
     }));
-  }
-
-  function getCounterpartyAccountOptions() {
-    if (form.documentType === "exchange") {
-      return accountsWithCurrency(companyAccountOptions, "USDT");
-    }
-    if (form.documentType === "account_transfer") {
-      return accountsWithCurrency(companyAccountOptions, selectedAccountCurrency).filter(
-        (account) => account.id !== form.accountId
-      );
-    }
-    if (form.documentType === "petty_cash_issue") {
-      return accountsWithCurrency(personPettyCashAccountOptions, selectedAccountCurrency);
-    }
-    if (form.documentType === "petty_cash_return") {
-      return accountsWithCurrency(companyAccountOptions, selectedAccountCurrency);
-    }
-    return accountsWithCurrency(companyAccountOptions, selectedAccountCurrency);
   }
 
   return (
@@ -87,11 +63,12 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
         <SelectField
           label="原单据"
           value={form.originalDocumentId}
-          options={originalDocuments}
+          options={optionsByField.originalDocumentId ?? originalDocuments}
           getValue={(document) => document.id}
           getLabel={originalDocumentLabel}
           onChange={(value) => updateField("originalDocumentId", value)}
-          required={isOriginalDocumentFieldRequired(form.documentType, form.actionType)}
+          required={entryState.requiredFields.includes("originalDocumentId")}
+          disabled={entryState.disabledFields.includes("originalDocumentId")}
         />
       ) : null}
 
@@ -99,11 +76,12 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
         <SelectField
           label="经办人"
           value={form.operatorPersonId}
-          options={options.people}
+          options={optionsByField.operatorPersonId ?? []}
           getValue={(person) => person.id}
           getLabel={personLabel}
           onChange={(value) => updateField("operatorPersonId", value)}
-          required
+          required={entryState.requiredFields.includes("operatorPersonId")}
+          disabled={entryState.disabledFields.includes("operatorPersonId")}
         />
       ) : null}
 
@@ -117,13 +95,12 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
                 : "报销人"
           }
           value={form.personId}
-          options={options.people}
+          options={optionsByField.personId ?? []}
           getValue={(person) => person.id}
           getLabel={personLabel}
-          onChange={(value) =>
-            setForm((current) => ({ ...current, personId: value, accountId: "", counterpartyAccountId: "" }))
-          }
-          required
+          onChange={updatePerson}
+          required={entryState.requiredFields.includes("personId")}
+          disabled={entryState.disabledFields.includes("personId")}
         />
       ) : null}
 
@@ -131,11 +108,12 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
         <SelectField
           label="借款人"
           value={form.borrowerPersonId}
-          options={options.people}
+          options={optionsByField.borrowerPersonId ?? []}
           getValue={(person) => person.id}
           getLabel={personLabel}
           onChange={(value) => updateField("borrowerPersonId", value)}
-          required
+          required={entryState.requiredFields.includes("borrowerPersonId")}
+          disabled={entryState.disabledFields.includes("borrowerPersonId")}
         />
       ) : null}
 
@@ -143,11 +121,12 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
         <SelectField
           label="项目"
           value={form.projectId}
-          options={options.projects}
+          options={optionsByField.projectId ?? []}
           getValue={(project) => project.id}
           getLabel={projectLabel}
-          onChange={(value) => setForm((current) => ({ ...current, projectId: value, merchantId: "" }))}
-          required={isProjectRequired}
+          onChange={updateProject}
+          required={entryState.requiredFields.includes("projectId")}
+          disabled={entryState.disabledFields.includes("projectId")}
         />
       ) : null}
 
@@ -155,12 +134,12 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
         <SelectField
           label="商户"
           value={form.merchantId}
-          options={merchantOptionsForProject(options, form.projectId)}
+          options={optionsByField.merchantId ?? []}
           getValue={(merchant) => merchant.id}
           getLabel={merchantLabel}
           onChange={(value) => updateField("merchantId", value)}
-          required={form.documentType === "project_income"}
-          disabled={!form.projectId}
+          required={entryState.requiredFields.includes("merchantId")}
+          disabled={entryState.disabledFields.includes("merchantId") || !form.projectId}
         />
       ) : null}
 
@@ -168,11 +147,12 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
         <SelectField
           label="科目"
           value={form.categoryId}
-          options={categoryOptionsForDocumentType(options, form.documentType)}
+          options={optionsByField.categoryId ?? []}
           getValue={(category) => category.id}
           getLabel={categoryLabel}
-          onChange={(value) => updateField("categoryId", value)}
-          required={form.documentType !== "account_transfer"}
+          onChange={updateCategory}
+          required={entryState.requiredFields.includes("categoryId")}
+          disabled={entryState.disabledFields.includes("categoryId")}
         />
       ) : null}
 
@@ -188,11 +168,12 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
                   : "账户"
           }
           value={form.accountId}
-          options={accountOptions}
+          options={optionsByField.accountId ?? []}
           getValue={(account) => account.id}
           getLabel={accountLabel}
           onChange={(value) => updateAccount("accountId", value)}
-          required
+          required={entryState.requiredFields.includes("accountId")}
+          disabled={entryState.disabledFields.includes("accountId")}
         />
       ) : null}
 
@@ -208,11 +189,12 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
                   : "转入账户"
           }
           value={form.counterpartyAccountId}
-          options={counterpartyAccountOptions}
+          options={optionsByField.counterpartyAccountId ?? []}
           getValue={(account) => account.id}
           getLabel={accountLabel}
           onChange={(value) => updateAccount("counterpartyAccountId", value)}
-          required
+          required={entryState.requiredFields.includes("counterpartyAccountId")}
+          disabled={entryState.disabledFields.includes("counterpartyAccountId")}
         />
       ) : null}
 
@@ -220,12 +202,12 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
         <SelectField
           label="币种"
           value={form.currencyCode}
-          options={options.currencies}
+          options={optionsByField.currencyCode ?? []}
           getValue={(currency) => currency.code}
           getLabel={currencyLabel}
           onChange={(value) => updateField("currencyCode", value)}
-          required
-          disabled={Boolean(form.accountId)}
+          required={entryState.requiredFields.includes("currencyCode")}
+          disabled={entryState.disabledFields.includes("currencyCode")}
         />
       ) : null}
 
@@ -235,7 +217,8 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
           <input
             value={form.amountMajor}
             onChange={(event) => updateField("amountMajor", event.target.value)}
-            required
+            required={entryState.requiredFields.includes("amountMajor")}
+            disabled={entryState.disabledFields.includes("amountMajor")}
             inputMode="decimal"
             maxLength={24}
           />
@@ -248,6 +231,8 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
           <input
             value={form.usdtAmountMajor}
             onChange={(event) => updateField("usdtAmountMajor", event.target.value)}
+            required={entryState.requiredFields.includes("usdtAmountMajor")}
+            disabled={entryState.disabledFields.includes("usdtAmountMajor")}
             inputMode="decimal"
             maxLength={24}
           />
@@ -260,7 +245,8 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
           <input
             value={form.summary}
             onChange={(event) => updateField("summary", event.target.value)}
-            required
+            required={entryState.requiredFields.includes("summary")}
+            disabled={entryState.disabledFields.includes("summary")}
             maxLength={240}
           />
         </label>

@@ -290,6 +290,23 @@ describe("document entry model", () => {
     expect(errors).not.toContain("请选择或填写借款人");
   });
 
+  it("uses derived residual errors when validating stale account selections", () => {
+    const form = {
+      ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),
+      documentType: "petty_cash_reimbursement" as const,
+      personId: "person_ops",
+      categoryId: "cat_plain_expense",
+      accountId: "acct_company_aed",
+      currencyCode: "AED",
+      amountMajor: "20",
+      summary: "Stale account"
+    };
+
+    const errors = validateDocumentForm(form, options, "person_ops", deriveDocumentEntryState(form, options, []));
+
+    expect(errors).toContain("账户不适用于当前单据类型");
+  });
+
   it("preserves legacy reimbursement validation when derived state is not supplied", () => {
     const errors = validateDocumentForm(
       {
