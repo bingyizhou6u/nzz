@@ -96,6 +96,60 @@ describe("review action state", () => {
 });
 
 describe("ReviewCenterPage component", () => {
+  it("renders the formal review workspace layout", async () => {
+    const fetchMock = vi.fn<FetchHandler>();
+    const expectedRequests: ExpectedRequest[] = [
+      {
+        url: "/api/review/documents",
+        method: "GET",
+        response: jsonResponse({ data: [pendingDocument] })
+      },
+      {
+        url: "/api/review/documents/doc_1",
+        method: "GET",
+        response: jsonResponse({ data: pendingDocument })
+      },
+      {
+        url: "/api/review/documents/doc_1/preview",
+        method: "GET",
+        response: jsonResponse({ data: approvalPreview })
+      }
+    ];
+
+    fetchMock.mockImplementation((input, init) => {
+      const next = expectedRequests.shift();
+      if (!next) throw new Error(`Unexpected request: ${String(input)}`);
+
+      expect(String(input)).toBe(next.url);
+      expect(init?.method ?? "GET").toBe(next.method);
+      return Promise.resolve(next.response);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(createElement(ReviewCenterPage, { capabilities: ["documents.approve"] }));
+    });
+
+    await waitFor(() => {
+      expect(container.textContent).toContain("DOC-001");
+      expect(container.textContent).toContain("acct_stale");
+    });
+
+    expect(container.querySelector(".review-workspace")).not.toBeNull();
+
+    const queuePanel = container.querySelector(".review-queue-panel");
+    expect(queuePanel?.textContent).toContain("审核队列");
+
+    const detailPanel = container.querySelector(".review-detail-panel");
+    expect(detailPanel?.textContent).toContain("审核详情");
+    expect(detailPanel?.textContent).toContain("影响预览");
+    expect(expectedRequests).toHaveLength(0);
+  });
+
   it("clears stale detail and preview when approving succeeds but queue refresh fails", async () => {
     const fetchMock = vi.fn<FetchHandler>();
     const expectedRequests: ExpectedRequest[] = [

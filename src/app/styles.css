@@ -962,27 +962,31 @@ textarea {
   min-width: 0;
 }
 
-.review-layout {
+.review-workspace {
   display: grid;
-  grid-template-columns: minmax(420px, 1fr) minmax(340px, 0.78fr);
-  grid-template-areas:
-    "queue detail"
-    "queue preview";
+  grid-template-columns: minmax(360px, 0.85fr) minmax(560px, 1.15fr);
   gap: 16px;
   align-items: start;
   min-width: 0;
 }
 
-.review-queue {
-  grid-area: queue;
+.review-queue-panel,
+.review-detail-panel,
+.review-preview-section,
+.review-detail-section {
+  min-width: 0;
 }
 
-.review-detail {
-  grid-area: detail;
+.review-detail-panel {
+  position: sticky;
+  top: 76px;
+  display: grid;
+  gap: 0;
+  align-self: start;
 }
 
-.review-preview {
-  grid-area: preview;
+.review-preview-section {
+  border-top: 1px solid #e5e7eb;
 }
 
 .review-queue-table {
@@ -1131,8 +1135,13 @@ textarea {
 }
 
 @media (max-width: 1280px) {
-  .documents-workspace {
+  .documents-workspace,
+  .review-workspace {
     grid-template-columns: 1fr;
+  }
+
+  .review-detail-panel {
+    position: static;
   }
 }
 
@@ -1256,7 +1265,7 @@ textarea {
   .period-lock-form,
   .period-lock-unlock-form,
   .master-data-table-tools,
-  .review-layout,
+  .review-workspace,
   .review-detail-grid,
   .reject-form {
     grid-template-columns: 1fr;
@@ -1264,13 +1273,6 @@ textarea {
 
   .document-entry-panel .document-form {
     grid-template-columns: 1fr;
-  }
-
-  .review-layout {
-    grid-template-areas:
-      "queue"
-      "detail"
-      "preview";
   }
 
   .workspace-card:nth-child(3) {

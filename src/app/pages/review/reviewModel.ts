@@ -11,6 +11,8 @@ export interface PreviewGroup {
   sections: PreviewSection[];
 }
 
+export type ReviewRiskTone = "muted" | "ok" | "warning";
+
 export const documentTypeLabels: Record<string, string> = {
   project_income: "项目收入",
   exchange: "换汇",
@@ -36,6 +38,21 @@ export function waitingLabel(submittedAt: string | null | undefined, now = new D
   if (elapsedHours < 24) return `${Math.max(1, Math.floor(elapsedHours))} 小时`;
 
   return `${Math.max(1, Math.floor(elapsedHours / 24))} 天`;
+}
+
+export function reviewRiskTone(
+  input: { submitted_at: string | null | undefined },
+  now = new Date()
+): ReviewRiskTone {
+  if (!input.submitted_at) return "muted";
+
+  const submittedTime = new Date(input.submitted_at).getTime();
+  const nowTime = now.getTime();
+  if (!Number.isFinite(submittedTime) || !Number.isFinite(nowTime)) return "muted";
+
+  const elapsedMs = Math.max(0, nowTime - submittedTime);
+  const warningThresholdMs = 3 * 24 * 60 * 60 * 1000;
+  return elapsedMs >= warningThresholdMs ? "warning" : "ok";
 }
 
 export function previewGroups(preview: ApprovalPreviewState): PreviewGroup[] {

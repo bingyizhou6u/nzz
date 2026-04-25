@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { previewGroups, waitingLabel } from "./reviewModel";
+import { previewGroups, reviewRiskTone, waitingLabel } from "./reviewModel";
 import type { ApprovalPreviewState } from "./reviewTypes";
 
 const emptyPreview: ApprovalPreviewState = {
@@ -27,6 +27,27 @@ describe("review waiting labels", () => {
     expect(waitingLabel("2026-04-25T11:30:00Z", now)).toBe("1 小时内");
     expect(waitingLabel("2026-04-25T02:00:00Z", now)).toBe("10 小时");
     expect(waitingLabel("2026-04-23T11:00:00Z", now)).toBe("2 天");
+  });
+});
+
+describe("review risk tone", () => {
+  it("marks submitted documents as warning once they have waited at least three days", () => {
+    const now = new Date("2026-04-25T12:00:00Z");
+
+    expect(reviewRiskTone({ submitted_at: "2026-04-22T12:00:00Z" }, now)).toBe("warning");
+    expect(reviewRiskTone({ submitted_at: "2026-04-21T11:00:00Z" }, now)).toBe("warning");
+  });
+
+  it("marks submitted documents under three days as ok", () => {
+    expect(reviewRiskTone({ submitted_at: "2026-04-23T12:00:00Z" }, new Date("2026-04-25T12:00:00Z"))).toBe("ok");
+  });
+
+  it("mutes missing or invalid submitted timestamps", () => {
+    const now = new Date("2026-04-25T12:00:00Z");
+
+    expect(reviewRiskTone({ submitted_at: null }, now)).toBe("muted");
+    expect(reviewRiskTone({ submitted_at: undefined }, now)).toBe("muted");
+    expect(reviewRiskTone({ submitted_at: "invalid" }, now)).toBe("muted");
   });
 });
 
