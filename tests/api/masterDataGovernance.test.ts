@@ -316,6 +316,7 @@ describe("master data governance write API", () => {
           name: "Target",
           alias: "old",
           roles: ["finance_manager"],
+          loginEmail: "target@example.com",
           isEnabled: true
         })
       }),
@@ -326,6 +327,224 @@ describe("master data governance write API", () => {
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: "权限不足" });
+  });
+
+  it("creates people with normalized login email", async () => {
+    const runBindings: unknown[][] = [];
+    const response = await createMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Login Admin",
+          alias: null,
+          roles: ["admin"],
+          loginEmail: "  New.Admin@Example.COM  ",
+          isEnabled: true
+        })
+      }),
+      env: writeMockEnv({ onRunBindings: (values) => runBindings.push(values) }),
+      params: {},
+      actor: adminActor
+    });
+
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { data: { login_email: string } };
+    expect(body.data.login_email).toBe("new.admin@example.com");
+    expect(runBindings.flat()).toContain("new.admin@example.com");
+  });
+
+  it("rejects login email changes without people role management permission", async () => {
+    const existingPerson = {
+      id: "person_target",
+      name: "Target",
+      alias: "old",
+      roles_json: "[\"finance_entry\"]",
+      is_enabled: 1,
+      login_email: "target@example.com",
+      access_subject: null,
+      last_login_at: null,
+      created_at: "2026-04-25T00:00:00.000Z",
+      referenceCount: 0
+    };
+
+    const response = await updateMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people/person_target", {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: "Target",
+          alias: "old",
+          roles: ["finance_entry"],
+          loginEmail: "changed@example.com",
+          isEnabled: true
+        })
+      }),
+      env: writeMockEnv({ firstRows: [existingPerson] }),
+      params: { id: "person_target" },
+      actor: financeManagerActor
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "权限不足" });
+  });
+
+  it("lets master data writers update person fields when login email and roles are retained", async () => {
+    const existingPerson = {
+      id: "person_entry",
+      name: "Entry",
+      alias: "old",
+      roles_json: "[\"finance_entry\"]",
+      is_enabled: 1,
+      login_email: "entry@example.com",
+      access_subject: null,
+      last_login_at: null,
+      created_at: "2026-04-25T00:00:00.000Z",
+      referenceCount: 0
+    };
+
+    const response = await updateMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people/person_entry", {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: "Entry Renamed",
+          alias: "new",
+          roles: ["finance_entry"],
+          loginEmail: "entry@example.com",
+          isEnabled: false
+        })
+      }),
+      env: writeMockEnv({ firstRows: [existingPerson, existingPerson] }),
+      params: { id: "person_entry" },
+      actor: financeManagerActor
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it("rejects clearing the current actor login email", async () => {
+    const existingAdmin = {
+      id: "person_admin",
+      name: "Admin",
+      alias: null,
+      roles_json: "[\"admin\"]",
+      is_enabled: 1,
+      login_email: "admin@example.com",
+      access_subject: null,
+      last_login_at: null,
+      created_at: "2026-04-25T00:00:00.000Z",
+      referenceCount: 0
+    };
+
+    const response = await updateMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people/person_admin", {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: "Admin",
+          alias: null,
+          roles: ["admin"],
+          loginEmail: "",
+          isEnabled: true
+        })
+      }),
+      env: writeMockEnv({ firstRows: [existingAdmin] }),
+      params: { id: "person_admin" },
+      actor: adminActor
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "不能清空当前登录人的登录邮箱" });
+  });
+
+  it("rejects disabling the current actor", async () => {
+    const existingAdmin = {
+      id: "person_admin",
+      name: "Admin",
+      alias: null,
+      roles_json: "[\"admin\"]",
+      is_enabled: 1,
+      login_email: "admin@example.com",
+      access_subject: null,
+      last_login_at: null,
+      created_at: "2026-04-25T00:00:00.000Z",
+      referenceCount: 0
+    };
+
+    const response = await updateMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people/person_admin", {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: "Admin",
+          alias: null,
+          roles: ["admin"],
+          loginEmail: "admin@example.com",
+          isEnabled: false
+        })
+      }),
+      env: writeMockEnv({ firstRows: [existingAdmin] }),
+      params: { id: "person_admin" },
+      actor: adminActor
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "不能停用当前登录人" });
+  });
+
+  it("rejects removing the last enabled login admin", async () => {
+    const existingAdmin = {
+      id: "person_admin_target",
+      name: "Admin Target",
+      alias: null,
+      roles_json: "[\"admin\"]",
+      is_enabled: 1,
+      login_email: "target@example.com",
+      access_subject: null,
+      last_login_at: null,
+      created_at: "2026-04-25T00:00:00.000Z",
+      referenceCount: 0
+    };
+
+    const response = await updateMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people/person_admin_target", {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: "Admin Target",
+          alias: null,
+          roles: ["finance_manager"],
+          loginEmail: "target@example.com",
+          isEnabled: true
+        })
+      }),
+      env: writeMockEnv({ firstRows: [existingAdmin, { count: 0 }] }),
+      params: { id: "person_admin_target" },
+      actor: adminActor
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "系统至少需要保留一个可登录管理员" });
+  });
+
+  it("returns a stable error for duplicate login email", async () => {
+    const response = await createMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Duplicate",
+          alias: null,
+          roles: ["finance_entry"],
+          loginEmail: "used@example.com",
+          isEnabled: true
+        })
+      }),
+      env: writeMockEnv({
+        onRunBindings: () => {
+          throw new Error("D1_ERROR: UNIQUE constraint failed: index 'idx_people_login_email'");
+        }
+      }),
+      params: {},
+      actor: adminActor
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "登录邮箱已绑定其他人员" });
   });
 
   it("creates people with actor audit", async () => {
@@ -390,6 +609,7 @@ describe("master data governance write API", () => {
           name: "Admin Target Renamed",
           alias: "new",
           roles: ["admin"],
+          loginEmail: "target@example.com",
           isEnabled: true
         })
       }),
@@ -423,6 +643,7 @@ describe("master data governance write API", () => {
           name: "Entry Renamed",
           alias: "new",
           roles: ["finance_entry"],
+          loginEmail: "entry@example.com",
           isEnabled: false
         })
       }),
@@ -456,6 +677,7 @@ describe("master data governance write API", () => {
           name: "Admin Target",
           alias: "old",
           roles: ["finance_manager"],
+          loginEmail: "target@example.com",
           isEnabled: true
         })
       }),

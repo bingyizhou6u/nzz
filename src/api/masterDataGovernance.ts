@@ -94,13 +94,15 @@ export const createMasterDataPerson: Handler = async ({ request, env, actor: con
     const repository = repo(env);
     const actor = requireWriteActor(contextActor, body);
     const roles = personRoles(body);
+    const normalizedLoginEmail = loginEmail(body);
     assertCanManageRoleChanges(actor, [], roles);
+    if (normalizedLoginEmail) assertCan(actor, "masterData.managePeopleRoles");
     const person = await repository.createPerson({
       name: requiredText(body, "name"),
       alias: optionalText(body, "alias"),
       roles,
       isEnabled: booleanField(body, "isEnabled", true),
-      loginEmail: null
+      loginEmail: normalizedLoginEmail
     });
     await auditRepo(env).record({
       ...auditFieldsForRequest(actor, request),
@@ -126,14 +128,20 @@ export const updateMasterDataPerson: Handler = async ({ request, env, params, ac
     const before = await repository.getPerson(id);
     if (!before) throw new Error("person not found");
     const roles = personRoles(body);
-    assertCanManageRoleChanges(actor, rolesFromJson(before.roles_json), roles);
-    const person = await repository.updatePerson(id, {
+    const normalizedLoginEmail = loginEmail(body);
+    const input = {
       name: requiredText(body, "name"),
       alias: optionalText(body, "alias"),
       roles,
       isEnabled: booleanField(body, "isEnabled", true),
-      loginEmail: before.login_email ?? null
-    });
+      loginEmail: normalizedLoginEmail
+    };
+    assertCanManageRoleChanges(actor, rolesFromJson(before.roles_json), roles);
+    if (loginEmailsDiffer(before.login_email, input.loginEmail)) {
+      assertCan(actor, "masterData.managePeopleRoles");
+    }
+    await assertPersonIdentityUpdateAllowed(repository, actor, before, input);
+    const person = await repository.updatePerson(id, input);
     await auditRepo(env).record({
       ...auditFieldsForRequest(actor, request),
       action: statusAction("person", before.is_enabled, person.is_enabled),
@@ -412,7 +420,11 @@ function errorResponse(error: unknown) {
 }
 
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Request failed";
+  const message = error instanceof Error ? error.message : "Request failed";
+  if (message.toLowerCase().includes("idx_people_login_email") || message.toLowerCase().includes("unique constraint")) {
+    return "登录邮箱已绑定其他人员";
+  }
+  return message;
 }
 
 function requireWriteActor(actor: AuthenticatedActor | null, body: Record<string, unknown>) {
@@ -436,6 +448,24 @@ function assertCanManageRoleChanges(
 ) {
   if (roleSetsDiffer(beforeRoles, afterRoles)) {
     assertCan(actor, "masterData.managePeopleRoles");
+  }
+}
+
+async function assertPersonIdentityUpdateAllowed(
+  repository: MasterDataGovernanceRepository,
+  actor: AuthenticatedActor,
+  before: { id: string; is_enabled: number; login_email: string | null; roles_json: string },
+  after: { isEnabled: boolean; loginEmail: string | null; roles: PersonRole[] }
+) {
+  if (before.id === actor.personId && !after.isEnabled) {
+    throw new Error("不能停用当前登录人");
+  }
+  if (before.id === actor.personId && hasLoginEmail(before.login_email) && !hasLoginEmail(after.loginEmail)) {
+    throw new Error("不能清空当前登录人的登录邮箱");
+  }
+  if (isLoginAdmin(before) && !requestedLoginAdmin(after)) {
+    const otherAdmins = await repository.countOtherEnabledLoginAdmins(before.id);
+    if (otherAdmins === 0) throw new Error("系统至少需要保留一个可登录管理员");
   }
 }
 
@@ -482,6 +512,32 @@ function optionalText(body: Record<string, unknown>, key: string) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function loginEmail(body: Record<string, unknown>): string | null {
+  const value = body.loginEmail;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return null;
+  const [local, domain, extra] = trimmed.split("@");
+  if (!local || !domain || extra !== undefined) throw new Error("登录邮箱格式无效");
+  return trimmed;
+}
+
+function loginEmailsDiffer(before: string | null, after: string | null) {
+  return (before ?? "").trim().toLowerCase() !== (after ?? "").trim().toLowerCase();
+}
+
+function hasLoginEmail(value: string | null) {
+  return Boolean(value?.trim());
+}
+
+function isLoginAdmin(input: { is_enabled: number; login_email: string | null; roles_json: string }) {
+  return input.is_enabled === 1 && hasLoginEmail(input.login_email) && rolesFromJson(input.roles_json).includes("admin");
+}
+
+function requestedLoginAdmin(input: { isEnabled: boolean; loginEmail: string | null; roles: PersonRole[] }) {
+  return input.isEnabled && hasLoginEmail(input.loginEmail) && input.roles.includes("admin");
 }
 
 function normalizeCode(value: string) {
