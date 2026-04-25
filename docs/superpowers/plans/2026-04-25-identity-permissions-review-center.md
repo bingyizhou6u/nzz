@@ -244,7 +244,7 @@ ALTER TABLE people ADD COLUMN access_subject TEXT;
 ALTER TABLE people ADD COLUMN last_login_at TEXT;
 
 CREATE UNIQUE INDEX idx_people_login_email
-  ON people(login_email)
+  ON people(lower(login_email))
   WHERE login_email IS NOT NULL;
 
 ALTER TABLE audit_logs ADD COLUMN actor_person_id TEXT;
