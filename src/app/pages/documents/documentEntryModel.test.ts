@@ -89,9 +89,12 @@ describe("document entry model", () => {
     ]);
   });
 
-  it("adds original document selection for correction and reversal actions", () => {
+  it("adds original document selection for correction actions", () => {
     expect(getVisibleFieldKeys("project_income", "correction")[0]).toBe("originalDocumentId");
-    expect(getVisibleFieldKeys("project_income", "reversal")[0]).toBe("originalDocumentId");
+  });
+
+  it("limits reversal entry fields to the original document and summary", () => {
+    expect(getVisibleFieldKeys("project_income", "reversal")).toEqual(["originalDocumentId", "summary"]);
   });
 
   it("filters merchants by selected project", () => {
@@ -179,6 +182,42 @@ describe("document entry model", () => {
     expect(errors.filter((error) => error.includes("原单据"))).toHaveLength(1);
   });
 
+  it("requires original loan documents for normal loan settlement drafts", () => {
+    const loanRepaymentErrors = validateDocumentForm(
+      {
+        ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),
+        documentType: "loan_repayment",
+        actionType: "normal",
+        operatorPersonId: "person_ops",
+        borrowerPersonId: "person_ops",
+        accountId: "acct_company_aed",
+        currencyCode: "AED",
+        amountMajor: "20",
+        summary: "Repay loan"
+      },
+      options,
+      "person_ops"
+    );
+    const loanWriteoffErrors = validateDocumentForm(
+      {
+        ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),
+        documentType: "loan_writeoff",
+        actionType: "normal",
+        operatorPersonId: "person_ops",
+        borrowerPersonId: "person_ops",
+        categoryId: "cat_expense",
+        currencyCode: "AED",
+        amountMajor: "20",
+        summary: "Write off loan"
+      },
+      options,
+      "person_ops"
+    );
+
+    expect(loanRepaymentErrors).toContain("请选择原单据");
+    expect(loanWriteoffErrors).toContain("请选择原单据");
+  });
+
   it("builds project income payload using current actor person id", () => {
     const payload = buildDocumentPayload(
       {
@@ -220,6 +259,32 @@ describe("document entry model", () => {
           usdtAmountMinor: 3284
         }
       ]
+    });
+  });
+
+  it("builds reversal payloads without requiring amount lines", () => {
+    const payload = buildDocumentPayload(
+      {
+        ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),
+        documentType: "project_income",
+        actionType: "reversal",
+        businessDate: "2026-04-24",
+        period: "2026-04",
+        originalDocumentId: "doc_original",
+        amountMajor: "",
+        summary: "Reverse original document"
+      },
+      "person_ops"
+    );
+
+    expect(payload).toEqual({
+      documentType: "project_income",
+      actionType: "reversal",
+      businessDate: "2026-04-24",
+      period: "2026-04",
+      originalDocumentId: "doc_original",
+      summary: "Reverse original document",
+      createdBy: "person_ops"
     });
   });
 

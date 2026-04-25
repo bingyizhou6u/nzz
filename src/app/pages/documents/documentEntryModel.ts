@@ -46,6 +46,13 @@ export function isOriginalDocumentRequired(actionType: ActionType) {
   return actionType === "correction" || actionType === "reversal";
 }
 
+export function isOriginalDocumentFieldRequired(documentType: DocumentType, actionType: ActionType) {
+  return (
+    isOriginalDocumentRequired(actionType) ||
+    (actionType === "normal" && (documentType === "loan_repayment" || documentType === "loan_writeoff"))
+  );
+}
+
 const baseFieldsByType: Record<DocumentType, DocumentFieldKey[]> = {
   project_income: [
     "operatorPersonId",
@@ -139,6 +146,8 @@ const baseFieldsByType: Record<DocumentType, DocumentFieldKey[]> = {
 };
 
 export function getVisibleFieldKeys(documentType: DocumentType, actionType: ActionType): DocumentFieldKey[] {
+  if (actionType === "reversal") return ["originalDocumentId", "summary"];
+
   const fields = baseFieldsByType[documentType];
   if (isOriginalDocumentRequired(actionType) && !fields.includes("originalDocumentId")) {
     return ["originalDocumentId", ...fields];
@@ -221,7 +230,9 @@ export function validateDocumentForm(
   if (!currentActorId.trim()) errors.push("请选择当前操作人");
   if (options.people.length === 0) errors.push("请先到基础资料维护人员");
   if (options.currencies.length === 0) errors.push("请先到基础资料维护币种");
-  if (isOriginalDocumentRequired(form.actionType) && !form.originalDocumentId.trim()) errors.push("请选择原单据");
+  if (isOriginalDocumentFieldRequired(form.documentType, form.actionType) && !form.originalDocumentId.trim()) {
+    errors.push("请选择原单据");
+  }
   for (const field of getVisibleFieldKeys(form.documentType, form.actionType)) {
     if (field === "merchantId" && form.documentType === "petty_cash_reimbursement") continue;
     if (field === "operatorPersonId" && form.documentType === "petty_cash_reimbursement") continue;
@@ -249,6 +260,18 @@ export function validateDocumentForm(
 }
 
 export function buildDocumentPayload(form: DocumentEntryForm, currentActorId: string) {
+  if (form.actionType === "reversal") {
+    return {
+      documentType: form.documentType,
+      actionType: form.actionType,
+      businessDate: form.businessDate,
+      period: form.period,
+      originalDocumentId: form.originalDocumentId.trim(),
+      summary: form.summary.trim(),
+      createdBy: currentActorId.trim()
+    };
+  }
+
   const line: Record<string, unknown> = {
     lineType: "main",
     currencyCode: form.currencyCode.trim().toUpperCase(),

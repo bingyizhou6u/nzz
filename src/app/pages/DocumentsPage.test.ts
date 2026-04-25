@@ -11,6 +11,8 @@ import {
   isLineAccountRequired,
   isSelectedOriginalDocumentValid,
   originalDocumentQueryType,
+  supportedDraftActionTypes,
+  supportedDraftDocumentTypes,
   workflowActionBody
 } from "./DocumentsPage";
 
@@ -40,6 +42,21 @@ describe("document date defaults", () => {
     expect(isOriginalDocumentRequired("reversal")).toBe(true);
     expect(isOriginalDocumentRequired("normal")).toBe(false);
     expect(isOriginalDocumentRequired("repost")).toBe(false);
+  });
+
+  it("exposes only workflow-supported document and action choices for new drafts", () => {
+    expect(supportedDraftDocumentTypes).toEqual([
+      "project_income",
+      "exchange",
+      "account_transfer",
+      "petty_cash_issue",
+      "petty_cash_return",
+      "petty_cash_reimbursement",
+      "loan_out",
+      "loan_repayment",
+      "loan_writeoff"
+    ]);
+    expect(supportedDraftActionTypes).toEqual(["normal", "reversal"]);
   });
 
   it("does not require a line account for loan writeoffs", () => {

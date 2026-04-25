@@ -10,7 +10,7 @@ import {
   categoryOptionsForDocumentType,
   companyAccounts,
   getVisibleFieldKeys,
-  isOriginalDocumentRequired,
+  isOriginalDocumentFieldRequired,
   merchantOptionsForProject,
   pettyCashAccountsForPerson
 } from "./documentEntryModel";
@@ -91,7 +91,7 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
           getValue={(document) => document.id}
           getLabel={originalDocumentLabel}
           onChange={(value) => updateField("originalDocumentId", value)}
-          required={isOriginalDocumentRequired(form.actionType)}
+          required={isOriginalDocumentFieldRequired(form.documentType, form.actionType)}
         />
       ) : null}
 

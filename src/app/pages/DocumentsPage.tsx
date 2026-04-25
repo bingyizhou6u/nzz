@@ -33,7 +33,7 @@ interface DocumentListItem {
 
 type WorkflowAction = "submit" | "approve" | "reject";
 
-const documentTypes = [
+export const supportedDraftDocumentTypes = [
   "project_income",
   "exchange",
   "account_transfer",
@@ -42,8 +42,7 @@ const documentTypes = [
   "petty_cash_reimbursement",
   "loan_out",
   "loan_repayment",
-  "loan_writeoff",
-  "manual_adjustment"
+  "loan_writeoff"
 ] as const satisfies readonly DocumentType[];
 
 const documentTypeLabels: Record<DocumentType, string> = {
@@ -59,7 +58,7 @@ const documentTypeLabels: Record<DocumentType, string> = {
   manual_adjustment: "手工调整"
 };
 
-const actionTypes = ["normal", "correction", "reversal", "repost"] as const satisfies readonly ActionType[];
+export const supportedDraftActionTypes = ["normal", "reversal"] as const satisfies readonly ActionType[];
 
 const actionTypeLabels: Record<ActionType, string> = {
   normal: "正常",
@@ -456,7 +455,7 @@ export function DocumentsPage() {
                 }))
               }
             >
-              {documentTypes.map((documentType) => (
+              {supportedDraftDocumentTypes.map((documentType) => (
                 <option key={documentType} value={documentType}>
                   {documentTypeLabels[documentType]}
                 </option>
@@ -476,7 +475,7 @@ export function DocumentsPage() {
                 }))
               }
             >
-              {actionTypes.map((actionType) => (
+              {supportedDraftActionTypes.map((actionType) => (
                 <option key={actionType} value={actionType}>
                   {actionTypeLabels[actionType]}
                 </option>
