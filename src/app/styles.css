@@ -338,6 +338,80 @@ tbody tr:last-child td {
   color: #596272;
 }
 
+.status-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border: 1px solid #d9dde3;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #344054;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status-tag.ok {
+  border-color: #b8dfd1;
+  background: #e4f4ef;
+  color: #116149;
+}
+
+.status-tag.warning {
+  border-color: #f6d889;
+  background: #fff4d6;
+  color: #8a5a00;
+}
+
+.status-tag.danger {
+  border-color: #f2b8b5;
+  background: #fdeceb;
+  color: #b42318;
+}
+
+.status-tag.muted {
+  border-color: #d9dde3;
+  background: #eef0f3;
+  color: #596272;
+}
+
+.amount-cell {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 6px;
+  width: 100%;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.amount-cell span {
+  color: #667085;
+}
+
+.empty-state {
+  display: grid;
+  gap: 4px;
+  padding: 24px;
+  color: #667085;
+  text-align: center;
+}
+
+.empty-state strong {
+  color: #17202a;
+}
+
+.section-title {
+  display: grid;
+  gap: 4px;
+}
+
+.section-title p {
+  color: #667085;
+  font-size: 13px;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -417,15 +491,37 @@ textarea {
 
 .notice {
   margin: 14px 16px 0;
+  border: 1px solid #d9dde3;
   border-radius: 6px;
+  background: #ffffff;
+  color: #344054;
   padding: 10px 12px;
   font-size: 14px;
 }
 
+.notice.ok {
+  border-color: #b8dfd1;
+  background: #eef8f4;
+  color: #116149;
+}
+
+.notice.warning {
+  border-color: #f6d889;
+  background: #fff8e5;
+  color: #8a5a00;
+}
+
+.notice.danger,
 .notice.error {
   border: 1px solid #f2b8b5;
   background: #fff4f2;
   color: #b42318;
+}
+
+.notice.muted {
+  border-color: #d9dde3;
+  background: #f2f4f7;
+  color: #596272;
 }
 
 .workspace-placeholder {
