@@ -62,6 +62,15 @@ export interface DocumentSummaryRow {
   created_at: string;
 }
 
+export interface OriginalDocumentOptionRow {
+  id: string;
+  document_no: string;
+  document_type: DocumentType;
+  business_date: string;
+  period: string;
+  summary: string;
+}
+
 export interface DocumentDetailRow extends DocumentSummaryRow {
   operator_person_id: string | null;
   project_id: string | null;
@@ -255,6 +264,33 @@ export class DocumentRepository {
         ORDER BY business_date DESC, created_at DESC
         LIMIT 100
       `)
+    );
+  }
+
+  listOriginalDocumentOptions(input: { documentType?: DocumentType | null } = {}): Promise<OriginalDocumentOptionRow[]> {
+    const documentType = input.documentType?.trim() || null;
+    const typeFilter = documentType ? "AND d.document_type = ?" : "";
+    const bindings = documentType ? [documentType] : [];
+
+    return all<OriginalDocumentOptionRow>(
+      this.db
+        .prepare(`
+          SELECT d.id, d.document_no, d.document_type, d.business_date, d.period, d.summary
+          FROM documents d
+          WHERE d.status = 'approved'
+            AND d.action_type != 'reversal'
+            ${typeFilter}
+            AND NOT EXISTS (
+              SELECT 1
+              FROM documents reversal
+              WHERE reversal.original_document_id = d.id
+                AND reversal.action_type = 'reversal'
+                AND reversal.status = 'approved'
+            )
+          ORDER BY d.business_date DESC, d.created_at DESC, d.id
+          LIMIT 100
+        `)
+        .bind(...bindings)
     );
   }
 

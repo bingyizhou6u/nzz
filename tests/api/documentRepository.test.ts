@@ -1559,4 +1559,27 @@ describe("DocumentRepository", () => {
       ["loan_item_a", "loan_item_b", "doc_original", "doc_original"]
     ]);
   });
+
+  it("lists approved original document options and excludes approved reversals", async () => {
+    let sql = "";
+    let boundValues: unknown[] = [];
+    const repo = new DocumentRepository(
+      mockDb({
+        onSql: (value) => (sql = value),
+        onBind: (values) => (boundValues = values)
+      })
+    );
+
+    await repo.listOriginalDocumentOptions({ documentType: "project_income" });
+
+    const normalized = sql.replace(/\s+/g, " ").toLowerCase();
+    expect(normalized).toContain("from documents d");
+    expect(normalized).toContain("d.status = 'approved'");
+    expect(normalized).toContain("d.action_type != 'reversal'");
+    expect(normalized).toContain("not exists");
+    expect(normalized).toContain("reversal.original_document_id = d.id");
+    expect(normalized).toContain("reversal.status = 'approved'");
+    expect(normalized).toContain("d.document_type = ?");
+    expect(boundValues).toEqual(["project_income"]);
+  });
 });

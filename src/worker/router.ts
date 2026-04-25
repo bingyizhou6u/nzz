@@ -6,6 +6,7 @@ import {
   rejectDocument,
   submitDocument
 } from "../api/documents";
+import { listDocumentEntryOptions, listOriginalDocuments } from "../api/documentEntryOptions";
 import { createProject, listCurrencies } from "../api/masterData";
 import {
   accountBalances,
@@ -74,6 +75,8 @@ const routes: Route[] = [
   defineRoute("GET", "/api/reports/project-profit-loss", projectProfitLoss),
   defineRoute("GET", "/api/reports/monthly-operating", monthlyOperatingSummary),
   defineRoute("GET", "/api/reports/exception-checks", exceptionChecks),
+  defineRoute("GET", "/api/document-entry/options", listDocumentEntryOptions),
+  defineRoute("GET", "/api/document-entry/original-documents", listOriginalDocuments),
   defineRoute("GET", "/api/documents", listDocuments),
   defineRoute("GET", "/api/documents/:id", getDocument),
   defineRoute("POST", "/api/documents", createDocument),
