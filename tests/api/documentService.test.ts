@@ -4,6 +4,14 @@ import type { DocumentDetailRow, DocumentLineRow, LotRow, PendingCostMatchRow } 
 
 type DocumentRepoMock = ConstructorParameters<typeof DocumentService>[0];
 type AuditRepoMock = ConstructorParameters<typeof DocumentService>[1];
+type MasterDataRepoMock = {
+  getPeopleByIds: ReturnType<typeof vi.fn>;
+  getProjectsByIds: ReturnType<typeof vi.fn>;
+  getMerchantsByIds: ReturnType<typeof vi.fn>;
+  getAccountsByIds: ReturnType<typeof vi.fn>;
+  getCategoriesByIds: ReturnType<typeof vi.fn>;
+  getCurrenciesByCodes: ReturnType<typeof vi.fn>;
+};
 type AtomicDocumentRepoMock = DocumentRepoMock & {
   createDraft: ReturnType<typeof vi.fn>;
   listOpenLotsForAccount: ReturnType<typeof vi.fn>;
@@ -38,10 +46,10 @@ function documentRow(overrides: Partial<DocumentDetailRow> = {}): DocumentDetail
     status: "draft",
     created_by: "creator_1",
     created_at: "2026-04-24T10:00:00.000Z",
-    operator_person_id: null,
-    project_id: null,
-    merchant_id: null,
-    category_id: null,
+    operator_person_id: "person_bob",
+    project_id: "proj_1",
+    merchant_id: "merchant_1",
+    category_id: "cat_income",
     original_document_id: null,
     reviewed_by: null,
     reviewed_at: null,
@@ -123,8 +131,185 @@ function createMocks(overrides: Partial<AtomicDocumentRepoMock> = {}) {
     record: vi.fn(async () => undefined),
     prepareRecordWhen: vi.fn(() => ({ statement: "audit" }) as unknown as D1PreparedStatement)
   } satisfies AtomicAuditRepoMock;
+  const masterData = {
+    getPeopleByIds: vi.fn(async () => [
+      { id: "creator_1", name: "Creator", alias: null, roles_json: "[]", is_enabled: 1 },
+      { id: "submitter_1", name: "Submitter", alias: null, roles_json: "[]", is_enabled: 1 },
+      { id: "reviewer_1", name: "Reviewer", alias: null, roles_json: "[]", is_enabled: 1 },
+      { id: "person_bob", name: "Bob", alias: null, roles_json: "[]", is_enabled: 1 },
+      { id: "person_borrower", name: "Borrower", alias: null, roles_json: "[]", is_enabled: 1 },
+      { id: "person_1", name: "Person 1", alias: null, roles_json: "[]", is_enabled: 1 },
+      { id: "person_2", name: "Person 2", alias: null, roles_json: "[]", is_enabled: 1 }
+    ]),
+    getProjectsByIds: vi.fn(async () => [
+      { id: "proj_1", code: "P1", name: "Project", owner_person_id: null, status: "active" }
+    ]),
+    getMerchantsByIds: vi.fn(async () => [
+      {
+        id: "merchant_1",
+        code: "M1",
+        name: "Merchant",
+        project_id: "proj_1",
+        merchant_type: "site",
+        status: "active"
+      }
+    ]),
+    getAccountsByIds: vi.fn(async () => [
+      {
+        id: "acct_usdt",
+        name: "USDT Wallet",
+        account_type: "usdt_wallet",
+        currency_code: "USDT",
+        owner_person_id: null,
+        is_company_account: 1,
+        allow_negative: 0,
+        status: "active"
+      },
+      {
+        id: "acct_usdt_main",
+        name: "USDT Main",
+        account_type: "usdt_wallet",
+        currency_code: "USDT",
+        owner_person_id: null,
+        is_company_account: 1,
+        allow_negative: 0,
+        status: "active"
+      },
+      {
+        id: "acct_usdt_backup",
+        name: "USDT Backup",
+        account_type: "usdt_wallet",
+        currency_code: "USDT",
+        owner_person_id: null,
+        is_company_account: 1,
+        allow_negative: 0,
+        status: "active"
+      },
+      {
+        id: "acct_aed_reserve",
+        name: "AED Reserve",
+        account_type: "currency_reserve",
+        currency_code: "AED",
+        owner_person_id: null,
+        is_company_account: 1,
+        allow_negative: 0,
+        status: "active"
+      },
+      {
+        id: "acct_aed_bank",
+        name: "AED Bank",
+        account_type: "currency_reserve",
+        currency_code: "AED",
+        owner_person_id: null,
+        is_company_account: 1,
+        allow_negative: 0,
+        status: "active"
+      },
+      {
+        id: "acct_aed",
+        name: "AED Account",
+        account_type: "currency_reserve",
+        currency_code: "AED",
+        owner_person_id: null,
+        is_company_account: 1,
+        allow_negative: 0,
+        status: "active"
+      },
+      {
+        id: "acct_aed_cash",
+        name: "AED Cash",
+        account_type: "currency_reserve",
+        currency_code: "AED",
+        owner_person_id: null,
+        is_company_account: 1,
+        allow_negative: 0,
+        status: "active"
+      },
+      {
+        id: "acct_petty_bob",
+        name: "Bob AED Petty",
+        account_type: "petty_cash",
+        currency_code: "AED",
+        owner_person_id: "person_bob",
+        is_company_account: 0,
+        allow_negative: 1,
+        status: "active"
+      }
+    ]),
+    getCategoriesByIds: vi.fn(async () => [
+      {
+        id: "cat_income",
+        name: "Income",
+        parent_id: null,
+        category_type: "income",
+        direction: "in",
+        affects_expense_report: 0,
+        affects_project_report: 1,
+        requires_merchant: 1,
+        requires_person: 0,
+        requires_borrower: 0,
+        is_enabled: 1
+      },
+      {
+        id: "cat_exchange",
+        name: "Exchange",
+        parent_id: null,
+        category_type: "exchange",
+        direction: "in",
+        affects_expense_report: 0,
+        affects_project_report: 0,
+        requires_merchant: 0,
+        requires_person: 0,
+        requires_borrower: 0,
+        is_enabled: 1
+      },
+      {
+        id: "cat_loan",
+        name: "Loan",
+        parent_id: null,
+        category_type: "loan",
+        direction: "out",
+        affects_expense_report: 0,
+        affects_project_report: 0,
+        requires_merchant: 0,
+        requires_person: 0,
+        requires_borrower: 1,
+        is_enabled: 1
+      },
+      {
+        id: "cat_expense",
+        name: "Expense",
+        parent_id: null,
+        category_type: "expense",
+        direction: "out",
+        affects_expense_report: 1,
+        affects_project_report: 0,
+        requires_merchant: 0,
+        requires_person: 0,
+        requires_borrower: 0,
+        is_enabled: 1
+      },
+      {
+        id: "cat_bad_debt",
+        name: "Bad Debt",
+        parent_id: null,
+        category_type: "loss",
+        direction: "out",
+        affects_expense_report: 1,
+        affects_project_report: 0,
+        requires_merchant: 0,
+        requires_person: 0,
+        requires_borrower: 1,
+        is_enabled: 1
+      }
+    ]),
+    getCurrenciesByCodes: vi.fn(async () => [
+      { code: "USDT", name: "Tether", minor_units: 2, is_enabled: 1 },
+      { code: "AED", name: "Dirham", minor_units: 2, is_enabled: 1 }
+    ])
+  } satisfies MasterDataRepoMock;
 
-  return { repo, audit, service: new DocumentService(repo, audit) };
+  return { repo, audit, masterData, service: new DocumentService(repo, audit, masterData) };
 }
 
 describe("DocumentService", () => {
@@ -177,7 +362,7 @@ describe("DocumentService", () => {
       period: "2026-04",
       operatorPersonId: "",
       projectId: "  proj_1  ",
-      merchantId: undefined,
+      merchantId: "merchant_1",
       categoryId: "cat_income",
       originalDocumentId: " ",
       summary: "Merchant income",
@@ -202,7 +387,7 @@ describe("DocumentService", () => {
       period: "2026-04",
       operatorPersonId: null,
       projectId: "proj_1",
-      merchantId: null,
+      merchantId: "merchant_1",
       categoryId: "cat_income",
       originalDocumentId: null,
       summary: "Merchant income",
@@ -230,6 +415,134 @@ describe("DocumentService", () => {
       entityId: "doc_1",
       after: { document: { id: "doc_1", documentNo: "docno_1", status: "draft" } }
     });
+  });
+
+  it("keeps header-only draft creation flexible", async () => {
+    const { repo, masterData, service } = createMocks();
+
+    await service.createDraft({
+      documentType: "project_income",
+      businessDate: "2026-04-24",
+      period: "2026-04",
+      summary: "Header draft",
+      createdBy: "creator_1"
+    });
+
+    expect(repo.createDraft).toHaveBeenCalled();
+    expect(masterData.getAccountsByIds).not.toHaveBeenCalled();
+  });
+
+  it("rejects draft creation when provided exchange lines are structurally invalid", async () => {
+    const { repo, service } = createMocks();
+
+    await expect(
+      service.createDraft({
+        documentType: "exchange",
+        businessDate: "2026-04-24",
+        period: "2026-04",
+        categoryId: "cat_exchange",
+        summary: "Exchange",
+        createdBy: "creator_1",
+        lines: [{ accountId: "acct_aed_reserve", currencyCode: "AED", amountMinor: 10000 }]
+      })
+    ).rejects.toThrow("必须选择对方账户");
+
+    expect(repo.createDraftWithLines).not.toHaveBeenCalled();
+  });
+
+  it("rejects submit when a draft is incomplete", async () => {
+    const { repo, service } = createMocks({
+      getDocument: vi.fn(async () => documentRow({ status: "draft", merchant_id: null })),
+      getDocumentLines: vi.fn(async () => [lineRow()])
+    });
+
+    await expect(service.submit("doc_1", "submitter_1")).rejects.toThrow("项目收入必须选择商户");
+
+    expect(repo.markSubmitted).not.toHaveBeenCalled();
+  });
+
+  it("rejects submit when referenced account is archived", async () => {
+    const { repo, masterData, service } = createMocks({
+      getDocument: vi.fn(async () =>
+        documentRow({
+          status: "draft",
+          operator_person_id: "person_bob",
+          project_id: "proj_1",
+          merchant_id: "merchant_1",
+          category_id: "cat_income"
+        })
+      ),
+      getDocumentLines: vi.fn(async () => [lineRow()])
+    });
+    masterData.getAccountsByIds.mockResolvedValueOnce([
+      {
+        id: "acct_usdt",
+        name: "Old USDT",
+        account_type: "usdt_wallet",
+        currency_code: "USDT",
+        owner_person_id: null,
+        is_company_account: 1,
+        allow_negative: 0,
+        status: "archived"
+      }
+    ]);
+
+    await expect(service.submit("doc_1", "submitter_1")).rejects.toThrow("账户必须是启用状态");
+
+    expect(repo.markSubmitted).not.toHaveBeenCalled();
+  });
+
+  it("rejects approve before posting when master data validation fails", async () => {
+    const { repo, masterData, service } = createMocks({
+      getDocument: vi.fn(async () =>
+        documentRow({
+          status: "pending",
+          operator_person_id: "person_bob",
+          project_id: "proj_1",
+          merchant_id: "merchant_1",
+          category_id: "cat_income"
+        })
+      ),
+      getDocumentLines: vi.fn(async () => [lineRow()])
+    });
+    masterData.getMerchantsByIds.mockResolvedValueOnce([
+      {
+        id: "merchant_1",
+        code: "M1",
+        name: "Merchant",
+        project_id: "proj_other",
+        merchant_type: "site",
+        status: "active"
+      }
+    ]);
+
+    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("商户必须属于所选项目");
+
+    expect(repo.approveWithPostings).not.toHaveBeenCalled();
+  });
+
+  it("approves reversal without checking historical master data active status", async () => {
+    const { repo, masterData, service } = createMocks({
+      getDocument: vi
+        .fn()
+        .mockResolvedValueOnce(
+          documentRow({
+            id: "doc_reversal",
+            status: "pending",
+            action_type: "reversal",
+            original_document_id: "doc_original"
+          })
+        )
+        .mockResolvedValueOnce(documentRow({ id: "doc_original", status: "approved" })),
+      listAccountEntriesForDocument: vi.fn(async () => [
+        { account_id: "acct_usdt", currency_code: "USDT", amount_minor: 10000 }
+      ])
+    });
+    masterData.getAccountsByIds.mockResolvedValueOnce([]);
+
+    await service.approve("doc_reversal", "reviewer_1");
+
+    expect(repo.approveWithPostings).toHaveBeenCalled();
   });
 
   it("submits draft documents", async () => {
@@ -353,7 +666,7 @@ describe("DocumentService", () => {
       getDocumentLines: vi.fn(async () => [lineRow()])
     });
 
-    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("Unsupported documentType: manual_adjustment");
+    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("单据类型暂不支持创建或审核");
 
     expect(repo.approveWithPostings).not.toHaveBeenCalled();
     expect(audit.prepareRecordWhen).not.toHaveBeenCalled();
@@ -361,7 +674,9 @@ describe("DocumentService", () => {
 
   it("approves exchange documents with lot creation effects", async () => {
     const { repo, service } = createMocks({
-      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "exchange" })),
+      getDocument: vi.fn(async () =>
+        documentRow({ status: "pending", document_type: "exchange", category_id: "cat_exchange" })
+      ),
       getDocumentLines: vi.fn(async () => [
         lineRow({
           account_id: "acct_aed_reserve",
@@ -415,7 +730,9 @@ describe("DocumentService", () => {
 
   it("approves petty cash reimbursements with staff lot reads and pending cost creations for unmatched amount", async () => {
     const { repo, service } = createMocks({
-      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "petty_cash_reimbursement" })),
+      getDocument: vi.fn(async () =>
+        documentRow({ status: "pending", document_type: "petty_cash_reimbursement", category_id: "cat_expense" })
+      ),
       getDocumentLines: vi.fn(async () => [
         lineRow({
           account_id: "acct_petty_bob",
@@ -573,7 +890,9 @@ describe("DocumentService", () => {
 
   it("rejects exchange approval without a USDT cost before approval writes", async () => {
     const { repo, service } = createMocks({
-      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "exchange" })),
+      getDocument: vi.fn(async () =>
+        documentRow({ status: "pending", document_type: "exchange", category_id: "cat_exchange" })
+      ),
       getDocumentLines: vi.fn(async () => [
         lineRow({
           account_id: "acct_aed_reserve",
@@ -585,14 +904,16 @@ describe("DocumentService", () => {
       ])
     });
 
-    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("line usdtAmountMinor is required for exchange");
+    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("必须填写 USDT 成本");
 
     expect(repo.approveWithPostings).not.toHaveBeenCalled();
   });
 
   it("rejects multi-line FIFO approvals before approval writes", async () => {
     const { repo, audit, service } = createMocks({
-      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "exchange" })),
+      getDocument: vi.fn(async () =>
+        documentRow({ status: "pending", document_type: "exchange", category_id: "cat_exchange" })
+      ),
       getDocumentLines: vi.fn(async () => [
         lineRow({
           account_id: "acct_aed_reserve",
@@ -613,7 +934,7 @@ describe("DocumentService", () => {
       ])
     });
 
-    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("exchange requires exactly one line");
+    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("当前单据类型必须只有一条明细");
 
     expect(repo.approveWithPostings).not.toHaveBeenCalled();
     expect(audit.prepareRecordWhen).not.toHaveBeenCalled();
@@ -625,7 +946,8 @@ describe("DocumentService", () => {
         documentRow({
           status: "pending",
           document_type: "loan_out",
-          business_date: "2026-04-25"
+          business_date: "2026-04-25",
+          category_id: "cat_loan"
         })
       ),
       getDocumentLines: vi.fn(async () => [
@@ -680,24 +1002,39 @@ describe("DocumentService", () => {
 
   it("allocates loan repayment to open loan items", async () => {
     const { repo, service } = createMocks({
-      getDocument: vi.fn(async () =>
-        documentRow({
-          id: "doc_repay",
-          status: "pending",
-          document_type: "loan_repayment",
-          business_date: "2026-04-25",
-          original_document_id: "doc_loan"
-        })
-      ),
-      getDocumentLines: vi.fn(async () => [
-        lineRow({
-          account_id: "acct_aed",
-          borrower_person_id: "person_borrower",
-          currency_code: "AED",
-          amount_minor: 100000,
-          usdt_amount_minor: null
-        })
-      ]),
+      getDocument: vi
+        .fn()
+        .mockResolvedValueOnce(
+          documentRow({
+            id: "doc_repay",
+            status: "pending",
+            document_type: "loan_repayment",
+            business_date: "2026-04-25",
+            original_document_id: "doc_loan"
+          })
+        )
+        .mockResolvedValueOnce(documentRow({ id: "doc_loan", status: "approved", document_type: "loan_out" })),
+      getDocumentLines: vi
+        .fn()
+        .mockResolvedValueOnce([
+          lineRow({
+            account_id: "acct_aed",
+            borrower_person_id: "person_borrower",
+            currency_code: "AED",
+            amount_minor: 100000,
+            usdt_amount_minor: null
+          })
+        ])
+        .mockResolvedValueOnce([
+          lineRow({
+            document_id: "doc_loan",
+            account_id: "acct_aed",
+            borrower_person_id: "person_borrower",
+            currency_code: "AED",
+            amount_minor: 367000,
+            usdt_amount_minor: 100000
+          })
+        ]),
       listOpenLoanItems: vi.fn(async () => [
         {
           id: "loan_item_1",
@@ -756,24 +1093,40 @@ describe("DocumentService", () => {
 
   it("approves loan writeoff with loan allocation effects and no account entries", async () => {
     const { repo, service } = createMocks({
-      getDocument: vi.fn(async () =>
-        documentRow({
-          id: "doc_writeoff",
-          status: "pending",
-          document_type: "loan_writeoff",
-          business_date: "2026-04-25",
-          category_id: "cat_bad_debt"
-        })
-      ),
-      getDocumentLines: vi.fn(async () => [
-        lineRow({
-          account_id: null,
-          borrower_person_id: "person_borrower",
-          currency_code: "AED",
-          amount_minor: 25000,
-          usdt_amount_minor: null
-        })
-      ]),
+      getDocument: vi
+        .fn()
+        .mockResolvedValueOnce(
+          documentRow({
+            id: "doc_writeoff",
+            status: "pending",
+            document_type: "loan_writeoff",
+            business_date: "2026-04-25",
+            category_id: "cat_bad_debt",
+            original_document_id: "doc_loan"
+          })
+        )
+        .mockResolvedValueOnce(documentRow({ id: "doc_loan", status: "approved", document_type: "loan_out" })),
+      getDocumentLines: vi
+        .fn()
+        .mockResolvedValueOnce([
+          lineRow({
+            account_id: null,
+            borrower_person_id: "person_borrower",
+            currency_code: "AED",
+            amount_minor: 25000,
+            usdt_amount_minor: null
+          })
+        ])
+        .mockResolvedValueOnce([
+          lineRow({
+            document_id: "doc_loan",
+            account_id: "acct_aed",
+            borrower_person_id: "person_borrower",
+            currency_code: "AED",
+            amount_minor: 100000,
+            usdt_amount_minor: 27000
+          })
+        ]),
       listOpenLoanItems: vi.fn(async () => [
         {
           id: "loan_item_1",
@@ -823,7 +1176,7 @@ describe("DocumentService", () => {
       ])
     });
 
-    await expect(service.approve("doc_writeoff", "reviewer_1")).rejects.toThrow("categoryId is required for loan_writeoff");
+    await expect(service.approve("doc_writeoff", "reviewer_1")).rejects.toThrow("必须选择科目");
 
     expect(repo.approveWithPostings).not.toHaveBeenCalled();
   });
@@ -834,7 +1187,8 @@ describe("DocumentService", () => {
         documentRow({
           status: "pending",
           document_type: documentType,
-          category_id: documentType === "loan_writeoff" ? "cat_bad_debt" : null
+          category_id: documentType === "loan_writeoff" ? "cat_bad_debt" : null,
+          original_document_id: "doc_loan"
         })
       ),
       getDocumentLines: vi.fn(async () => [
@@ -843,7 +1197,7 @@ describe("DocumentService", () => {
       ])
     });
 
-    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow(`${documentType} requires exactly one line`);
+    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("当前单据类型必须只有一条明细");
 
     expect(repo.listOpenLoanItems).not.toHaveBeenCalled();
     expect(repo.approveWithPostings).not.toHaveBeenCalled();
@@ -851,7 +1205,9 @@ describe("DocumentService", () => {
 
   it("rejects loan approvals when any line is missing borrower", async () => {
     const { repo, service } = createMocks({
-      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "loan_out" })),
+      getDocument: vi.fn(async () =>
+        documentRow({ status: "pending", document_type: "loan_out", category_id: "cat_loan" })
+      ),
       getDocumentLines: vi.fn(async () => [
         lineRow({ borrower_person_id: null, amount_minor: 5000, usdt_amount_minor: 5000 }),
         lineRow({ id: "line_2", line_no: 2, borrower_person_id: "person_1", amount_minor: 7000, usdt_amount_minor: 7000 })
@@ -871,7 +1227,8 @@ describe("DocumentService", () => {
           documentRow({
             status: "pending",
             document_type: documentType,
-            category_id: documentType === "loan_writeoff" ? "cat_bad_debt" : null
+            category_id: documentType === "loan_writeoff" ? "cat_bad_debt" : null,
+            original_document_id: "doc_loan"
           })
         ),
         getDocumentLines: vi.fn(async () => [
@@ -879,9 +1236,7 @@ describe("DocumentService", () => {
         ])
       });
 
-      await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow(
-        `borrowerPersonId is required for ${documentType}`
-      );
+      await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("必须选择借款人");
 
       expect(repo.approveWithPostings).not.toHaveBeenCalled();
     }
@@ -889,14 +1244,16 @@ describe("DocumentService", () => {
 
   it("rejects loan approvals with mixed borrowers", async () => {
     const { repo, service } = createMocks({
-      getDocument: vi.fn(async () => documentRow({ status: "pending", document_type: "loan_out" })),
+      getDocument: vi.fn(async () =>
+        documentRow({ status: "pending", document_type: "loan_out", category_id: "cat_loan" })
+      ),
       getDocumentLines: vi.fn(async () => [
         lineRow({ borrower_person_id: "person_1", amount_minor: 5000, usdt_amount_minor: 5000 }),
         lineRow({ id: "line_2", line_no: 2, borrower_person_id: "person_2", amount_minor: 7000, usdt_amount_minor: 7000 })
       ])
     });
 
-    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("loan_out requires one borrower");
+    await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("借款人必须与原借款单一致");
 
     expect(repo.approveWithPostings).not.toHaveBeenCalled();
   });
@@ -909,7 +1266,8 @@ describe("DocumentService", () => {
           documentRow({
             status: "pending",
             document_type: documentType,
-            category_id: documentType === "loan_writeoff" ? "cat_bad_debt" : null
+            category_id: documentType === "loan_writeoff" ? "cat_bad_debt" : null,
+            original_document_id: "doc_loan"
           })
         ),
         getDocumentLines: vi.fn(async () => [
@@ -918,7 +1276,7 @@ describe("DocumentService", () => {
         ])
       });
 
-      await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow(`${documentType} requires one borrower`);
+      await expect(service.approve("doc_1", "reviewer_1")).rejects.toThrow("当前单据类型必须只有一条明细");
 
       expect(repo.approveWithPostings).not.toHaveBeenCalled();
     }
@@ -1094,7 +1452,8 @@ describe("DocumentService", () => {
 
     expect(repo.getDocument).toHaveBeenCalledWith("doc_rev");
     expect(repo.getDocument).toHaveBeenCalledWith("doc_original");
-    expect(repo.getDocumentLines).not.toHaveBeenCalled();
+    expect(repo.getDocumentLines).toHaveBeenCalledWith("doc_rev");
+    expect(repo.getDocumentLines).toHaveBeenCalledWith("doc_original");
     expect(audit.prepareRecordWhen).toHaveBeenCalledWith(
       expect.any(Object),
       expect.objectContaining({
@@ -1434,7 +1793,7 @@ describe("DocumentService", () => {
         .mockResolvedValueOnce(documentRow({ id: "doc_original", status: "pending" }))
     });
 
-    await expect(service.approve("doc_rev", "reviewer_1")).rejects.toThrow("Original document must be approved before reversal");
+    await expect(service.approve("doc_rev", "reviewer_1")).rejects.toThrow("冲正必须关联已审核原单据");
     expect(repo.approveWithPostings).not.toHaveBeenCalled();
   });
 
@@ -1457,7 +1816,7 @@ describe("DocumentService", () => {
     });
 
     await expect(service.approve("doc_rev", "reviewer_1")).rejects.toThrow(
-      "Reversal document type must match original document type"
+      "冲正单据类型必须与原单据一致"
     );
     expect(repo.approveWithPostings).not.toHaveBeenCalled();
   });

@@ -12,6 +12,13 @@ import {
 import { planSafeFifoReversalEffects } from "../domain/fifoReversal";
 import { assertDocumentTransition, periodFromDate } from "../domain/documentWorkflow";
 import {
+  assertNoDocumentRuleViolations,
+  validateDocumentMasterData,
+  validateDocumentStructure,
+  type DocumentMasterDataSnapshot,
+  type DocumentRuleLine
+} from "../domain/documentRules";
+import {
   emptyLoanPostingEffects,
   planLoanOutEffects,
   planLoanReductionEffects,
@@ -31,6 +38,7 @@ import type {
   LotRow,
   PendingCostMatchRow
 } from "../repositories/documentRepository";
+import type { MasterDataRepository } from "../repositories/masterDataRepository";
 
 export interface CreateDraftRequest {
   documentType: DocumentType;
@@ -78,10 +86,21 @@ type DocumentWorkflowRepository = Pick<
 
 type DocumentAuditRepository = Pick<AuditLogRepository, "record" | "prepareRecordWhen">;
 
+type DocumentMasterDataRepository = Pick<
+  MasterDataRepository,
+  | "getPeopleByIds"
+  | "getProjectsByIds"
+  | "getMerchantsByIds"
+  | "getAccountsByIds"
+  | "getCategoriesByIds"
+  | "getCurrenciesByCodes"
+>;
+
 export class DocumentService {
   constructor(
     private readonly documents: DocumentWorkflowRepository,
-    private readonly auditLogs: DocumentAuditRepository
+    private readonly auditLogs: DocumentAuditRepository,
+    private readonly masterData: DocumentMasterDataRepository
   ) {}
 
   async createDraft(input: CreateDraftRequest) {
@@ -99,13 +118,14 @@ export class DocumentService {
       createdBy: input.createdBy
     };
 
-    const document =
-      Array.isArray(input.lines) && input.lines.length > 0
-        ? await this.documents.createDraftWithLines({
-            ...draftInput,
-            lines: normalizeDocumentLines(input.lines, { documentType: input.documentType })
-          })
-        : await this.documents.createDraft(draftInput);
+    let document: Awaited<ReturnType<DocumentWorkflowRepository["createDraft"]>>;
+    if (Array.isArray(input.lines) && input.lines.length > 0) {
+      const lines = normalizeDocumentLines(input.lines, { documentType: input.documentType });
+      this.validateDraftLineShape(input, lines);
+      document = await this.documents.createDraftWithLines({ ...draftInput, lines });
+    } else {
+      document = await this.documents.createDraft(draftInput);
+    }
 
     await this.auditLogs.record({
       actor: input.createdBy,
@@ -121,6 +141,7 @@ export class DocumentService {
   async submit(id: string, actor: string) {
     const document = await this.requireDocument(id);
     assertDocumentTransition(document.status, "pending", "submit");
+    await this.validatePersistedDocument(document, "submit");
 
     await this.documents.markSubmitted(id);
     await this.auditLogs.record({
@@ -154,6 +175,109 @@ export class DocumentService {
     });
   }
 
+  private validateDraftLineShape(input: CreateDraftRequest, lines: DocumentRuleLine[]) {
+    const violations = validateDocumentStructure({
+      stage: "draft",
+      document: {
+        documentType: input.documentType,
+        actionType: input.actionType ?? "normal",
+        operatorPersonId: nullableText(input.operatorPersonId),
+        projectId: nullableText(input.projectId),
+        merchantId: nullableText(input.merchantId),
+        categoryId: nullableText(input.categoryId),
+        originalDocumentId: nullableText(input.originalDocumentId),
+        summary: input.summary,
+        businessDate: input.businessDate,
+        period: input.period
+      },
+      lines
+    });
+
+    assertNoDocumentRuleViolations(
+      violations.filter(
+        (violation) =>
+          violation.field === "documentType" ||
+          violation.field === "actionType" ||
+          violation.field.startsWith("lines.")
+      )
+    );
+  }
+
+  private async validatePersistedDocument(document: DocumentDetailRow, stage: "submit" | "approve") {
+    const lines = await this.documents.getDocumentLines(document.id);
+    const ruleDocument = documentForRules(document);
+    const ruleLines = linesForRules(lines);
+
+    assertNoDocumentRuleViolations(validateDocumentStructure({ stage, document: ruleDocument, lines: ruleLines }));
+
+    const originalDocumentId = document.original_document_id?.trim() ?? "";
+    const originalDocument = originalDocumentId ? await this.requireDocument(originalDocumentId) : null;
+    const originalLines = originalDocument ? await this.documents.getDocumentLines(originalDocument.id) : [];
+    const masterData = await this.loadMasterDataSnapshot(document, lines, originalDocument, originalLines);
+
+    assertNoDocumentRuleViolations(
+      validateDocumentMasterData({
+        document: ruleDocument,
+        lines: ruleLines,
+        masterData,
+        originalDocument: originalDocument
+          ? {
+              id: originalDocument.id,
+              documentType: originalDocument.document_type,
+              status: originalDocument.status,
+              borrowerPersonId: firstBorrower(originalLines)
+            }
+          : null,
+        originalLines: linesForRules(originalLines)
+      })
+    );
+
+    return { lines, originalDocument };
+  }
+
+  private async loadMasterDataSnapshot(
+    document: DocumentDetailRow,
+    lines: DocumentLineRow[],
+    originalDocument: DocumentDetailRow | null,
+    originalLines: DocumentLineRow[]
+  ): Promise<DocumentMasterDataSnapshot> {
+    const allLines = document.action_type === "reversal" && originalDocument ? [] : lines;
+    const people = uniqueTextValues([
+      document.operator_person_id,
+      ...allLines.map((line) => line.person_id),
+      ...allLines.map((line) => line.borrower_person_id)
+    ]);
+    const projects = uniqueTextValues([document.project_id]);
+    const merchants = uniqueTextValues([document.merchant_id]);
+    const accounts = uniqueTextValues([
+      ...allLines.map((line) => line.account_id),
+      ...allLines.map((line) => line.counterparty_account_id)
+    ]);
+    const categories = uniqueTextValues([document.category_id]);
+    const currencies = uniqueTextValues([
+      ...allLines.map((line) => line.currency_code),
+      ...originalLines.map((line) => line.currency_code)
+    ]);
+
+    const [peopleRows, projectRows, merchantRows, accountRows, categoryRows, currencyRows] = await Promise.all([
+      this.masterData.getPeopleByIds(people),
+      this.masterData.getProjectsByIds(projects),
+      this.masterData.getMerchantsByIds(merchants),
+      this.masterData.getAccountsByIds(accounts),
+      this.masterData.getCategoriesByIds(categories),
+      this.masterData.getCurrenciesByCodes(currencies)
+    ]);
+
+    return {
+      people: mapById(peopleRows),
+      projects: mapById(projectRows),
+      merchants: mapById(merchantRows),
+      accounts: mapById(accountRows),
+      categories: mapById(categoryRows),
+      currencies: mapCurrencies(currencyRows)
+    };
+  }
+
   async approve(id: string, reviewer: string) {
     const document = await this.requireDocument(id);
     assertDocumentTransition(document.status, "approved", "approve");
@@ -164,12 +288,14 @@ export class DocumentService {
       throw new Error(`Period ${approvalPeriod} is locked`);
     }
 
+    const validated = await this.validatePersistedDocument(document, "approve");
+
     if (document.action_type === "reversal") {
-      await this.approveReversal(document, reviewer, approvalPeriod);
+      await this.approveReversal(document, reviewer, approvalPeriod, validated.originalDocument);
       return;
     }
 
-    const lines = await this.documents.getDocumentLines(id);
+    const lines = validated.lines;
     assertSingleLineFifoApproval(document.document_type, lines);
     const borrowerPersonId = borrowerForLoanDocument(document.document_type, lines);
     const posting = entriesForApprovedDocument({
@@ -228,13 +354,18 @@ export class DocumentService {
     });
   }
 
-  private async approveReversal(document: DocumentDetailRow, reviewer: string, approvalPeriod: string) {
+  private async approveReversal(
+    document: DocumentDetailRow,
+    reviewer: string,
+    approvalPeriod: string,
+    validatedOriginal: DocumentDetailRow | null
+  ) {
     const originalDocumentId = document.original_document_id?.trim() ?? "";
     if (!originalDocumentId) {
       throw new Error("originalDocumentId is required for reversal approval");
     }
 
-    const original = await this.requireDocument(originalDocumentId);
+    const original = validatedOriginal ?? (await this.requireDocument(originalDocumentId));
     if (original.status !== "approved") {
       throw new Error("Original document must be approved before reversal");
     }
@@ -567,6 +698,46 @@ function nullableText(value: string | null | undefined) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function documentForRules(document: DocumentDetailRow) {
+  return {
+    id: document.id,
+    documentType: document.document_type,
+    actionType: document.action_type,
+    operatorPersonId: document.operator_person_id,
+    projectId: document.project_id,
+    merchantId: document.merchant_id,
+    categoryId: document.category_id,
+    originalDocumentId: document.original_document_id,
+    summary: document.summary,
+    businessDate: document.business_date,
+    period: document.period
+  };
+}
+
+function linesForRules(lines: DocumentLineRow[]): DocumentRuleLine[] {
+  return lines.map((line) => ({
+    accountId: line.account_id,
+    counterpartyAccountId: line.counterparty_account_id,
+    personId: line.person_id,
+    borrowerPersonId: line.borrower_person_id,
+    currencyCode: line.currency_code,
+    amountMinor: line.amount_minor,
+    usdtAmountMinor: line.usdt_amount_minor
+  }));
+}
+
+function mapById<T extends { id: string }>(rows: T[]) {
+  return new Map(rows.map((row) => [row.id, row]));
+}
+
+function mapCurrencies<T extends { code: string }>(rows: T[]) {
+  return new Map(rows.map((row) => [row.code, row]));
+}
+
+function uniqueTextValues(values: Array<string | null | undefined>) {
+  return [...new Set(values.map((value) => value?.trim() ?? "").filter(Boolean))];
 }
 
 export function firstBorrower(lines: Array<{ borrower_person_id: string | null }>) {

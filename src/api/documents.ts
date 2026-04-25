@@ -1,5 +1,6 @@
 import { AuditLogRepository } from "../repositories/auditLogRepository";
 import { DocumentRepository } from "../repositories/documentRepository";
+import { MasterDataRepository } from "../repositories/masterDataRepository";
 import type { RawDocumentLine } from "../domain/documentLines";
 import type { ActionType, DocumentType } from "../domain/types";
 import { DocumentService } from "../services/documentService";
@@ -73,7 +74,7 @@ function documentRepository(env: { DB: D1Database }) {
 }
 
 function documentService(env: { DB: D1Database }) {
-  return new DocumentService(documentRepository(env), new AuditLogRepository(env.DB));
+  return new DocumentService(documentRepository(env), new AuditLogRepository(env.DB), new MasterDataRepository(env.DB));
 }
 
 async function requireEnabledPerson(env: { DB: D1Database }, id: string, label: string) {
