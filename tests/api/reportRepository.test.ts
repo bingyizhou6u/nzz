@@ -567,12 +567,9 @@ describe("ReportRepository", () => {
     expect(normalized).toContain("a.account_type = 'petty_cash'");
     expect(normalized).toContain("a.is_company_account = 1");
     expect(normalized).toContain("a.allow_negative = 0");
-    expect(normalized).toMatch(
-      /a\.account_type = 'petty_cash' and a\.owner_person_id = \? and ae\.currency_code = \? group by ae\.account_id/
-    );
-    expect(normalized).toMatch(
-      /a\.is_company_account = 1 and a\.allow_negative = 0 and ae\.currency_code = \? group by ae\.account_id/
-    );
+    expect(normalized).toContain("a.account_type = 'petty_cash' and a.owner_person_id = ? and ae.currency_code = ?");
+    expect(normalized).toContain("a.is_company_account = 1 and a.allow_negative = 0 and ae.currency_code = ?");
+    expect((normalized.match(/ union all /g) ?? []).length).toBeLessThanOrEqual(4);
     expect(normalized).toContain("julianday('now') - julianday(coalesce(d.submitted_at, d.created_at)) >= ?");
     expect(normalized).toContain("julianday('now') - julianday(d.created_at) >= ?");
     expect(normalized).toContain("julianday('now') - julianday(li.loan_date) >= ?");
@@ -591,11 +588,6 @@ describe("ReportRepository", () => {
       "person_1",
       "AED",
       45,
-      "2026-04",
-      "proj_1",
-      "merchant_1",
-      "person_1",
-      "AED",
       45,
       "2026-04",
       "proj_1",

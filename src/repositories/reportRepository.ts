@@ -599,7 +599,6 @@ export class ReportRepository {
       currencyColumn: "ae.currency_code"
     });
     const pendingDocumentFilter = this.workflowDocumentFilterSql(filters);
-    const draftDocumentFilter = this.workflowDocumentFilterSql(filters);
     const staleLoanFilter = this.reportFilterSql(filters, {
       documentAlias: "d",
       personColumn: "li.borrower_person_id",
@@ -632,53 +631,35 @@ export class ReportRepository {
             UNION ALL
 
             SELECT
-              'negative_petty_cash' AS exception_type,
-              'warning' AS severity,
-              'petty_cash_account' AS entity_type,
+              CASE WHEN a.account_type = 'petty_cash' THEN 'negative_petty_cash' ELSE 'negative_company_account' END AS exception_type,
+              CASE WHEN a.account_type = 'petty_cash' THEN 'warning' ELSE 'critical' END AS severity,
+              CASE WHEN a.account_type = 'petty_cash' THEN 'petty_cash_account' ELSE 'account' END AS entity_type,
               ae.account_id AS entity_id,
               NULL AS period,
               NULL AS business_date,
               ae.currency_code AS currency_code,
               COALESCE(SUM(ae.amount_minor), 0) AS amount_minor,
               NULL AS usdt_cost_minor,
-              'Petty cash account balance is negative' AS message
+              CASE
+                WHEN a.account_type = 'petty_cash' THEN 'Petty cash account balance is negative'
+                ELSE 'Company account balance is negative'
+              END AS message
             FROM account_entries ae
             JOIN documents d ON d.id = ae.document_id
             JOIN accounts a ON a.id = ae.account_id
             WHERE d.status = 'approved'
-              AND a.account_type = 'petty_cash'
-              ${pettyCashFilter.sql}
-            GROUP BY ae.account_id, a.owner_person_id, ae.currency_code
+              AND (
+                (a.account_type = 'petty_cash' ${pettyCashFilter.sql})
+                OR (a.is_company_account = 1 AND a.allow_negative = 0 ${companyAccountFilter.sql})
+              )
+            GROUP BY ae.account_id, a.account_type, a.owner_person_id, a.is_company_account, a.allow_negative, ae.currency_code
             HAVING COALESCE(SUM(ae.amount_minor), 0) < 0
 
             UNION ALL
 
             SELECT
-              'negative_company_account' AS exception_type,
-              'critical' AS severity,
-              'account' AS entity_type,
-              ae.account_id AS entity_id,
-              NULL AS period,
-              NULL AS business_date,
-              ae.currency_code AS currency_code,
-              COALESCE(SUM(ae.amount_minor), 0) AS amount_minor,
-              NULL AS usdt_cost_minor,
-              'Company account balance is negative' AS message
-            FROM account_entries ae
-            JOIN documents d ON d.id = ae.document_id
-            JOIN accounts a ON a.id = ae.account_id
-            WHERE d.status = 'approved'
-              AND a.is_company_account = 1
-              AND a.allow_negative = 0
-              ${companyAccountFilter.sql}
-            GROUP BY ae.account_id, ae.currency_code
-            HAVING COALESCE(SUM(ae.amount_minor), 0) < 0
-
-            UNION ALL
-
-            SELECT
-              'stale_pending_document' AS exception_type,
-              'warning' AS severity,
+              CASE WHEN d.status = 'pending' THEN 'stale_pending_document' ELSE 'stale_draft_document' END AS exception_type,
+              CASE WHEN d.status = 'pending' THEN 'warning' ELSE 'info' END AS severity,
               'document' AS entity_type,
               d.id AS entity_id,
               d.period AS period,
@@ -686,29 +667,17 @@ export class ReportRepository {
               NULL AS currency_code,
               NULL AS amount_minor,
               NULL AS usdt_cost_minor,
-              'Document has stayed pending beyond the stale threshold' AS message
+              CASE
+                WHEN d.status = 'pending' THEN 'Document has stayed pending beyond the stale threshold'
+                ELSE 'Draft document has stayed open beyond the stale threshold'
+              END AS message
             FROM documents d
-            WHERE d.status = 'pending'
+            WHERE d.status IN ('pending', 'draft')
               ${pendingDocumentFilter.sql}
-              AND julianday('now') - julianday(COALESCE(d.submitted_at, d.created_at)) >= ?
-
-            UNION ALL
-
-            SELECT
-              'stale_draft_document' AS exception_type,
-              'info' AS severity,
-              'document' AS entity_type,
-              d.id AS entity_id,
-              d.period AS period,
-              d.business_date AS business_date,
-              NULL AS currency_code,
-              NULL AS amount_minor,
-              NULL AS usdt_cost_minor,
-              'Draft document has stayed open beyond the stale threshold' AS message
-            FROM documents d
-            WHERE d.status = 'draft'
-              ${draftDocumentFilter.sql}
-              AND julianday('now') - julianday(d.created_at) >= ?
+              AND (
+                (d.status = 'pending' AND julianday('now') - julianday(COALESCE(d.submitted_at, d.created_at)) >= ?)
+                OR (d.status = 'draft' AND julianday('now') - julianday(d.created_at) >= ?)
+              )
 
             UNION ALL
 
@@ -743,7 +712,6 @@ export class ReportRepository {
           ...companyAccountFilter.bindings,
           ...pendingDocumentFilter.bindings,
           staleDays,
-          ...draftDocumentFilter.bindings,
           staleDays,
           ...staleLoanFilter.bindings,
           staleDays
