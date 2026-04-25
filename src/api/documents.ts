@@ -33,11 +33,10 @@ const documentTypes = new Set<DocumentType>([
   "petty_cash_reimbursement",
   "loan_out",
   "loan_repayment",
-  "loan_writeoff",
-  "manual_adjustment"
+  "loan_writeoff"
 ]);
 
-const actionTypes = new Set<ActionType>(["normal", "correction", "reversal", "repost"]);
+const actionTypes = new Set<ActionType>(["normal", "reversal"]);
 
 function isDocumentType(value: string): value is DocumentType {
   return documentTypes.has(value as DocumentType);
@@ -194,7 +193,10 @@ export const createDocument: Handler = async ({ request, env }) => {
 
   const normalizedOriginalDocumentId =
     typeof originalDocumentId === "string" && originalDocumentId.trim() ? originalDocumentId.trim() : null;
-  if ((normalizedActionType === "correction" || normalizedActionType === "reversal") && !normalizedOriginalDocumentId) {
+  const originalDocumentIdRequired =
+    normalizedActionType === "reversal" ||
+    (normalizedActionType === "normal" && (documentType === "loan_repayment" || documentType === "loan_writeoff"));
+  if (originalDocumentIdRequired && !normalizedOriginalDocumentId) {
     return requiredOriginalDocumentResponse();
   }
 

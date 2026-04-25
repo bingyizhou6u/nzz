@@ -212,20 +212,19 @@ describe("documents API", () => {
     expect(boundValues[11]).toBeNull();
   });
 
-  it("stores trimmed original document linkage when provided", async () => {
+  it("stores trimmed original document linkage for reversal documents when provided", async () => {
     let boundValues: unknown[] = [];
     const response = await createDocument({
       request: new Request("https://ledger.test/api/documents", {
         method: "POST",
         body: JSON.stringify({
           documentType: "project_income",
-          actionType: "correction",
+          actionType: "reversal",
           businessDate: "2026-04-24",
           period: "2026-04",
           originalDocumentId: "  doc_original  ",
-          summary: "Correct income",
-          createdBy: "user_1",
-          lines: [validLine()]
+          summary: "Reverse income",
+          createdBy: "user_1"
         })
       }),
       env: mockEnv({
@@ -237,7 +236,7 @@ describe("documents API", () => {
     });
 
     expect(response.status).toBe(201);
-    expect(boundValues[3]).toBe("correction");
+    expect(boundValues[3]).toBe("reversal");
     expect(boundValues[11]).toBe("doc_original");
   });
 
@@ -261,12 +260,12 @@ describe("documents API", () => {
     await expect(response.json()).resolves.toEqual(requiredDocumentFieldsError);
   });
 
-  it("rejects invalid document types", async () => {
+  it.each(["invalid", "manual_adjustment"])("rejects %s document types", async (documentType) => {
     const response = await createDocument({
       request: new Request("https://ledger.test/api/documents", {
         method: "POST",
         body: JSON.stringify({
-          documentType: "invalid",
+          documentType,
           businessDate: "2026-04-24",
           period: "2026-04",
           summary: "Initial income",
@@ -282,13 +281,13 @@ describe("documents API", () => {
     await expect(response.json()).resolves.toEqual(invalidDocumentTypeOrActionTypeError);
   });
 
-  it("rejects invalid action types", async () => {
+  it.each(["invalid", "correction", "repost"])("rejects %s action types", async (actionType) => {
     const response = await createDocument({
       request: new Request("https://ledger.test/api/documents", {
         method: "POST",
         body: JSON.stringify({
           documentType: "project_income",
-          actionType: "invalid",
+          actionType,
           businessDate: "2026-04-24",
           period: "2026-04",
           summary: "Initial income",
@@ -329,13 +328,13 @@ describe("documents API", () => {
     await expect(response.json()).resolves.toEqual(invalidBusinessDateOrPeriodError);
   });
 
-  it.each(["correction", "reversal"] as const)("requires originalDocumentId for %s documents", async (actionType) => {
+  it("requires originalDocumentId for reversal documents", async () => {
     const response = await createDocument({
       request: new Request("https://ledger.test/api/documents", {
         method: "POST",
         body: JSON.stringify({
           documentType: "project_income",
-          actionType,
+          actionType: "reversal",
           businessDate: "2026-04-24",
           period: "2026-04",
           originalDocumentId: "   ",
@@ -352,43 +351,42 @@ describe("documents API", () => {
     await expect(response.json()).resolves.toEqual(requiredOriginalDocumentError);
   });
 
-  it("does not require originalDocumentId for repost documents", async () => {
-    let boundValues: unknown[] = [];
-    const response = await createDocument({
-      request: new Request("https://ledger.test/api/documents", {
-        method: "POST",
-        body: JSON.stringify({
-          documentType: "project_income",
-          actionType: "repost",
-          businessDate: "2026-04-24",
-          period: "2026-04",
-          summary: "Repost income",
-          createdBy: "user_1",
-          lines: [validLine()]
-        })
-      }),
-      env: mockEnv({
-        onBind: (values, sql) => {
-          if (sql.toLowerCase().includes("insert into documents")) boundValues = values;
-        }
-      }),
-      params: {}
-    });
+  it.each(["loan_repayment", "loan_writeoff"] as const)(
+    "requires originalDocumentId for normal %s documents",
+    async (documentType) => {
+      const response = await createDocument({
+        request: new Request("https://ledger.test/api/documents", {
+          method: "POST",
+          body: JSON.stringify({
+            documentType,
+            actionType: "normal",
+            businessDate: "2026-04-24",
+            period: "2026-04",
+            originalDocumentId: "   ",
+            summary: "Reduce loan",
+            createdBy: "user_1",
+            categoryId: documentType === "loan_writeoff" ? "cat_bad_debt" : undefined,
+            lines: [{ accountId: "acct_usdt", currencyCode: "USDT", amountMinor: 10000, borrowerPersonId: "person_1" }]
+          })
+        }),
+        env: mockEnv(),
+        params: {}
+      });
 
-    expect(response.status).toBe(201);
-    expect(boundValues[3]).toBe("repost");
-    expect(boundValues[11]).toBeNull();
-  });
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual(requiredOriginalDocumentError);
+    }
+  );
 
   it("routes document creation requests", async () => {
     const response = await route(
       new Request("https://ledger.test/api/documents", {
         method: "POST",
         body: JSON.stringify({
-          documentType: "manual_adjustment",
+          documentType: "project_income",
           businessDate: "2026-04-24",
           period: "2026-04",
-          summary: "Adjustment",
+          summary: "Initial income",
           createdBy: "user_1",
           lines: [validLine()]
         })
@@ -405,10 +403,10 @@ describe("documents API", () => {
       new Request("https://ledger.test/api/documents", {
         method: "POST",
         body: JSON.stringify({
-          documentType: "manual_adjustment",
+          documentType: "project_income",
           businessDate: "2026-04-24",
           period: "2026-04",
-          summary: "Header-only adjustment",
+          summary: "Header-only income",
           createdBy: "user_1"
         })
       }),
