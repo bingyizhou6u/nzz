@@ -146,6 +146,54 @@ describe("worker router", () => {
     await expect(response.json()).resolves.toEqual({ data: [] });
   });
 
+  it("requires auth for master data routes by default before running handlers", async () => {
+    let prepareCalls = 0;
+    const response = await route(new Request("https://ledger.test/api/currencies"), {
+      CF_ACCESS_TEAM_DOMAIN: "https://team.cloudflareaccess.com",
+      CF_ACCESS_AUD: "audience",
+      DB: {
+        prepare: () => {
+          prepareCalls += 1;
+          return {
+            bind() {
+              return this;
+            },
+            all: async () => ({ success: true, results: [] }),
+            first: async () => null,
+            run: async () => ({ success: true }) as D1Result
+          } as unknown as D1PreparedStatement;
+        }
+      } as unknown as D1Database,
+      ASSETS: { fetch: async () => new Response("asset") } as unknown as Fetcher
+    });
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: "Missing Cloudflare Access JWT" });
+    expect(prepareCalls).toBe(0);
+  });
+
+  it("authenticates before decoding malformed route params", async () => {
+    const response = await route(new Request("https://ledger.test/api/documents/%E0%A4%A/submit", { method: "POST" }), {
+      CF_ACCESS_TEAM_DOMAIN: "https://team.cloudflareaccess.com",
+      CF_ACCESS_AUD: "audience",
+      DB: {
+        prepare: () =>
+          ({
+            bind() {
+              return this;
+            },
+            all: async () => ({ success: true, results: [] }),
+            first: async () => null,
+            run: async () => ({ success: true }) as D1Result
+          }) as unknown as D1PreparedStatement
+      } as unknown as D1Database,
+      ASSETS: { fetch: async () => new Response("asset") } as unknown as Fetcher
+    });
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: "Missing Cloudflare Access JWT" });
+  });
+
   it("returns 404 for unknown API routes", async () => {
     const response = await route(new Request("https://ledger.test/api/unknown"), mockEnv());
 

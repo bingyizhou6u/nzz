@@ -143,18 +143,6 @@ export async function route(request: Request, env: Env): Promise<Response> {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  let params: Record<string, string>;
-  try {
-    params = Object.fromEntries(
-      match.candidate.paramNames.map((name, index) => [name, decodeURIComponent(match.result?.[index + 1] ?? "")])
-    );
-  } catch (error) {
-    if (error instanceof URIError) {
-      return Response.json({ error: "Invalid route parameter" }, { status: 400 });
-    }
-    throw error;
-  }
-
   let actor = null;
   if (match.candidate.auth === "required") {
     try {
@@ -165,6 +153,18 @@ export async function route(request: Request, env: Env): Promise<Response> {
       }
       throw error;
     }
+  }
+
+  let params: Record<string, string>;
+  try {
+    params = Object.fromEntries(
+      match.candidate.paramNames.map((name, index) => [name, decodeURIComponent(match.result?.[index + 1] ?? "")])
+    );
+  } catch (error) {
+    if (error instanceof URIError) {
+      return Response.json({ error: "Invalid route parameter" }, { status: 400 });
+    }
+    throw error;
   }
 
   return match.candidate.handler({ request, env, params, actor });
