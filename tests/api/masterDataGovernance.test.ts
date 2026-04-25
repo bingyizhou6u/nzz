@@ -420,6 +420,74 @@ describe("master data governance write API", () => {
     expect(response.status).toBe(200);
   });
 
+  it("preserves login email when update omits loginEmail", async () => {
+    const runBindings: unknown[][] = [];
+    const existingPerson = {
+      id: "person_entry",
+      name: "Entry",
+      alias: "old",
+      roles_json: "[\"finance_entry\"]",
+      is_enabled: 1,
+      login_email: "entry@example.com",
+      access_subject: null,
+      last_login_at: null,
+      created_at: "2026-04-25T00:00:00.000Z",
+      referenceCount: 0
+    };
+
+    const response = await updateMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people/person_entry", {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: "Entry Renamed",
+          alias: "new",
+          roles: ["finance_entry"],
+          isEnabled: true
+        })
+      }),
+      env: writeMockEnv({ firstRows: [existingPerson, existingPerson], onRunBindings: (values) => runBindings.push(values) }),
+      params: { id: "person_entry" },
+      actor: financeManagerActor
+    });
+
+    expect(response.status).toBe(200);
+    expect(runBindings).toContainEqual(["Entry Renamed", "new", "[\"finance_entry\"]", 1, "entry@example.com", "person_entry"]);
+  });
+
+  it("rejects explicit login email clear without people role management permission", async () => {
+    const existingPerson = {
+      id: "person_entry",
+      name: "Entry",
+      alias: "old",
+      roles_json: "[\"finance_entry\"]",
+      is_enabled: 1,
+      login_email: "entry@example.com",
+      access_subject: null,
+      last_login_at: null,
+      created_at: "2026-04-25T00:00:00.000Z",
+      referenceCount: 0
+    };
+
+    const response = await updateMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people/person_entry", {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: "Entry",
+          alias: "old",
+          roles: ["finance_entry"],
+          loginEmail: "",
+          isEnabled: true
+        })
+      }),
+      env: writeMockEnv({ firstRows: [existingPerson] }),
+      params: { id: "person_entry" },
+      actor: financeManagerActor
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "权限不足" });
+  });
+
   it("rejects clearing the current actor login email", async () => {
     const existingAdmin = {
       id: "person_admin",
@@ -545,6 +613,25 @@ describe("master data governance write API", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ error: "登录邮箱已绑定其他人员" });
+  });
+
+  it("does not map unrelated unique constraint errors to login email", async () => {
+    const response = await createMasterDataProject({
+      request: new Request("https://ledger.test/api/master-data/projects", {
+        method: "POST",
+        body: JSON.stringify({ code: "P1", name: "Project" })
+      }),
+      env: writeMockEnv({
+        onRunBindings: () => {
+          throw new Error("D1_ERROR: UNIQUE constraint failed: projects.code");
+        }
+      }),
+      params: {},
+      actor: adminActor
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "D1_ERROR: UNIQUE constraint failed: projects.code" });
   });
 
   it("creates people with actor audit", async () => {

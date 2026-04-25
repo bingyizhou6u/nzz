@@ -128,7 +128,7 @@ export const updateMasterDataPerson: Handler = async ({ request, env, params, ac
     const before = await repository.getPerson(id);
     if (!before) throw new Error("person not found");
     const roles = personRoles(body);
-    const normalizedLoginEmail = loginEmail(body);
+    const normalizedLoginEmail = hasOwn(body, "loginEmail") ? loginEmail(body) : before.login_email ?? null;
     const input = {
       name: requiredText(body, "name"),
       alias: optionalText(body, "alias"),
@@ -421,10 +421,15 @@ function errorResponse(error: unknown) {
 
 function errorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "Request failed";
-  if (message.toLowerCase().includes("idx_people_login_email") || message.toLowerCase().includes("unique constraint")) {
+  const lowerMessage = message.toLowerCase();
+  if (lowerMessage.includes("idx_people_login_email") || lowerMessage.includes("people.login_email")) {
     return "登录邮箱已绑定其他人员";
   }
   return message;
+}
+
+function hasOwn(body: Record<string, unknown>, key: string) {
+  return Object.prototype.hasOwnProperty.call(body, key);
 }
 
 function requireWriteActor(actor: AuthenticatedActor | null, body: Record<string, unknown>) {
