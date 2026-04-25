@@ -1,4 +1,6 @@
+import { Children, isValidElement, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { describe, expect, it } from "vitest";
+import { DocumentTypeFields } from "./DocumentTypeFields";
 import {
   amountMajorToMinor,
   buildDocumentPayload,
@@ -10,7 +12,7 @@ import {
   validateDocumentForm
 } from "./documentEntryModel";
 import { deriveDocumentEntryState } from "./documentEntryRules";
-import type { DocumentEntryOptions } from "./documentEntryTypes";
+import type { DocumentEntryForm, DocumentEntryOptions } from "./documentEntryTypes";
 
 const options: DocumentEntryOptions = {
   people: [{ id: "person_ops", name: "Ops User", alias: "ops", roles_json: "[\"logistics\"]", is_enabled: 1 }],
@@ -87,6 +89,43 @@ const options: DocumentEntryOptions = {
     }
   ]
 };
+
+function findSelectFieldProps(
+  node: ReactNode,
+  label: string
+): { onChange: (value: string) => void } {
+  let found: { onChange: (value: string) => void } | null = null;
+
+  function walk(current: ReactNode) {
+    if (found) return;
+    if (isValidElement(current)) {
+      const props = current.props as {
+        children?: ReactNode;
+        label?: string;
+        onChange?: (value: string) => void;
+      };
+      if (props.label === label && props.onChange) {
+        found = { onChange: props.onChange };
+        return;
+      }
+      walk(props.children);
+      return;
+    }
+    Children.forEach(current, walk);
+  }
+
+  walk(node);
+  if (!found) throw new Error(`Select field not found: ${label}`);
+  return found;
+}
+
+function capturingSetForm(initialForm: DocumentEntryForm) {
+  let currentForm = initialForm;
+  const setForm: Dispatch<SetStateAction<DocumentEntryForm>> = (value) => {
+    currentForm = typeof value === "function" ? value(currentForm) : value;
+  };
+  return { getForm: () => currentForm, setForm };
+}
 
 describe("document entry model", () => {
   it("keeps project income fields business-specific", () => {
@@ -305,6 +344,72 @@ describe("document entry model", () => {
     const errors = validateDocumentForm(form, options, "person_ops", deriveDocumentEntryState(form, options, []));
 
     expect(errors).toContain("账户不适用于当前单据类型");
+  });
+
+  it("preserves reimbursement project context for merchant categories and clears it for plain categories", () => {
+    const merchantCategoryOptions = {
+      ...options,
+      categories: [
+        ...options.categories,
+        {
+          id: "cat_merchant_expense",
+          name: "Merchant Expense",
+          parent_id: null,
+          category_type: "expense",
+          direction: "out",
+          affects_expense_report: 1,
+          affects_project_report: 1,
+          requires_merchant: 1,
+          requires_person: 0,
+          requires_borrower: 0,
+          is_enabled: 1
+        },
+        {
+          id: "cat_second_merchant_expense",
+          name: "Second Merchant Expense",
+          parent_id: null,
+          category_type: "expense",
+          direction: "out",
+          affects_expense_report: 1,
+          affects_project_report: 1,
+          requires_merchant: 1,
+          requires_person: 0,
+          requires_borrower: 0,
+          is_enabled: 1
+        }
+      ]
+    };
+    const form: DocumentEntryForm = {
+      ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),
+      documentType: "petty_cash_reimbursement",
+      personId: "person_ops",
+      projectId: "proj_1",
+      merchantId: "merchant_1",
+      categoryId: "cat_merchant_expense",
+      accountId: "acct_petty_ops",
+      currencyCode: "AED",
+      amountMajor: "20",
+      summary: "Plain reimbursement"
+    };
+    const { getForm, setForm } = capturingSetForm(form);
+    const entryState = deriveDocumentEntryState(form, merchantCategoryOptions, []);
+    const categoryField = findSelectFieldProps(
+      DocumentTypeFields({ form, setForm, entryState, originalDocuments: [] }),
+      "科目"
+    );
+
+    categoryField.onChange("cat_second_merchant_expense");
+
+    expect(getForm().projectId).toBe("proj_1");
+    expect(getForm().merchantId).toBe("");
+
+    categoryField.onChange("cat_plain_expense");
+
+    const nextForm = getForm();
+    const payload = buildDocumentPayload(nextForm, "person_ops");
+    expect(nextForm.projectId).toBe("");
+    expect(nextForm.merchantId).toBe("");
+    expect(payload).not.toHaveProperty("projectId");
   });
 
   it("preserves legacy reimbursement validation when derived state is not supplied", () => {

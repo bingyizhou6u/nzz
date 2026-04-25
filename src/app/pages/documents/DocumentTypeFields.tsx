@@ -36,9 +36,14 @@ export function DocumentTypeFields({ form, setForm, entryState, originalDocument
   }
 
   function updateCategory(value: string) {
+    const nextCategory = entryState.optionsByField.categoryId?.find((category) => category.id === value);
     setForm((current) => ({
       ...current,
       categoryId: value,
+      projectId:
+        current.documentType === "petty_cash_reimbursement" && !nextCategory?.requires_merchant
+          ? ""
+          : current.projectId,
       merchantId: "",
       borrowerPersonId: current.documentType === "petty_cash_reimbursement" ? "" : current.borrowerPersonId
     }));
