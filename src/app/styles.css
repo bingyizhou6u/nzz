@@ -363,8 +363,31 @@ main {
   padding: 4px 2px;
 }
 
+.report-table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.report-table-header span {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
 .report-panel table {
   min-width: 760px;
+  font-size: 13px;
+}
+
+.report-panel .number-cell {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 .status-slot {

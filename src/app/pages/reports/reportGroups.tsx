@@ -183,10 +183,41 @@ const exceptionCheckColumns: ReportColumn<ExceptionCheck>[] = [
   { key: "message", header: "说明", render: (row) => row.message }
 ];
 
-export function OperatingReports({ reports, emptyLabel }: { reports: ReportsState; emptyLabel: string }) {
+export const reportGroupLabels = ["资金", "项目经营", "费用", "备用金", "借款", "异常"] as const;
+
+export function FundingReports({ reports, emptyLabel }: { reports: ReportsState; emptyLabel: string }) {
   return (
     <div className="report-group">
-      <h2 className="report-group-title">经营分析</h2>
+      <h2 className="report-group-title">资金</h2>
+      <ReportTable
+        title="账户余额表"
+        rows={reports.accountBalances}
+        rowKey={(row) => `${row.account_id}-${row.currency_code}`}
+        emptyLabel={emptyLabel}
+        columns={accountBalanceColumns}
+      />
+      <ReportTable
+        title="换汇批次表"
+        rows={reports.lotBalances}
+        rowKey={(row) => row.id}
+        emptyLabel={emptyLabel}
+        columns={lotBalanceColumns}
+      />
+      <ReportTable
+        title="FIFO 消耗明细"
+        rows={reports.lotMovements}
+        rowKey={(row) => row.id}
+        emptyLabel={emptyLabel}
+        columns={lotMovementColumns}
+      />
+    </div>
+  );
+}
+
+export function ProjectReports({ reports, emptyLabel }: { reports: ReportsState; emptyLabel: string }) {
+  return (
+    <div className="report-group">
+      <h2 className="report-group-title">项目经营</h2>
       <ReportTable
         title="项目收支表"
         rows={reports.projectProfitLoss}
@@ -211,6 +242,21 @@ export function OperatingReports({ reports, emptyLabel }: { reports: ReportsStat
         columns={merchantIncomeColumns}
       />
       <ReportTable
+        title="月度经营总表"
+        rows={reports.monthlyOperatingSummary}
+        rowKey={(row) => row.period}
+        emptyLabel={emptyLabel}
+        columns={monthlyOperatingColumns}
+      />
+    </div>
+  );
+}
+
+export function ExpenseReports({ reports, emptyLabel }: { reports: ReportsState; emptyLabel: string }) {
+  return (
+    <div className="report-group">
+      <h2 className="report-group-title">费用</h2>
+      <ReportTable
         title="费用明细表"
         rows={reports.expenseDetails}
         rowKey={(row) => row.document_id}
@@ -225,42 +271,6 @@ export function OperatingReports({ reports, emptyLabel }: { reports: ReportsStat
         }
         emptyLabel={emptyLabel}
         columns={expenseSummaryColumns}
-      />
-      <ReportTable
-        title="月度经营总表"
-        rows={reports.monthlyOperatingSummary}
-        rowKey={(row) => row.period}
-        emptyLabel={emptyLabel}
-        columns={monthlyOperatingColumns}
-      />
-    </div>
-  );
-}
-
-export function FundReports({ reports, emptyLabel }: { reports: ReportsState; emptyLabel: string }) {
-  return (
-    <div className="report-group">
-      <h2 className="report-group-title">资金管理</h2>
-      <ReportTable
-        title="账户余额表"
-        rows={reports.accountBalances}
-        rowKey={(row) => `${row.account_id}-${row.currency_code}`}
-        emptyLabel={emptyLabel}
-        columns={accountBalanceColumns}
-      />
-      <ReportTable
-        title="换汇批次表"
-        rows={reports.lotBalances}
-        rowKey={(row) => row.id}
-        emptyLabel={emptyLabel}
-        columns={lotBalanceColumns}
-      />
-      <ReportTable
-        title="FIFO 消耗明细"
-        rows={reports.lotMovements}
-        rowKey={(row) => row.id}
-        emptyLabel={emptyLabel}
-        columns={lotMovementColumns}
       />
     </div>
   );
@@ -327,7 +337,7 @@ export function LoanReports({ reports, emptyLabel }: { reports: ReportsState; em
 export function ExceptionReports({ reports, emptyLabel }: { reports: ReportsState; emptyLabel: string }) {
   return (
     <div className="report-group">
-      <h2 className="report-group-title">异常检查</h2>
+      <h2 className="report-group-title">异常</h2>
       <ReportTable
         title="异常检查"
         rows={reports.exceptionChecks}

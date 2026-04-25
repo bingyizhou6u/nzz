@@ -22,9 +22,9 @@ export function ReportTable<T>({
 }) {
   return (
     <section className="panel report-panel">
-      <div className="panel-header">
+      <div className="report-table-header">
         <h2>{title}</h2>
-        <div className="status-slot">{rows.length} 条</div>
+        <span>{rows.length} 行</span>
       </div>
       <div className="table-wrap">
         <table>

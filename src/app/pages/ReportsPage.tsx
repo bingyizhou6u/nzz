@@ -3,9 +3,10 @@ import { getJson, type ApiEnvelope } from "../api";
 import { defaultReportFilters, buildReportQuery } from "./reports/reportFilters";
 import {
   ExceptionReports,
-  FundReports,
+  ExpenseReports,
+  FundingReports,
   LoanReports,
-  OperatingReports,
+  ProjectReports,
   PettyCashReports
 } from "./reports/reportGroups";
 import { emptyReports, type ReportsState } from "./reports/reportTypes";
@@ -172,8 +173,9 @@ export function ReportsPage() {
         </div>
       </section>
 
-      <OperatingReports reports={reports} emptyLabel={rowLabel} />
-      <FundReports reports={reports} emptyLabel={rowLabel} />
+      <FundingReports reports={reports} emptyLabel={rowLabel} />
+      <ProjectReports reports={reports} emptyLabel={rowLabel} />
+      <ExpenseReports reports={reports} emptyLabel={rowLabel} />
       <PettyCashReports reports={reports} emptyLabel={rowLabel} />
       <LoanReports reports={reports} emptyLabel={rowLabel} />
       <ExceptionReports reports={reports} emptyLabel={rowLabel} />
