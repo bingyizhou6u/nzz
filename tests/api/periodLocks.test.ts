@@ -286,6 +286,58 @@ describe("period lock API", () => {
     expect(batches[0][1].sql.replace(/\s+/g, " ").toLowerCase()).toContain("insert into audit_logs");
   });
 
+  it("rejects duplicate lock insert changes without a separate audit write", async () => {
+    const batches: CapturedStatement[][] = [];
+    const response = await createPeriodLock({
+      request: new Request("https://ledger.test/api/period-locks", {
+        method: "POST",
+        body: JSON.stringify({ period: "2026-04", note: "month close" })
+      }),
+      env: env({
+        batchResults: [
+          { success: true, meta: { changes: 0 } } as unknown as D1Result,
+          { success: true, meta: { changes: 0 } } as unknown as D1Result
+        ],
+        onBatch: (statements) => batches.push(statements)
+      }),
+      params: {},
+      actor: manager
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Period lock was not created" });
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(2);
+    expect(batches[0][0].sql.replace(/\s+/g, " ").toLowerCase()).toContain("insert into period_locks");
+    expect(batches[0][1].sql.replace(/\s+/g, " ").toLowerCase()).toContain("insert into audit_logs");
+  });
+
+  it("rejects duplicate lock batch failures without a separate audit write", async () => {
+    const batches: CapturedStatement[][] = [];
+    const response = await createPeriodLock({
+      request: new Request("https://ledger.test/api/period-locks", {
+        method: "POST",
+        body: JSON.stringify({ period: "2026-04", note: "month close" })
+      }),
+      env: env({
+        batchResults: [
+          { success: false, error: "UNIQUE constraint failed: period_locks.period" } as unknown as D1Result,
+          { success: true, meta: { changes: 0 } } as unknown as D1Result
+        ],
+        onBatch: (statements) => batches.push(statements)
+      }),
+      params: {},
+      actor: manager
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "UNIQUE constraint failed: period_locks.period" });
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(2);
+    expect(batches[0][0].sql.replace(/\s+/g, " ").toLowerCase()).toContain("insert into period_locks");
+    expect(batches[0][1].sql.replace(/\s+/g, " ").toLowerCase()).toContain("insert into audit_logs");
+  });
+
   it("records delete audit metadata after unlocking", async () => {
     const calls: { sql: string; values: unknown[] }[] = [];
     const response = await deletePeriodLock({
@@ -308,10 +360,16 @@ describe("period lock API", () => {
 
     expect(response.status).toBe(200);
     const deleteCall = calls.find((call) =>
-      call.sql.replace(/\s+/g, " ").toLowerCase().includes("delete from period_locks where period = ?")
+      call.sql
+        .replace(/\s+/g, " ")
+        .toLowerCase()
+        .includes("delete from period_locks where period = ? and locked_by = ? and locked_at = ?")
     );
     const auditCall = calls.find((call) => call.sql.replace(/\s+/g, " ").toLowerCase().includes("insert into audit_logs"));
-    expect(deleteCall?.values).toEqual(["2026-04"]);
+    expect(deleteCall?.values).toEqual(["2026-04", "manager_1", "2026-04-25T00:00:00.000Z"]);
+    expect(auditCall?.sql.replace(/\s+/g, " ").toLowerCase()).toContain(
+      "where exists (select 1 from period_locks where period = ? and locked_by = ? and locked_at = ?)"
+    );
     expect(auditCall?.values).toEqual([
       expect.stringMatching(/^audit_/),
       "admin_1",
@@ -332,11 +390,14 @@ describe("period lock API", () => {
       null,
       null,
       expect.any(String),
-      "2026-04"
+      "2026-04",
+      "manager_1",
+      "2026-04-25T00:00:00.000Z"
     ]);
   });
 
-  it("rejects unlock when the batch delete changes no rows", async () => {
+  it("rejects unlock when a stale-read lock identity no longer matches", async () => {
+    const batches: CapturedStatement[][] = [];
     const response = await deletePeriodLock({
       request: new Request("https://ledger.test/api/period-locks/2026-04", {
         method: "DELETE",
@@ -350,9 +411,10 @@ describe("period lock API", () => {
           note: "closed"
         },
         batchResults: [
-          { success: true, meta: { changes: 1 } } as unknown as D1Result,
+          { success: true, meta: { changes: 0 } } as unknown as D1Result,
           { success: true, meta: { changes: 0 } } as unknown as D1Result
-        ]
+        ],
+        onBatch: (statements) => batches.push(statements)
       }),
       params: { period: "2026-04" },
       actor: admin
@@ -360,6 +422,16 @@ describe("period lock API", () => {
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: "Period lock not found" });
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(2);
+    expect(batches[0][0].sql.replace(/\s+/g, " ").toLowerCase()).toContain(
+      "where exists (select 1 from period_locks where period = ? and locked_by = ? and locked_at = ?)"
+    );
+    expect(batches[0][0].bindings.slice(-3)).toEqual(["2026-04", "manager_1", "2026-04-25T00:00:00.000Z"]);
+    expect(batches[0][1].sql.replace(/\s+/g, " ").toLowerCase()).toContain(
+      "delete from period_locks where period = ? and locked_by = ? and locked_at = ?"
+    );
+    expect(batches[0][1].bindings).toEqual(["2026-04", "manager_1", "2026-04-25T00:00:00.000Z"]);
   });
 
   it("routes period lock listing", async () => {

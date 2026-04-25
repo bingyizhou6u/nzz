@@ -33,11 +33,16 @@ export class PeriodLockRepository {
       .prepare("INSERT INTO period_locks (period, locked_by, locked_at, note) VALUES (?, ?, ?, ?)")
       .bind(input.period, input.lockedBy, new Date().toISOString(), input.note);
 
-    await this.runBatch([lockStatement, auditStatement]);
+    const results = await this.runBatch([lockStatement, auditStatement]);
+    if (results[0]?.meta?.changes === 0) {
+      throw new Error("Period lock was not created");
+    }
   }
 
-  async unlockWithAudit(period: string, auditStatement: D1PreparedStatement) {
-    const deleteStatement = this.db.prepare("DELETE FROM period_locks WHERE period = ?").bind(period);
+  async unlockWithAudit(lock: Pick<PeriodLockRow, "period" | "locked_by" | "locked_at">, auditStatement: D1PreparedStatement) {
+    const deleteStatement = this.db
+      .prepare("DELETE FROM period_locks WHERE period = ? AND locked_by = ? AND locked_at = ?")
+      .bind(lock.period, lock.locked_by, lock.locked_at);
     const results = await this.runBatch([auditStatement, deleteStatement]);
 
     if (results[0]?.meta?.changes === 0 || results[1]?.meta?.changes === 0) {

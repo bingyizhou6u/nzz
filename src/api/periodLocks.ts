@@ -60,9 +60,12 @@ export const deletePeriodLock: Handler = async ({ request, env, params, actor: c
         actorPersonId: actor.personId,
         actorEmail: actor.email
       },
-      { sql: "EXISTS (SELECT 1 FROM period_locks WHERE period = ?)", bindings: [period] }
+      {
+        sql: "EXISTS (SELECT 1 FROM period_locks WHERE period = ? AND locked_by = ? AND locked_at = ?)",
+        bindings: [existing.period, existing.locked_by, existing.locked_at]
+      }
     );
-    await locks.unlockWithAudit(period, audit);
+    await locks.unlockWithAudit(existing, audit);
     return Response.json({ data: { period, status: "unlocked" } });
   } catch (error) {
     return errorResponse(error);
