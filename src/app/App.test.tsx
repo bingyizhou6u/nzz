@@ -42,7 +42,7 @@ describe("App", () => {
   let host: HTMLDivElement;
 
   beforeEach(() => {
-    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     host = document.createElement("div");
     document.body.replaceChildren(host);
     vi.stubGlobal(

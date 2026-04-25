@@ -4,6 +4,7 @@ import { MasterDataPage } from "./pages/MasterDataPage";
 import { PeriodLocksPage } from "./pages/PeriodLocksPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { ReviewCenterPage } from "./pages/ReviewCenterPage";
+import { WorkspacePage } from "./pages/WorkspacePage";
 import { getSession } from "./session/sessionApi";
 import { roleLabels, visibleNavigationItems } from "./session/sessionModel";
 import type { PageKey, SessionState } from "./session/sessionTypes";
@@ -101,6 +102,7 @@ export function App() {
         {session.status === "authenticated" && pages.length === 0 ? (
           <SessionStatusPanel title="暂无可访问功能" message="当前账号没有可用功能，请联系管理员调整权限。" />
         ) : null}
+        {session.status === "authenticated" && activePageKey === "workspace" ? <WorkspacePage /> : null}
         {session.status === "authenticated" && activePageKey === "documents" ? (
           <DocumentsPage capabilities={session.capabilities} />
         ) : null}
