@@ -21,24 +21,38 @@ export async function authenticateAccessIdentity(request: Request, env: Env): Pr
       accessAudience: ["development"]
     };
   }
+  if (mode !== "access") {
+    throw new AuthError(401, "Authentication mode is not configured");
+  }
 
-  const teamDomain = env.CF_ACCESS_TEAM_DOMAIN?.trim();
+  const teamDomain = normalizeTeamDomain(env.CF_ACCESS_TEAM_DOMAIN);
   const audience = env.CF_ACCESS_AUD?.trim();
   if (!teamDomain || !audience) throw new AuthError(401, "Cloudflare Access is not configured");
 
   const token = request.headers.get("Cf-Access-Jwt-Assertion");
   if (!token) throw new AuthError(401, "Missing Cloudflare Access JWT");
 
-  const issuer = teamDomain.replace(/\/$/, "");
-  const jwks = createRemoteJWKSet(new URL(`${issuer}/cdn-cgi/access/certs`));
+  const jwks = createRemoteJWKSet(new URL(`${teamDomain}/cdn-cgi/access/certs`));
   const verified = await jwtVerify(token, jwks, {
-    issuer,
+    issuer: teamDomain,
     audience
   }).catch(() => {
     throw new AuthError(401, "Invalid Cloudflare Access JWT");
   });
 
   return identityFromPayload(verified.payload as AccessJwtPayload);
+}
+
+function normalizeTeamDomain(value: string | undefined): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:") return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
 }
 
 function identityFromPayload(payload: AccessJwtPayload): AuthenticatedIdentity {
