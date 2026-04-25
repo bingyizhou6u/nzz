@@ -150,5 +150,5 @@ export async function route(request: Request, env: Env): Promise<Response> {
     throw error;
   }
 
-  return match.candidate.handler({ request, env, params });
+  return match.candidate.handler({ request, env, params, actor: null });
 }
