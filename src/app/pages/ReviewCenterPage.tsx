@@ -11,12 +11,49 @@ import type { ApprovalPreviewState, ReviewDocumentRow } from "./review/reviewTyp
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
+interface ClearedReviewActionState {
+  documents: ReviewDocumentRow[];
+  selectedId: null;
+  detail: null;
+  preview: null;
+  detailState: LoadState;
+  previewState: LoadState;
+  rejectReason: string;
+  actionMessage: string;
+}
+
+interface ReviewActionRefreshFailureState extends ClearedReviewActionState {
+  queueState: Extract<LoadState, "error">;
+  error: string;
+}
+
 interface ReviewCenterPageProps {
   capabilities: string[];
 }
 
 export function canRenderReviewCenter(capabilities: string[]) {
   return capabilities.includes("documents.approve");
+}
+
+export function clearedReviewActionState(message: string): ClearedReviewActionState {
+  return {
+    documents: [],
+    selectedId: null,
+    detail: null,
+    preview: null,
+    detailState: "idle",
+    previewState: "idle",
+    rejectReason: "",
+    actionMessage: message
+  };
+}
+
+export function reviewActionRefreshFailureState(message: string, loadError: unknown): ReviewActionRefreshFailureState {
+  return {
+    ...clearedReviewActionState(message),
+    queueState: "error",
+    error: loadError instanceof Error ? loadError.message : "刷新待审队列失败"
+  };
 }
 
 export function ReviewCenterPage({ capabilities }: ReviewCenterPageProps) {
@@ -127,16 +164,30 @@ export function ReviewCenterPage({ capabilities }: ReviewCenterPageProps) {
   }
 
   async function reloadAfterAction(message: string) {
-    const nextDocuments = await listReviewDocuments();
-    const nextSelectedId = nextDocuments[0]?.id ?? null;
-    setDocuments(nextDocuments);
-    setSelectedId(nextSelectedId);
-    setDetail(null);
-    setPreview(null);
-    setDetailState(nextSelectedId ? "loading" : "idle");
-    setPreviewState(nextSelectedId ? "loading" : "idle");
-    setRejectReason("");
-    setActionMessage(message);
+    const clearedState = clearedReviewActionState(message);
+    setDocuments(clearedState.documents);
+    setSelectedId(clearedState.selectedId);
+    setDetail(clearedState.detail);
+    setPreview(clearedState.preview);
+    setDetailState(clearedState.detailState);
+    setPreviewState(clearedState.previewState);
+    setRejectReason(clearedState.rejectReason);
+    setActionMessage(clearedState.actionMessage);
+    setQueueState("loading");
+
+    try {
+      const nextDocuments = await listReviewDocuments();
+      const nextSelectedId = nextDocuments[0]?.id ?? null;
+      setDocuments(nextDocuments);
+      setSelectedId(nextSelectedId);
+      setDetailState(nextSelectedId ? "loading" : "idle");
+      setPreviewState(nextSelectedId ? "loading" : "idle");
+      setQueueState("ready");
+    } catch (loadError) {
+      const failedState = reviewActionRefreshFailureState(message, loadError);
+      setError(failedState.error);
+      setQueueState(failedState.queueState);
+    }
   }
 
   async function handleApprove() {
