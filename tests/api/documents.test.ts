@@ -550,6 +550,23 @@ describe("documents API", () => {
     await expect(response.json()).resolves.toEqual({ data: { id: "doc_1", status: "pending" } });
   });
 
+  it("returns 400 when submit governance rejects an incomplete draft", async () => {
+    const response = await submitDocument({
+      request: new Request("https://ledger.test/api/documents/doc_1/submit", {
+        method: "POST",
+        body: JSON.stringify({ actor: "user_1" })
+      }),
+      env: mockEnv({
+        firstResult: validProjectIncomeDocumentRow({ status: "draft", merchant_id: null }),
+        allResultsQueue: [[lineRow()]]
+      }),
+      params: { id: "doc_1" }
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "项目收入必须选择商户" });
+  });
+
   it("routes document approval requests with path params", async () => {
     const response = await route(
       new Request("https://ledger.test/api/documents/doc_1/approve", {
@@ -564,6 +581,32 @@ describe("documents API", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ data: { id: "doc_1", status: "approved" } });
+  });
+
+  it("returns 400 when approve governance rejects master data relationships", async () => {
+    const [, projectRows, merchantRows, accountRows, categoryRows, currencyRows] = projectIncomeMasterDataResults();
+    const response = await approveDocument({
+      request: new Request("https://ledger.test/api/documents/doc_1/approve", {
+        method: "POST",
+        body: JSON.stringify({ reviewer: "reviewer_1" })
+      }),
+      env: mockEnv({
+        firstResults: [validProjectIncomeDocumentRow({ status: "pending" }), null],
+        allResultsQueue: [
+          [lineRow()],
+          [{ id: "user_1", name: "User", alias: null, roles_json: "[]", is_enabled: 1 }],
+          projectRows,
+          merchantRows.map((merchant) => ({ ...merchant, project_id: "proj_other" })),
+          accountRows,
+          categoryRows,
+          currencyRows
+        ]
+      }),
+      params: { id: "doc_1" }
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "商户必须属于所选项目" });
   });
 
   it("routes reversal approval requests using original posting entries", async () => {
