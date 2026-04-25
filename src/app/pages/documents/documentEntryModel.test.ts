@@ -112,6 +112,48 @@ describe("document entry model", () => {
     expect(validateDocumentForm(form, options, "")).toContain("请选择当前操作人");
   });
 
+  it("rejects account transfers with the same source and destination account", () => {
+    const errors = validateDocumentForm(
+      {
+        ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),
+        documentType: "account_transfer",
+        operatorPersonId: "person_ops",
+        accountId: "acct_company_aed",
+        counterpartyAccountId: " acct_company_aed ",
+        currencyCode: "AED",
+        amountMajor: "20",
+        summary: "Move reserve"
+      },
+      options,
+      "person_ops"
+    );
+
+    expect(errors).toContain("转出账户和转入账户不能相同");
+  });
+
+  it("reports a single original document error when reversal is missing the original document", () => {
+    const errors = validateDocumentForm(
+      {
+        ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),
+        documentType: "project_income",
+        actionType: "reversal",
+        operatorPersonId: "person_ops",
+        projectId: "proj_1",
+        merchantId: "merchant_1",
+        categoryId: "cat_income",
+        accountId: "acct_company_aed",
+        currencyCode: "AED",
+        amountMajor: "120.50",
+        usdtAmountMajor: "32.84",
+        summary: "Reverse merchant income"
+      },
+      options,
+      "person_ops"
+    );
+
+    expect(errors.filter((error) => error.includes("原单据"))).toHaveLength(1);
+  });
+
   it("builds project income payload using current actor person id", () => {
     const payload = buildDocumentPayload(
       {

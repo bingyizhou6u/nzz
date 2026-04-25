@@ -226,8 +226,16 @@ export function validateDocumentForm(
     if (field === "merchantId" && form.documentType === "petty_cash_reimbursement") continue;
     if (field === "operatorPersonId" && form.documentType === "petty_cash_reimbursement") continue;
     if (field === "projectId" && form.documentType === "loan_writeoff") continue;
-    if (field === "originalDocumentId" && !isOriginalDocumentRequired(form.actionType)) continue;
+    if (field === "originalDocumentId") continue;
     if (!form[field].trim()) errors.push(`请选择或填写${fieldLabels[field]}`);
+  }
+  if (
+    form.documentType === "account_transfer" &&
+    form.accountId.trim() &&
+    form.counterpartyAccountId.trim() &&
+    form.accountId.trim() === form.counterpartyAccountId.trim()
+  ) {
+    errors.push("转出账户和转入账户不能相同");
   }
   return errors;
 }
