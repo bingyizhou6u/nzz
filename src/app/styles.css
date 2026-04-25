@@ -609,12 +609,20 @@ select {
   }
 
   .tabs {
+    align-items: stretch;
+    flex-wrap: wrap;
     width: 100%;
   }
 
   .tab {
-    flex: 1 1 0;
+    flex: 1 1 calc((100% - 8px) / 3);
+    min-width: 0;
+    min-height: 40px;
     padding-inline: 8px;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+    text-align: center;
+    white-space: normal;
   }
 
   .panel-header {
