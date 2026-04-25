@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approveDocument, createDocument, getDocument, rejectDocument } from "../../src/api/documents";
+import { approveDocument, createDocument, getDocument, rejectDocument, submitDocument } from "../../src/api/documents";
 import { route } from "../../src/worker/router";
 import type { Env } from "../../src/worker/env";
 
@@ -68,10 +68,13 @@ function mockEnv(
     allResultsQueue?: unknown[][];
     firstResult?: unknown;
     firstResults?: unknown[];
+    enabledPersonIds?: string[];
     onBind?: (values: unknown[], sql: string) => void;
     onBatch?: (statements: PreparedMock[]) => void;
   } = {}
 ): Env {
+  const enabledPersonIds = options.enabledPersonIds ?? ["user_1", "reviewer_1"];
+
   return {
     DB: {
       prepare: (sql: string) => {
@@ -84,7 +87,16 @@ function mockEnv(
             return this;
           },
           all: async () => ({ success: true, results: options.allResultsQueue?.shift() ?? options.allResults ?? [] }),
-          first: async () => options.firstResults?.shift() ?? options.firstResult ?? null,
+          first(this: PreparedMock) {
+            const normalizedSql = sql.replace(/\s+/g, " ").toLowerCase();
+            if (normalizedSql.includes("from people") && normalizedSql.includes("is_enabled = 1")) {
+              const personId = this.bindings[0];
+              return Promise.resolve(
+                typeof personId === "string" && enabledPersonIds.includes(personId) ? { id: personId } : null
+              );
+            }
+            return Promise.resolve(options.firstResults?.shift() ?? options.firstResult ?? null);
+          },
           run: async () => options.runResult ?? ({ success: true } as D1Result)
         } as unknown as PreparedMock;
         return statement;
@@ -105,6 +117,69 @@ describe("documents API", () => {
   const invalidDocumentTypeOrActionTypeError = { error: "Invalid document type or action type" };
   const invalidBusinessDateOrPeriodError = { error: "Invalid business date or period" };
   const requiredOriginalDocumentError = { error: "originalDocumentId is required for correction or reversal" };
+
+  it("rejects document creation when createdBy is not an enabled person", async () => {
+    const response = await createDocument({
+      request: new Request("https://ledger.test/api/documents", {
+        method: "POST",
+        body: JSON.stringify({
+          documentType: "project_income",
+          businessDate: "2026-04-24",
+          period: "2026-04",
+          summary: "Initial income",
+          createdBy: "freeform_user",
+          lines: [validLine()]
+        })
+      }),
+      env: mockEnv(),
+      params: {}
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "createdBy must reference an enabled person" });
+  });
+
+  it("rejects document submission when actor is not an enabled person", async () => {
+    const response = await submitDocument({
+      request: new Request("https://ledger.test/api/documents/doc_1/submit", {
+        method: "POST",
+        body: JSON.stringify({ actor: "freeform_user" })
+      }),
+      env: mockEnv(),
+      params: { id: "doc_1" }
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "actor must reference an enabled person" });
+  });
+
+  it("rejects document approval when reviewer is not an enabled person", async () => {
+    const response = await approveDocument({
+      request: new Request("https://ledger.test/api/documents/doc_1/approve", {
+        method: "POST",
+        body: JSON.stringify({ reviewer: "freeform_user" })
+      }),
+      env: mockEnv(),
+      params: { id: "doc_1" }
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "reviewer must reference an enabled person" });
+  });
+
+  it("rejects document rejection when actor is not an enabled person", async () => {
+    const response = await rejectDocument({
+      request: new Request("https://ledger.test/api/documents/doc_1/reject", {
+        method: "POST",
+        body: JSON.stringify({ actor: "freeform_user", reason: "Missing receipt" })
+      }),
+      env: mockEnv(),
+      params: { id: "doc_1" }
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "actor must reference an enabled person" });
+  });
 
   it("creates draft documents", async () => {
     let boundValues: unknown[] = [];

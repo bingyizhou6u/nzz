@@ -74,6 +74,26 @@ function documentService(env: { DB: D1Database }) {
   return new DocumentService(documentRepository(env), new AuditLogRepository(env.DB));
 }
 
+async function requireEnabledPerson(env: { DB: D1Database }, id: string, label: string) {
+  const normalizedId = id.trim();
+  const person = await env.DB
+    .prepare(
+      `
+        SELECT id
+        FROM people
+        WHERE id = ? AND is_enabled = 1
+      `
+    )
+    .bind(normalizedId)
+    .first<{ id: string }>();
+
+  if (!person) {
+    throw new Error(`${label} must reference an enabled person`);
+  }
+
+  return normalizedId;
+}
+
 async function readObjectBody(request: Request): Promise<Record<string, unknown> | null> {
   try {
     const body = await request.json();
@@ -179,6 +199,7 @@ export const createDocument: Handler = async ({ request, env }) => {
   }
 
   try {
+    const normalizedCreatedBy = await requireEnabledPerson(env, createdBy, "createdBy");
     const document = await documentService(env).createDraft({
       documentType,
       actionType: normalizedActionType,
@@ -190,7 +211,7 @@ export const createDocument: Handler = async ({ request, env }) => {
       categoryId: typeof categoryId === "string" ? categoryId : null,
       originalDocumentId: normalizedOriginalDocumentId,
       summary,
-      createdBy,
+      createdBy: normalizedCreatedBy,
       lines: lines as RawDocumentLine[]
     });
     return Response.json({ data: document }, { status: 201 });
@@ -210,7 +231,8 @@ export const submitDocument: Handler = async ({ request, env, params }) => {
   }
 
   try {
-    await documentService(env).submit(params.id, requiredString(body, "actor"));
+    const actor = await requireEnabledPerson(env, requiredString(body, "actor"), "actor");
+    await documentService(env).submit(params.id, actor);
     return Response.json({ data: { id: params.id, status: "pending" } });
   } catch (error) {
     return badRequestResponse(errorMessage(error));
@@ -228,7 +250,8 @@ export const approveDocument: Handler = async ({ request, env, params }) => {
   }
 
   try {
-    await documentService(env).approve(params.id, requiredString(body, "reviewer"));
+    const reviewer = await requireEnabledPerson(env, requiredString(body, "reviewer"), "reviewer");
+    await documentService(env).approve(params.id, reviewer);
     return Response.json({ data: { id: params.id, status: "approved" } });
   } catch (error) {
     return badRequestResponse(errorMessage(error));
@@ -246,7 +269,10 @@ export const rejectDocument: Handler = async ({ request, env, params }) => {
   }
 
   try {
-    await documentService(env).reject(params.id, requiredString(body, "actor"), requiredString(body, "reason"));
+    const actor = requiredString(body, "actor");
+    const reason = requiredString(body, "reason");
+    const enabledActor = await requireEnabledPerson(env, actor, "actor");
+    await documentService(env).reject(params.id, enabledActor, reason);
     return Response.json({ data: { id: params.id, status: "rejected" } });
   } catch (error) {
     return badRequestResponse(errorMessage(error));
