@@ -10,6 +10,7 @@ export const roleLabels: Record<PersonRole, string> = {
 };
 
 const navigationItems: NavigationItem[] = [
+  { key: "workspace", label: "工作台", capability: "session.view" },
   { key: "documents", label: "业务单据", capability: "documents.view" },
   { key: "review", label: "审核中心", capability: "documents.approve" },
   { key: "reports", label: "报表中心", capability: "reports.view" },

@@ -29,7 +29,7 @@ export type SessionState =
   | { status: "error"; message: string }
   | { status: "authenticated"; person: SessionPerson; capabilities: Capability[] };
 
-export type PageKey = "documents" | "review" | "reports" | "master-data" | "period-locks";
+export type PageKey = "workspace" | "documents" | "review" | "reports" | "master-data" | "period-locks";
 
 export interface NavigationItem {
   key: PageKey;
