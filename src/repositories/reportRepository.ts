@@ -221,6 +221,25 @@ export class ReportRepository {
     return { sql: clauses.length ? `AND ${clauses.join(" AND ")}` : "", bindings };
   }
 
+  private balanceEntityFilterSql(
+    filters: ReportFilters,
+    columns: { personColumn?: string; currencyColumn?: string }
+  ): SqlFragment {
+    const clauses: string[] = [];
+    const bindings: unknown[] = [];
+
+    if (filters.personId && columns.personColumn) {
+      clauses.push(`${columns.personColumn} = ?`);
+      bindings.push(filters.personId);
+    }
+    if (filters.currencyCode && columns.currencyColumn) {
+      clauses.push(`${columns.currencyColumn} = ?`);
+      bindings.push(filters.currencyCode);
+    }
+
+    return { sql: clauses.length ? `AND ${clauses.join(" AND ")}` : "", bindings };
+  }
+
   private workflowDocumentFilterSql(filters: ReportFilters): SqlFragment {
     const documentFilter = this.reportFilterSql(filters, { documentAlias: "d" });
     const clauses: string[] = [];
@@ -572,13 +591,11 @@ export class ReportRepository {
       personColumn: "pcm.person_id",
       currencyColumn: "pcm.currency_code"
     });
-    const pettyCashFilter = this.reportFilterSql(filters, {
-      documentAlias: "d",
+    const pettyCashFilter = this.balanceEntityFilterSql(filters, {
       personColumn: "a.owner_person_id",
       currencyColumn: "ae.currency_code"
     });
-    const companyAccountFilter = this.reportFilterSql(filters, {
-      documentAlias: "d",
+    const companyAccountFilter = this.balanceEntityFilterSql(filters, {
       currencyColumn: "ae.currency_code"
     });
     const pendingDocumentFilter = this.workflowDocumentFilterSql(filters);
@@ -673,7 +690,7 @@ export class ReportRepository {
             FROM documents d
             WHERE d.status = 'pending'
               ${pendingDocumentFilter.sql}
-              AND julianday('now') - julianday(d.created_at) >= ?
+              AND julianday('now') - julianday(COALESCE(d.submitted_at, d.created_at)) >= ?
 
             UNION ALL
 

@@ -57,7 +57,8 @@ async function createSqliteReportDb(): Promise<{ db: D1Database; exec: (sql: str
       category_id TEXT,
       status TEXT NOT NULL,
       original_document_id TEXT,
-      created_at TEXT NOT NULL DEFAULT '2026-04-25T00:00:00Z'
+      created_at TEXT NOT NULL DEFAULT '2026-04-25T00:00:00Z',
+      submitted_at TEXT
     );
 
     CREATE TABLE document_lines (
@@ -543,7 +544,14 @@ describe("ReportRepository", () => {
     const repo = new ReportRepository(mockDb(rows, (value) => (sql = value), (values) => (bindings = values)));
 
     await expect(
-      repo.exceptionChecks({ period: "2026-04", personId: "person_1", currencyCode: "AED", staleDays: 45 })
+      repo.exceptionChecks({
+        period: "2026-04",
+        projectId: "proj_1",
+        merchantId: "merchant_1",
+        personId: "person_1",
+        currencyCode: "AED",
+        staleDays: 45
+      })
     ).resolves.toEqual(rows);
 
     const normalized = normalizeSql(sql);
@@ -559,26 +567,39 @@ describe("ReportRepository", () => {
     expect(normalized).toContain("a.account_type = 'petty_cash'");
     expect(normalized).toContain("a.is_company_account = 1");
     expect(normalized).toContain("a.allow_negative = 0");
+    expect(normalized).toMatch(
+      /a\.account_type = 'petty_cash' and a\.owner_person_id = \? and ae\.currency_code = \? group by ae\.account_id/
+    );
+    expect(normalized).toMatch(
+      /a\.is_company_account = 1 and a\.allow_negative = 0 and ae\.currency_code = \? group by ae\.account_id/
+    );
+    expect(normalized).toContain("julianday('now') - julianday(coalesce(d.submitted_at, d.created_at)) >= ?");
     expect(normalized).toContain("julianday('now') - julianday(d.created_at) >= ?");
     expect(normalized).toContain("julianday('now') - julianday(li.loan_date) >= ?");
     expect(bindings).toEqual([
       "2026-04",
+      "proj_1",
+      "merchant_1",
       "person_1",
       "AED",
-      "2026-04",
       "person_1",
       "AED",
-      "2026-04",
       "AED",
       "2026-04",
+      "proj_1",
+      "merchant_1",
       "person_1",
       "AED",
       45,
       "2026-04",
+      "proj_1",
+      "merchant_1",
       "person_1",
       "AED",
       45,
       "2026-04",
+      "proj_1",
+      "merchant_1",
       "person_1",
       "AED",
       45
@@ -895,6 +916,95 @@ describe("ReportRepository", () => {
           message: "Petty cash account balance is negative"
         }
       ]);
+    } finally {
+      sqliteDb.close();
+    }
+  });
+
+  it("checks negative balances against cumulative account balances independent of document filters", async () => {
+    const sqliteDb = await createSqliteReportDb();
+    try {
+      sqliteDb.exec(`
+        INSERT INTO accounts (
+          id, name, account_type, currency_code, owner_person_id, is_company_account, allow_negative
+        ) VALUES
+          ('acct_company', 'Company AED', 'currency_reserve', 'AED', NULL, 1, 0),
+          ('acct_petty', 'Petty Cash', 'petty_cash', 'AED', 'person_1', 0, 0);
+
+        INSERT INTO documents (
+          id, document_type, action_type, business_date, period, operator_person_id,
+          project_id, merchant_id, category_id, status, original_document_id, created_at
+        ) VALUES
+          ('doc_petty_prior', 'petty_cash_reimbursement', 'normal', '2026-03-25', '2026-03', 'person_1', 'proj_old', 'merchant_old', NULL, 'approved', NULL, '2026-03-25T00:00:00Z'),
+          ('doc_petty_current', 'petty_cash_reimbursement', 'normal', '2026-04-05', '2026-04', 'person_1', 'proj_1', 'merchant_1', NULL, 'approved', NULL, '2026-04-05T00:00:00Z'),
+          ('doc_company_prior', 'account_transfer', 'normal', '2026-03-20', '2026-03', 'person_2', 'proj_old', 'merchant_old', NULL, 'approved', NULL, '2026-03-20T00:00:00Z'),
+          ('doc_company_current', 'account_transfer', 'normal', '2026-04-06', '2026-04', 'person_2', 'proj_1', 'merchant_1', NULL, 'approved', NULL, '2026-04-06T00:00:00Z');
+
+        INSERT INTO account_entries (id, document_id, account_id, currency_code, amount_minor, entry_date) VALUES
+          ('entry_petty_prior', 'doc_petty_prior', 'acct_petty', 'AED', 5000, '2026-03-25'),
+          ('entry_petty_current', 'doc_petty_current', 'acct_petty', 'AED', -1000, '2026-04-05'),
+          ('entry_company_prior', 'doc_company_prior', 'acct_company', 'AED', -5000, '2026-03-20'),
+          ('entry_company_current', 'doc_company_current', 'acct_company', 'AED', 1000, '2026-04-06');
+      `);
+
+      const repo = new ReportRepository(sqliteDb.db);
+
+      await expect(
+        repo.exceptionChecks({
+          period: "2026-04",
+          projectId: "proj_1",
+          merchantId: "merchant_1",
+          personId: "person_1",
+          currencyCode: "AED",
+          staleDays: 36500
+        })
+      ).resolves.toEqual([
+        {
+          exception_type: "negative_company_account",
+          severity: "critical",
+          entity_type: "account",
+          entity_id: "acct_company",
+          period: null,
+          business_date: null,
+          currency_code: "AED",
+          amount_minor: -4000,
+          usdt_cost_minor: null,
+          message: "Company account balance is negative"
+        }
+      ]);
+    } finally {
+      sqliteDb.close();
+    }
+  });
+
+  it("ages pending documents from submitted_at when present", async () => {
+    const sqliteDb = await createSqliteReportDb();
+    try {
+      sqliteDb.exec(`
+        INSERT INTO documents (
+          id, document_type, action_type, business_date, period, operator_person_id,
+          project_id, merchant_id, category_id, status, original_document_id, created_at, submitted_at
+        ) VALUES
+          (
+            'doc_pending_recent_submission',
+            'project_income',
+            'normal',
+            '2000-01-01',
+            '2000-01',
+            'person_1',
+            'proj_1',
+            NULL,
+            NULL,
+            'pending',
+            NULL,
+            '2000-01-01T00:00:00Z',
+            strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-1 day')
+          );
+      `);
+
+      const repo = new ReportRepository(sqliteDb.db);
+
+      await expect(repo.exceptionChecks({ staleDays: 30 })).resolves.toEqual([]);
     } finally {
       sqliteDb.close();
     }
