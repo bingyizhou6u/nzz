@@ -149,6 +149,8 @@ function mockEnv(
     firstResult?: unknown;
     firstResults?: unknown[];
     enabledPersonIds?: string[];
+    rolesJson?: string;
+    onBusinessQuery?: (sql: string) => void;
     onBind?: (values: unknown[], sql: string) => void;
     onBatch?: (statements: PreparedMock[]) => void;
   } = {}
@@ -162,6 +164,11 @@ function mockEnv(
     CF_ACCESS_AUD: "",
     DB: {
       prepare: (sql: string) => {
+        const normalizedSql = sql.replace(/\s+/g, " ").toLowerCase();
+        const isAuthQuery =
+          normalizedSql.includes("where lower(login_email) = ?") ||
+          normalizedSql.includes("update people set last_login_at = ?");
+        if (!isAuthQuery) options.onBusinessQuery?.(sql);
         const statement = {
           sql,
           bindings: [],
@@ -172,14 +179,13 @@ function mockEnv(
           },
           all: async () => ({ success: true, results: options.allResultsQueue?.shift() ?? options.allResults ?? [] }),
           first(this: PreparedMock) {
-            const normalizedSql = sql.replace(/\s+/g, " ").toLowerCase();
             if (normalizedSql.includes("where lower(login_email) = ?") && normalizedSql.includes("is_enabled = 1")) {
               return Promise.resolve({
                 id: "person_finance",
                 name: "Finance",
                 alias: "fin",
                 login_email: "finance@example.test",
-                roles_json: "[\"finance_manager\"]",
+                roles_json: options.rolesJson ?? "[\"finance_manager\"]",
                 is_enabled: 1
               });
             }
@@ -675,6 +681,23 @@ describe("documents API", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ data: [documentRow()] });
+  });
+
+  it("rejects document reads without view permission before running the handler", async () => {
+    let businessQueries = 0;
+    const response = await route(
+      new Request("https://ledger.test/api/documents"),
+      mockEnv({
+        rolesJson: "[\"borrower\"]",
+        onBusinessQuery: () => {
+          businessQueries += 1;
+        }
+      })
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "权限不足" });
+    expect(businessQueries).toBe(0);
   });
 
   it("routes document submission requests with path params", async () => {

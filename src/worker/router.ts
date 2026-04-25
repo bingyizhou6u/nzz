@@ -7,7 +7,7 @@ import {
   submitDocument
 } from "../api/documents";
 import { listDocumentEntryOptions, listOriginalDocuments } from "../api/documentEntryOptions";
-import { createProject, listCurrencies } from "../api/masterData";
+import { listCurrencies } from "../api/masterData";
 import { getMe } from "../api/me";
 import {
   createMasterDataAccount,
@@ -49,6 +49,7 @@ import {
   projectIncome,
   projectProfitLoss
 } from "../api/reports";
+import { assertCan, type Capability } from "../auth/permissions";
 import { authenticateRequest } from "../auth/authenticate";
 import { AuthError } from "../auth/types";
 import type { Env, Handler } from "./env";
@@ -60,11 +61,18 @@ interface Route {
   regex: RegExp;
   paramNames: string[];
   auth: "optional" | "required";
+  capability?: Capability;
 }
 
-function defineRoute(method: string, pathname: string, handler: Handler, auth: "optional" | "required" = "required"): Route {
+function defineRoute(
+  method: string,
+  pathname: string,
+  handler: Handler,
+  capability?: Capability,
+  auth: "optional" | "required" = "required"
+): Route {
   const { regex, paramNames } = compilePath(pathname);
-  return { method, pathname, handler, regex, paramNames, auth };
+  return { method, pathname, handler, regex, paramNames, auth, capability };
 }
 
 function compilePath(pathname: string) {
@@ -84,53 +92,52 @@ function compilePath(pathname: string) {
 }
 
 const routes: Route[] = [
-  defineRoute("GET", "/api/me", getMe),
-  defineRoute("GET", "/api/currencies", listCurrencies),
-  defineRoute("GET", "/api/reports/account-balances", accountBalances),
-  defineRoute("GET", "/api/reports/petty-cash-pending", pettyCashPendingMatches),
-  defineRoute("GET", "/api/reports/loan-balances", loanBalances),
-  defineRoute("GET", "/api/reports/loan-aging", loanAging),
-  defineRoute("GET", "/api/reports/loan-allocations", loanAllocations),
-  defineRoute("GET", "/api/reports/loan-writeoffs", loanWriteoffs),
-  defineRoute("GET", "/api/reports/lots", lotBalances),
-  defineRoute("GET", "/api/reports/lot-movements", lotMovements),
-  defineRoute("GET", "/api/reports/pending-costs", pendingCostMatches),
-  defineRoute("GET", "/api/reports/project-income", projectIncome),
-  defineRoute("GET", "/api/reports/merchant-income", merchantIncome),
-  defineRoute("GET", "/api/reports/expense-details", expenseDetails),
-  defineRoute("GET", "/api/reports/expense-summary", expenseSummary),
-  defineRoute("GET", "/api/reports/project-profit-loss", projectProfitLoss),
-  defineRoute("GET", "/api/reports/monthly-operating", monthlyOperatingSummary),
-  defineRoute("GET", "/api/reports/exception-checks", exceptionChecks),
-  defineRoute("GET", "/api/master-data", listMasterDataSnapshot),
-  defineRoute("GET", "/api/master-data/reference-summary", masterDataReferenceSummary),
-  defineRoute("GET", "/api/master-data/people", listMasterDataPeople),
-  defineRoute("GET", "/api/master-data/projects", listMasterDataProjects),
-  defineRoute("GET", "/api/master-data/merchants", listMasterDataMerchants),
-  defineRoute("GET", "/api/master-data/accounts", listMasterDataAccounts),
-  defineRoute("GET", "/api/master-data/currencies", listMasterDataCurrencies),
-  defineRoute("GET", "/api/master-data/categories", listMasterDataCategories),
-  defineRoute("POST", "/api/master-data/people", createMasterDataPerson),
-  defineRoute("PATCH", "/api/master-data/people/:id", updateMasterDataPerson),
-  defineRoute("POST", "/api/master-data/projects", createMasterDataProject),
-  defineRoute("PATCH", "/api/master-data/projects/:id", updateMasterDataProject),
-  defineRoute("POST", "/api/master-data/merchants", createMasterDataMerchant),
-  defineRoute("PATCH", "/api/master-data/merchants/:id", updateMasterDataMerchant),
-  defineRoute("POST", "/api/master-data/accounts", createMasterDataAccount),
-  defineRoute("PATCH", "/api/master-data/accounts/:id", updateMasterDataAccount),
-  defineRoute("POST", "/api/master-data/currencies", createMasterDataCurrency),
-  defineRoute("PATCH", "/api/master-data/currencies/:code", updateMasterDataCurrency),
-  defineRoute("POST", "/api/master-data/categories", createMasterDataCategory),
-  defineRoute("PATCH", "/api/master-data/categories/:id", updateMasterDataCategory),
-  defineRoute("GET", "/api/document-entry/options", listDocumentEntryOptions),
-  defineRoute("GET", "/api/document-entry/original-documents", listOriginalDocuments),
-  defineRoute("GET", "/api/documents", listDocuments),
-  defineRoute("GET", "/api/documents/:id", getDocument),
-  defineRoute("POST", "/api/documents", createDocument),
-  defineRoute("POST", "/api/documents/:id/submit", submitDocument),
-  defineRoute("POST", "/api/documents/:id/approve", approveDocument),
-  defineRoute("POST", "/api/documents/:id/reject", rejectDocument),
-  defineRoute("POST", "/api/projects", createProject)
+  defineRoute("GET", "/api/me", getMe, "session.view"),
+  defineRoute("GET", "/api/currencies", listCurrencies, "masterData.view"),
+  defineRoute("GET", "/api/reports/account-balances", accountBalances, "reports.view"),
+  defineRoute("GET", "/api/reports/petty-cash-pending", pettyCashPendingMatches, "reports.view"),
+  defineRoute("GET", "/api/reports/loan-balances", loanBalances, "reports.view"),
+  defineRoute("GET", "/api/reports/loan-aging", loanAging, "reports.view"),
+  defineRoute("GET", "/api/reports/loan-allocations", loanAllocations, "reports.view"),
+  defineRoute("GET", "/api/reports/loan-writeoffs", loanWriteoffs, "reports.view"),
+  defineRoute("GET", "/api/reports/lots", lotBalances, "reports.view"),
+  defineRoute("GET", "/api/reports/lot-movements", lotMovements, "reports.view"),
+  defineRoute("GET", "/api/reports/pending-costs", pendingCostMatches, "reports.view"),
+  defineRoute("GET", "/api/reports/project-income", projectIncome, "reports.view"),
+  defineRoute("GET", "/api/reports/merchant-income", merchantIncome, "reports.view"),
+  defineRoute("GET", "/api/reports/expense-details", expenseDetails, "reports.view"),
+  defineRoute("GET", "/api/reports/expense-summary", expenseSummary, "reports.view"),
+  defineRoute("GET", "/api/reports/project-profit-loss", projectProfitLoss, "reports.view"),
+  defineRoute("GET", "/api/reports/monthly-operating", monthlyOperatingSummary, "reports.view"),
+  defineRoute("GET", "/api/reports/exception-checks", exceptionChecks, "reports.view"),
+  defineRoute("GET", "/api/master-data", listMasterDataSnapshot, "masterData.view"),
+  defineRoute("GET", "/api/master-data/reference-summary", masterDataReferenceSummary, "masterData.view"),
+  defineRoute("GET", "/api/master-data/people", listMasterDataPeople, "masterData.view"),
+  defineRoute("GET", "/api/master-data/projects", listMasterDataProjects, "masterData.view"),
+  defineRoute("GET", "/api/master-data/merchants", listMasterDataMerchants, "masterData.view"),
+  defineRoute("GET", "/api/master-data/accounts", listMasterDataAccounts, "masterData.view"),
+  defineRoute("GET", "/api/master-data/currencies", listMasterDataCurrencies, "masterData.view"),
+  defineRoute("GET", "/api/master-data/categories", listMasterDataCategories, "masterData.view"),
+  defineRoute("POST", "/api/master-data/people", createMasterDataPerson, "masterData.write"),
+  defineRoute("PATCH", "/api/master-data/people/:id", updateMasterDataPerson, "masterData.write"),
+  defineRoute("POST", "/api/master-data/projects", createMasterDataProject, "masterData.write"),
+  defineRoute("PATCH", "/api/master-data/projects/:id", updateMasterDataProject, "masterData.write"),
+  defineRoute("POST", "/api/master-data/merchants", createMasterDataMerchant, "masterData.write"),
+  defineRoute("PATCH", "/api/master-data/merchants/:id", updateMasterDataMerchant, "masterData.write"),
+  defineRoute("POST", "/api/master-data/accounts", createMasterDataAccount, "masterData.write"),
+  defineRoute("PATCH", "/api/master-data/accounts/:id", updateMasterDataAccount, "masterData.write"),
+  defineRoute("POST", "/api/master-data/currencies", createMasterDataCurrency, "masterData.write"),
+  defineRoute("PATCH", "/api/master-data/currencies/:code", updateMasterDataCurrency, "masterData.write"),
+  defineRoute("POST", "/api/master-data/categories", createMasterDataCategory, "masterData.write"),
+  defineRoute("PATCH", "/api/master-data/categories/:id", updateMasterDataCategory, "masterData.write"),
+  defineRoute("GET", "/api/document-entry/options", listDocumentEntryOptions, "documents.create"),
+  defineRoute("GET", "/api/document-entry/original-documents", listOriginalDocuments, "documents.create"),
+  defineRoute("GET", "/api/documents", listDocuments, "documents.view"),
+  defineRoute("GET", "/api/documents/:id", getDocument, "documents.view"),
+  defineRoute("POST", "/api/documents", createDocument, "documents.create"),
+  defineRoute("POST", "/api/documents/:id/submit", submitDocument, "documents.submit"),
+  defineRoute("POST", "/api/documents/:id/approve", approveDocument, "documents.approve"),
+  defineRoute("POST", "/api/documents/:id/reject", rejectDocument, "documents.reject")
 ];
 
 export async function route(request: Request, env: Env): Promise<Response> {
@@ -147,6 +154,17 @@ export async function route(request: Request, env: Env): Promise<Response> {
   if (match.candidate.auth === "required") {
     try {
       actor = await authenticateRequest(request, env);
+    } catch (error) {
+      if (error instanceof AuthError) {
+        return Response.json({ error: error.message }, { status: error.status });
+      }
+      throw error;
+    }
+  }
+
+  if (match.candidate.capability && actor) {
+    try {
+      assertCan(actor, match.candidate.capability);
     } catch (error) {
       if (error instanceof AuthError) {
         return Response.json({ error: error.message }, { status: error.status });

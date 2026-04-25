@@ -20,7 +20,10 @@ function mockEnv(rows: unknown[] = []): Env {
   return mockEnvWithSql(rows).env;
 }
 
-function mockEnvWithSql(rows: unknown[] = []): { env: Env; sql: string[]; bindings: unknown[][] } {
+function mockEnvWithSql(
+  rows: unknown[] = [],
+  options: { rolesJson?: string } = {}
+): { env: Env; sql: string[]; bindings: unknown[][] } {
   const sql: string[] = [];
   const bindings: unknown[][] = [];
   return {
@@ -49,7 +52,7 @@ function mockEnvWithSql(rows: unknown[] = []): { env: Env; sql: string[]; bindin
                   name: "Finance",
                   alias: "fin",
                   login_email: "finance@example.test",
-                  roles_json: "[\"finance_manager\"]",
+                  roles_json: options.rolesJson ?? "[\"finance_manager\"]",
                   is_enabled: 1
                 };
               }
@@ -175,6 +178,16 @@ describe("report routes", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ data: [] });
+  });
+
+  it("rejects report reads without view permission before running the report query", async () => {
+    const { env, sql } = mockEnvWithSql([], { rolesJson: "[\"borrower\"]" });
+
+    const response = await route(new Request("https://ledger.test/api/reports/account-balances"), env);
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "权限不足" });
+    expect(sql).toHaveLength(0);
   });
 
   it.each([
