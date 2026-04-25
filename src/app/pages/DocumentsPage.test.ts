@@ -5,7 +5,7 @@ import {
   formatLocalMonthInputValue,
   isOriginalDocumentRequired
 } from "./documents/documentEntryModel";
-import { canApproveDocument, canSubmitDocument, isLineAccountRequired } from "./DocumentsPage";
+import { canApproveDocument, canSubmitDocument, isLineAccountRequired, workflowActionBody } from "./DocumentsPage";
 
 describe("document date defaults", () => {
   it("formats date inputs from local calendar fields", () => {
@@ -198,5 +198,11 @@ describe("document date defaults", () => {
     expect(canSubmitDocument("pending")).toBe(false);
     expect(canApproveDocument("pending")).toBe(true);
     expect(canApproveDocument("approved")).toBe(false);
+  });
+
+  it("uses selected people ids for workflow actions", () => {
+    expect(workflowActionBody("submit", "person_finance")).toEqual({ actor: "person_finance" });
+    expect(workflowActionBody("approve", "person_manager")).toEqual({ reviewer: "person_manager" });
+    expect(workflowActionBody("reject", "person_manager")).toEqual({ actor: "person_manager", reason: "退回修改" });
   });
 });

@@ -1,6 +1,15 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import type { ActionType, DocumentType } from "../../domain/types";
 import { getJson, postJson, type ApiEnvelope } from "../api";
+import { DocumentTypeFields } from "./documents/DocumentTypeFields";
+import { personLabel, SelectField } from "./documents/DocumentEntrySelectors";
+import {
+  buildDocumentPayload,
+  createInitialDocumentForm,
+  isOriginalDocumentRequired,
+  validateDocumentForm
+} from "./documents/documentEntryModel";
+import type { DocumentEntryForm, DocumentEntryOptions, OriginalDocumentOption } from "./documents/documentEntryTypes";
 
 interface DocumentResponse {
   id: string;
@@ -20,27 +29,6 @@ interface DocumentListItem {
   business_date: string;
   status: string;
   summary: string;
-}
-
-interface DocumentForm {
-  documentType: DocumentType;
-  actionType: ActionType;
-  businessDate: string;
-  period: string;
-  originalDocumentId: string;
-  summary: string;
-  createdBy: string;
-  operatorPersonId: string;
-  projectId: string;
-  merchantId: string;
-  categoryId: string;
-  accountId: string;
-  counterpartyAccountId: string;
-  currencyCode: string;
-  amountMajor: string;
-  usdtAmountMajor: string;
-  personId: string;
-  borrowerPersonId: string;
 }
 
 type WorkflowAction = "submit" | "approve" | "reject";
@@ -88,72 +76,8 @@ const statusLabels: Record<string, string> = {
   void: "已作废"
 };
 
-function padCalendarPart(value: number) {
-  return String(value).padStart(2, "0");
-}
-
-export function formatLocalDateInputValue(date: Date) {
-  const year = date.getFullYear();
-  const month = padCalendarPart(date.getMonth() + 1);
-  const day = padCalendarPart(date.getDate());
-  return `${year}-${month}-${day}`;
-}
-
-export function formatLocalMonthInputValue(date: Date) {
-  const year = date.getFullYear();
-  const month = padCalendarPart(date.getMonth() + 1);
-  return `${year}-${month}`;
-}
-
-export function isOriginalDocumentRequired(actionType: ActionType) {
-  return actionType === "correction" || actionType === "reversal";
-}
-
 export function isLineAccountRequired(documentType: DocumentType) {
   return documentType !== "loan_writeoff";
-}
-
-function getToday() {
-  return formatLocalDateInputValue(new Date());
-}
-
-function getCurrentPeriod() {
-  return formatLocalMonthInputValue(new Date());
-}
-
-function createInitialForm(): DocumentForm {
-  return {
-    documentType: "project_income",
-    actionType: "normal",
-    businessDate: getToday(),
-    period: getCurrentPeriod(),
-    originalDocumentId: "",
-    summary: "",
-    createdBy: "",
-    operatorPersonId: "",
-    projectId: "",
-    merchantId: "",
-    categoryId: "",
-    accountId: "",
-    counterpartyAccountId: "",
-    currencyCode: "AED",
-    amountMajor: "",
-    usdtAmountMajor: "",
-    personId: "",
-    borrowerPersonId: ""
-  };
-}
-
-function optionalString(value: string) {
-  const trimmed = value.trim();
-  return trimmed ? trimmed : undefined;
-}
-
-export function amountMajorToMinor(value: string) {
-  const normalized = value.trim();
-  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) throw new Error("金额格式必须最多两位小数");
-  const [major, minor = ""] = normalized.split(".");
-  return Number(major) * 100 + Number(minor.padEnd(2, "0"));
 }
 
 export function canSubmitDocument(status: string) {
@@ -164,79 +88,64 @@ export function canApproveDocument(status: string) {
   return status === "pending";
 }
 
-export function buildDocumentPayload(
-  form: DocumentForm & {
-    accountId: string;
-    counterpartyAccountId: string;
-    currencyCode: string;
-    amountMajor: string;
-    usdtAmountMajor: string;
-    personId: string;
-    borrowerPersonId: string;
-  }
-) {
-  const line: Record<string, unknown> = {
-    lineType: "main",
-    currencyCode: form.currencyCode.trim().toUpperCase(),
-    amountMinor: amountMajorToMinor(form.amountMajor)
-  };
-  if (isLineAccountRequired(form.documentType)) {
-    line.accountId = form.accountId.trim();
-  }
-
-  const payload: Record<string, unknown> = {
-    documentType: form.documentType,
-    actionType: form.actionType,
-    businessDate: form.businessDate,
-    period: form.period,
-    summary: form.summary.trim(),
-    createdBy: form.createdBy.trim(),
-    lines: [line]
-  };
-
-  for (const [key, value] of Object.entries({
-    originalDocumentId: optionalString(form.originalDocumentId),
-    operatorPersonId: optionalString(form.operatorPersonId),
-    projectId: optionalString(form.projectId),
-    merchantId: optionalString(form.merchantId),
-    categoryId: optionalString(form.categoryId)
-  })) {
-    if (value) payload[key] = value;
-  }
-
-  const borrowerPersonId = form.borrowerPersonId.trim();
-  if (borrowerPersonId) {
-    line.borrowerPersonId = borrowerPersonId;
-  }
-
-  const counterpartyAccountId = form.counterpartyAccountId.trim();
-  if (counterpartyAccountId) {
-    line.counterpartyAccountId = counterpartyAccountId;
-  }
-
-  const personId = form.personId.trim();
-  if (personId) {
-    line.personId = personId;
-  }
-
-  if (form.usdtAmountMajor.trim()) {
-    line.usdtAmountMinor = amountMajorToMinor(form.usdtAmountMajor);
-  }
-
-  return payload;
+export function workflowActionBody(action: WorkflowAction, actorId: string) {
+  const actor = actorId.trim();
+  if (action === "approve") return { reviewer: actor };
+  if (action === "reject") return { actor, reason: "退回修改" };
+  return { actor };
 }
 
 export function DocumentsPage() {
-  const initialForm = useMemo(() => createInitialForm(), []);
+  const initialForm = useMemo(() => createInitialDocumentForm(), []);
+  const emptyOptions = useMemo<DocumentEntryOptions>(
+    () => ({ people: [], projects: [], merchants: [], accounts: [], currencies: [], categories: [] }),
+    []
+  );
   const [documents, setDocuments] = useState<DocumentListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [form, setForm] = useState<DocumentForm>(initialForm);
+  const [form, setForm] = useState<DocumentEntryForm>(initialForm);
+  const [entryOptions, setEntryOptions] = useState<DocumentEntryOptions>(emptyOptions);
+  const [originalDocuments, setOriginalDocuments] = useState<OriginalDocumentOption[]>([]);
+  const [areOptionsLoading, setAreOptionsLoading] = useState(true);
+  const [areOriginalDocumentsLoading, setAreOriginalDocumentsLoading] = useState(false);
+  const [optionsError, setOptionsError] = useState<string | null>(null);
+  const [currentActorId, setCurrentActorId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [result, setResult] = useState<DocumentResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadOptions() {
+      setAreOptionsLoading(true);
+      setOptionsError(null);
+      try {
+        const response = await getJson<ApiEnvelope<DocumentEntryOptions>>("/api/document-entry/options");
+        if (isCurrent) {
+          setEntryOptions(response.data);
+          setCurrentActorId((current) => current || response.data.people[0]?.id || "");
+        }
+      } catch (loadOptionsError) {
+        if (isCurrent) {
+          setOptionsError(loadOptionsError instanceof Error ? loadOptionsError.message : "读取单据选项失败");
+        }
+      } finally {
+        if (isCurrent) {
+          setAreOptionsLoading(false);
+        }
+      }
+    }
+
+    void loadOptions();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isCurrent = true;
@@ -267,28 +176,74 @@ export function DocumentsPage() {
     };
   }, [reloadKey]);
 
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadOriginalDocuments() {
+      if (!isOriginalDocumentRequired(form.actionType)) {
+        setOriginalDocuments([]);
+        setAreOriginalDocumentsLoading(false);
+        return;
+      }
+
+      setAreOriginalDocumentsLoading(true);
+      const query = `?documentType=${encodeURIComponent(form.documentType)}`;
+      const response = await getJson<ApiEnvelope<OriginalDocumentOption[]>>(
+        `/api/document-entry/original-documents${query}`
+      );
+      if (isCurrent) {
+        setOriginalDocuments(response.data);
+      }
+    }
+
+    void loadOriginalDocuments()
+      .catch((loadOriginalDocumentsError) => {
+        if (isCurrent) {
+          setError(
+            loadOriginalDocumentsError instanceof Error ? loadOriginalDocumentsError.message : "读取原单据失败"
+          );
+        }
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setAreOriginalDocumentsLoading(false);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [form.actionType, form.documentType]);
+
   function refreshDocuments() {
     setReloadKey((value) => value + 1);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setIsSubmitting(true);
     setResult(null);
     setError(null);
 
+    const validationErrors = validateDocumentForm(form, entryOptions, currentActorId);
+    if (validationErrors.length > 0) {
+      setError(validationErrors.join("；"));
+      return;
+    }
+
+    setIsSubmitting(true);
+
     try {
-      const response = await postJson<ApiEnvelope<DocumentResponse>>("/api/documents", buildDocumentPayload(form));
+      const response = await postJson<ApiEnvelope<DocumentResponse>>(
+        "/api/documents",
+        buildDocumentPayload(form, currentActorId)
+      );
       setResult(response.data);
       setForm((current) => ({
-        ...initialForm,
+        ...createInitialDocumentForm(),
         documentType: current.documentType,
         actionType: current.actionType,
         businessDate: current.businessDate,
         period: current.period,
-        originalDocumentId: isOriginalDocumentRequired(current.actionType) ? current.originalDocumentId : "",
-        createdBy: current.createdBy,
-        accountId: current.accountId,
         currencyCode: current.currencyCode
       }));
       refreshDocuments();
@@ -300,23 +255,21 @@ export function DocumentsPage() {
   }
 
   async function handleWorkflowAction(document: DocumentListItem, action: WorkflowAction) {
-    const nextActionKey = `${document.id}:${action}`;
-    setActionKey(nextActionKey);
     setResult(null);
     setError(null);
 
-    const actor = form.createdBy.trim();
-    const body =
-      action === "approve"
-        ? { reviewer: actor }
-        : action === "reject"
-          ? { actor, reason: "退回修改" }
-          : { actor };
+    if (!currentActorId.trim()) {
+      setError("请选择当前操作人");
+      return;
+    }
+
+    const nextActionKey = `${document.id}:${action}`;
+    setActionKey(nextActionKey);
 
     try {
       const response = await postJson<ApiEnvelope<DocumentActionResponse>>(
         `/api/documents/${encodeURIComponent(document.id)}/${action}`,
-        body
+        workflowActionBody(action, currentActorId)
       );
       setResult({ id: response.data.id, documentNo: document.document_no, status: response.data.status });
       refreshDocuments();
@@ -329,6 +282,31 @@ export function DocumentsPage() {
 
   return (
     <div className="page-stack">
+      <section className="panel">
+        <div className="panel-header">
+          <h2>当前操作人</h2>
+          <div className="status-slot" role="status" aria-live="polite">
+            {areOptionsLoading ? "读取中" : optionsError ? "失败" : currentActorId ? "已选择" : "未选择"}
+          </div>
+        </div>
+        <div className="actor-panel">
+          <SelectField
+            label="当前操作人"
+            value={currentActorId}
+            options={entryOptions.people}
+            getValue={(person) => person.id}
+            getLabel={personLabel}
+            onChange={setCurrentActorId}
+            required
+            disabled={areOptionsLoading || Boolean(optionsError)}
+          />
+          <div className="document-entry-notice">
+            创建、提交、审核、驳回都会使用当前操作人，并保存为人员主数据 ID。
+          </div>
+        </div>
+        {optionsError ? <div className="notice error">{optionsError}</div> : null}
+      </section>
+
       <section className="panel">
         <div className="panel-header">
           <h2>单据列表</h2>
@@ -439,7 +417,13 @@ export function DocumentsPage() {
             <select
               value={form.documentType}
               onChange={(event) =>
-                setForm((current) => ({ ...current, documentType: event.target.value as DocumentType }))
+                setForm((current) => ({
+                  ...createInitialDocumentForm(),
+                  documentType: event.target.value as DocumentType,
+                  actionType: current.actionType,
+                  businessDate: current.businessDate,
+                  period: current.period
+                }))
               }
             >
               {documentTypes.map((documentType) => (
@@ -455,7 +439,11 @@ export function DocumentsPage() {
             <select
               value={form.actionType}
               onChange={(event) =>
-                setForm((current) => ({ ...current, actionType: event.target.value as ActionType }))
+                setForm((current) => ({
+                  ...current,
+                  actionType: event.target.value as ActionType,
+                  originalDocumentId: ""
+                }))
               }
             >
               {actionTypes.map((actionType) => (
@@ -471,7 +459,13 @@ export function DocumentsPage() {
             <input
               type="date"
               value={form.businessDate}
-              onChange={(event) => setForm((current) => ({ ...current, businessDate: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  businessDate: event.target.value,
+                  period: event.target.value.slice(0, 7)
+                }))
+              }
               required
             />
           </label>
@@ -486,142 +480,24 @@ export function DocumentsPage() {
             />
           </label>
 
-          <label>
-            原单据ID
-            <input
-              value={form.originalDocumentId}
-              onChange={(event) => setForm((current) => ({ ...current, originalDocumentId: event.target.value }))}
-              required={isOriginalDocumentRequired(form.actionType)}
-              maxLength={80}
-            />
-          </label>
-
-          <label className="wide-field">
-            摘要
-            <input
-              value={form.summary}
-              onChange={(event) => setForm((current) => ({ ...current, summary: event.target.value }))}
-              required
-              maxLength={240}
-            />
-          </label>
-
-          <label>
-            创建人
-            <input
-              value={form.createdBy}
-              onChange={(event) => setForm((current) => ({ ...current, createdBy: event.target.value }))}
-              required
-              maxLength={80}
-            />
-          </label>
-
-          <label>
-            经办人ID
-            <input
-              value={form.operatorPersonId}
-              onChange={(event) => setForm((current) => ({ ...current, operatorPersonId: event.target.value }))}
-              maxLength={80}
-            />
-          </label>
-
-          <label>
-            项目ID
-            <input
-              value={form.projectId}
-              onChange={(event) => setForm((current) => ({ ...current, projectId: event.target.value }))}
-              maxLength={80}
-            />
-          </label>
-
-          <label>
-            商户ID
-            <input
-              value={form.merchantId}
-              onChange={(event) => setForm((current) => ({ ...current, merchantId: event.target.value }))}
-              maxLength={80}
-            />
-          </label>
-
-          <label>
-            分类ID
-            <input
-              value={form.categoryId}
-              onChange={(event) => setForm((current) => ({ ...current, categoryId: event.target.value }))}
-              maxLength={80}
-            />
-          </label>
-
-          <label>
-            账户ID
-            <input
-              value={form.accountId}
-              onChange={(event) => setForm((current) => ({ ...current, accountId: event.target.value }))}
-              required={isLineAccountRequired(form.documentType)}
-              maxLength={80}
-            />
-          </label>
-
-          <label>
-            对方账户ID
-            <input
-              value={form.counterpartyAccountId}
-              onChange={(event) => setForm((current) => ({ ...current, counterpartyAccountId: event.target.value }))}
-              maxLength={80}
-            />
-          </label>
-
-          <label>
-            币种代码
-            <input
-              value={form.currencyCode}
-              onChange={(event) => setForm((current) => ({ ...current, currencyCode: event.target.value }))}
-              required
-              maxLength={12}
-            />
-          </label>
-
-          <label>
-            金额
-            <input
-              value={form.amountMajor}
-              onChange={(event) => setForm((current) => ({ ...current, amountMajor: event.target.value }))}
-              required
-              inputMode="decimal"
-              maxLength={24}
-            />
-          </label>
-
-          <label>
-            USDT成本
-            <input
-              value={form.usdtAmountMajor}
-              onChange={(event) => setForm((current) => ({ ...current, usdtAmountMajor: event.target.value }))}
-              inputMode="decimal"
-              maxLength={24}
-            />
-          </label>
-
-          <label>
-            人员ID
-            <input
-              value={form.personId}
-              onChange={(event) => setForm((current) => ({ ...current, personId: event.target.value }))}
-              maxLength={80}
-            />
-          </label>
-
-          <label>
-            借款人ID
-            <input
-              value={form.borrowerPersonId}
-              onChange={(event) => setForm((current) => ({ ...current, borrowerPersonId: event.target.value }))}
-              maxLength={80}
-            />
-          </label>
+          <DocumentTypeFields
+            form={form}
+            setForm={setForm}
+            options={entryOptions}
+            originalDocuments={originalDocuments}
+          />
 
           <div className="form-actions">
-            <button type="submit" disabled={isSubmitting}>
+            <button
+              type="submit"
+              disabled={
+                isSubmitting ||
+                areOptionsLoading ||
+                areOriginalDocumentsLoading ||
+                Boolean(optionsError) ||
+                !currentActorId
+              }
+            >
               {isSubmitting ? "提交中" : "创建草稿"}
             </button>
           </div>
