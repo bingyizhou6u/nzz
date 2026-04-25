@@ -24,6 +24,7 @@ describe("session model", () => {
 
   it("shows review navigation only when approval capability is present", () => {
     expect(visibleNavigationItems(authenticatedSession).map((item) => item.key)).toEqual([
+      "workspace",
       "documents",
       "review",
       "reports"
@@ -34,7 +35,25 @@ describe("session model", () => {
         ...authenticatedSession,
         capabilities: ["session.view", "documents.view", "reports.view"]
       }).map((item) => item.key)
-    ).toEqual(["documents", "reports"]);
+    ).toEqual(["workspace", "documents", "reports"]);
+  });
+
+  it("shows workspace first only for authenticated sessions with session visibility", () => {
+    expect(
+      visibleNavigationItems({
+        ...authenticatedSession,
+        capabilities: ["session.view", "documents.view"]
+      }).map((item) => item.key)
+    ).toEqual(["workspace", "documents"]);
+
+    expect(
+      visibleNavigationItems({
+        ...authenticatedSession,
+        capabilities: ["documents.view"]
+      }).map((item) => item.key)
+    ).toEqual(["documents"]);
+    expect(visibleNavigationItems({ status: "loading" })).toEqual([]);
+    expect(visibleNavigationItems({ status: "error", message: "未绑定" })).toEqual([]);
   });
 
   it("uses Chinese role labels for finance managers", () => {
