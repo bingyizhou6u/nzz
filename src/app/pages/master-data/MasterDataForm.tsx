@@ -36,3 +36,7 @@ export function MessageLine({ error, message }: { error: string | null; message:
     </div>
   );
 }
+
+export function ReadOnlyNotice() {
+  return <div className="notice">只读模式：当前账号只能查看基础资料，不能新增、编辑或停用资料。</div>;
+}

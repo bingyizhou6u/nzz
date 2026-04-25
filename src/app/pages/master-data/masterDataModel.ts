@@ -1,3 +1,4 @@
+import { hasCapability, type Capability } from "../../session/sessionTypes";
 import type {
   AccountForm,
   AccountType,
@@ -20,6 +21,14 @@ export const personRoles: PersonRole[] = [
   "readonly",
   "borrower"
 ];
+
+export function canWriteMasterData(capabilities: readonly Capability[]) {
+  return hasCapability(capabilities, "masterData.write");
+}
+
+export function canManagePeopleRoleAssignments(capabilities: readonly Capability[]) {
+  return hasCapability(capabilities, "masterData.managePeopleRoles");
+}
 
 export const personRoleLabels: Record<PersonRole, string> = {
   admin: "管理员",
@@ -117,6 +126,15 @@ export function buildPersonPayload(form: PersonForm, _actor?: string): Record<st
     roles: form.roles,
     isEnabled: form.isEnabled
   };
+}
+
+export function personFormWithPermittedRoles(
+  form: PersonForm,
+  existingRoles: PersonRole[] | null,
+  canManagePeopleRoles: boolean
+): PersonForm {
+  if (canManagePeopleRoles || !existingRoles) return form;
+  return { ...form, roles: existingRoles };
 }
 
 export function buildProjectPayload(form: ProjectForm, _actor?: string): Record<string, unknown> {

@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { FieldHint, FormActions, MessageLine } from "./MasterDataForm";
+import { FieldHint, FormActions, MessageLine, ReadOnlyNotice } from "./MasterDataForm";
 import { MasterDataTable } from "./MasterDataTable";
 import { buildCurrencyPayload, isProtectedFieldDisabled } from "./masterDataModel";
 import { writeMasterData } from "./masterDataRequests";
@@ -18,9 +18,11 @@ function rowToForm(row: CurrencyRow): CurrencyForm {
 
 export function CurrenciesTab({
   rows,
+  canWrite,
   onChanged
 }: {
   rows: CurrencyRow[];
+  canWrite: boolean;
   onChanged: () => void;
 }) {
   const [form, setForm] = useState<CurrencyForm>(emptyForm);
@@ -42,6 +44,11 @@ export function CurrenciesTab({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canWrite) {
+      setError("当前账号只能查看基础资料，不能修改币种。");
+      return;
+    }
+
     setIsSubmitting(true);
     setMessage(null);
     setError(null);
@@ -58,6 +65,11 @@ export function CurrenciesTab({
   }
 
   async function toggleEnabled(row: CurrencyRow) {
+    if (!canWrite) {
+      setError("当前账号只能查看基础资料，不能修改币种。");
+      return;
+    }
+
     setIsSubmitting(true);
     setMessage(null);
     setError(null);
@@ -74,6 +86,7 @@ export function CurrenciesTab({
 
   return (
     <div className="master-data-tab-panel">
+      {canWrite ? (
       <form className="form-grid master-data-form" onSubmit={submit}>
         <label>
           币种代码
@@ -117,7 +130,10 @@ export function CurrenciesTab({
           onCancel={editingRow ? resetForm : undefined}
         />
       </form>
-      {minorUnitsDisabled ? <FieldHint>已有引用，受保护字段不能修改。</FieldHint> : null}
+      ) : (
+        <ReadOnlyNotice />
+      )}
+      {canWrite && minorUnitsDisabled ? <FieldHint>已有引用，受保护字段不能修改。</FieldHint> : null}
       <MessageLine error={error} message={message} />
       <MasterDataTable
         rows={rows}
@@ -139,7 +155,7 @@ export function CurrenciesTab({
           {
             key: "actions",
             header: "操作",
-            render: (row) => (
+            render: (row) => canWrite ? (
               <div className="inline-actions">
                 <button type="button" className="secondary-button" onClick={() => { setEditingRow(row); setForm(rowToForm(row)); }}>
                   编辑
@@ -148,6 +164,8 @@ export function CurrenciesTab({
                   {row.is_enabled ? "停用" : "启用"}
                 </button>
               </div>
+            ) : (
+              <span>无</span>
             )
           }
         ]}

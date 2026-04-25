@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Capability } from "../session/sessionTypes";
 import {
   buildDocumentPayload,
   formatLocalDateInputValue,
@@ -7,8 +12,11 @@ import {
   validateDocumentForm
 } from "./documents/documentEntryModel";
 import {
+  DocumentsPage,
   canApproveDocument,
+  canCreateDraftDocument,
   canSubmitDocument,
+  documentWorkflowActions,
   isLineAccountRequired,
   isSelectedOriginalDocumentValid,
   originalDocumentQueryType,
@@ -16,6 +24,82 @@ import {
   supportedDraftDocumentTypes,
   workflowActionBody
 } from "./DocumentsPage";
+
+const reactActEnvironment = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
+reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
+
+let root: Root | null = null;
+
+afterEach(async () => {
+  if (root) {
+    await act(async () => {
+      root?.unmount();
+    });
+    root = null;
+  }
+
+  document.body.innerHTML = "";
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe("document page capability gating", () => {
+  it("derives create and row workflow actions from capabilities", () => {
+    expect(canCreateDraftDocument(["documents.view", "documents.create"])).toBe(true);
+    expect(canCreateDraftDocument(["documents.view"])).toBe(false);
+    expect(documentWorkflowActions("draft", ["documents.view", "documents.submit"])).toEqual(["submit"]);
+    expect(documentWorkflowActions("rejected", ["documents.view"])).toEqual([]);
+    expect(documentWorkflowActions("pending", ["documents.view", "documents.approve"])).toEqual(["approve"]);
+    expect(documentWorkflowActions("pending", ["documents.view", "documents.reject"])).toEqual(["reject"]);
+  });
+
+  it("keeps the list readable but removes draft creation for users without document create capability", async () => {
+    const container = await renderDocumentsPage(["documents.view"], [
+      draftDocument("doc_1", "DOC-001", "pending")
+    ]);
+
+    await waitFor(() => {
+      expect(container.textContent).toContain("DOC-001");
+      expect(container.textContent).toContain("只读");
+      expect(buttonTexts(container)).not.toContain("创建草稿");
+    });
+  });
+
+  it("does not render submit actions without document submit capability", async () => {
+    const container = await renderDocumentsPage(["documents.view", "documents.create"], [
+      draftDocument("doc_1", "DOC-001", "draft"),
+      draftDocument("doc_2", "DOC-002", "rejected")
+    ]);
+
+    await waitFor(() => {
+      expect(container.textContent).toContain("DOC-001");
+      expect(container.textContent).toContain("DOC-002");
+      expect(buttonTexts(container)).not.toContain("提交");
+    });
+  });
+
+  it("gates approve and reject actions independently", async () => {
+    const approveOnly = await renderDocumentsPage(["documents.view", "documents.approve"], [
+      draftDocument("doc_1", "DOC-001", "pending")
+    ]);
+
+    await waitFor(() => {
+      expect(buttonTexts(approveOnly)).toContain("通过");
+      expect(buttonTexts(approveOnly)).not.toContain("退回");
+    });
+
+    await unmountRoot();
+
+    const rejectOnly = await renderDocumentsPage(["documents.view", "documents.reject"], [
+      draftDocument("doc_1", "DOC-001", "pending")
+    ]);
+
+    await waitFor(() => {
+      expect(buttonTexts(rejectOnly)).not.toContain("通过");
+      expect(buttonTexts(rejectOnly)).toContain("退回");
+    });
+  });
+});
 
 describe("document date defaults", () => {
   it("formats date inputs from local calendar fields", () => {
@@ -353,3 +437,88 @@ describe("document date defaults", () => {
     expect(isSelectedOriginalDocumentValid("", originalDocuments)).toBe(true);
   });
 });
+
+type FetchHandler = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+function draftDocument(id: string, documentNo: string, status: string) {
+  return {
+    id,
+    document_no: documentNo,
+    document_type: "project_income" as const,
+    business_date: "2026-04-25",
+    status,
+    summary: `${documentNo} summary`
+  };
+}
+
+async function renderDocumentsPage(capabilities: Capability[], documents: ReturnType<typeof draftDocument>[]) {
+  vi.stubGlobal("fetch", documentsFetch(documents));
+
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+
+  await act(async () => {
+    root = createRoot(container);
+    root.render(createElement(DocumentsPage, { capabilities }));
+  });
+
+  return container;
+}
+
+function documentsFetch(documents: ReturnType<typeof draftDocument>[]) {
+  return vi.fn<FetchHandler>().mockImplementation((input) => {
+    const url = String(input);
+    if (url === "/api/documents") {
+      return Promise.resolve(jsonResponse({ data: documents }));
+    }
+    if (url === "/api/document-entry/options") {
+      return Promise.resolve(
+        jsonResponse({
+          data: { people: [], projects: [], merchants: [], accounts: [], currencies: [], categories: [] }
+        })
+      );
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  });
+}
+
+function jsonResponse(body: unknown, init?: ResponseInit): Response {
+  return new Response(JSON.stringify(body), {
+    ...init,
+    headers: {
+      "content-type": "application/json",
+      ...init?.headers
+    }
+  });
+}
+
+async function waitFor(assertion: () => void): Promise<void> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+  }
+
+  throw lastError;
+}
+
+async function unmountRoot() {
+  if (!root) return;
+  await act(async () => {
+    root?.unmount();
+  });
+  root = null;
+  document.body.innerHTML = "";
+}
+
+function buttonTexts(container: HTMLElement) {
+  return Array.from(container.querySelectorAll("button")).map((button) => button.textContent?.trim() ?? "");
+}

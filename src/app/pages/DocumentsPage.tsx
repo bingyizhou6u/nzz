@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import type { ActionType, DocumentType } from "../../domain/types";
 import { getJson, postJson, type ApiEnvelope } from "../api";
+import { hasCapability, type Capability } from "../session/sessionTypes";
 import { DocumentTypeFields } from "./documents/DocumentTypeFields";
 import {
   buildDocumentPayload,
@@ -32,6 +33,10 @@ interface DocumentListItem {
 }
 
 type WorkflowAction = "submit" | "approve" | "reject";
+
+interface DocumentsPageProps {
+  capabilities: readonly Capability[];
+}
 
 export const supportedDraftDocumentTypes = [
   "project_income",
@@ -87,6 +92,26 @@ export function canApproveDocument(status: string) {
   return status === "pending";
 }
 
+export function canCreateDraftDocument(capabilities: readonly Capability[]) {
+  return hasCapability(capabilities, "documents.create");
+}
+
+export function documentWorkflowActions(status: string, capabilities: readonly Capability[]): WorkflowAction[] {
+  const actions: WorkflowAction[] = [];
+  if (canSubmitDocument(status) && hasCapability(capabilities, "documents.submit")) {
+    actions.push("submit");
+  }
+  if (canApproveDocument(status)) {
+    if (hasCapability(capabilities, "documents.approve")) {
+      actions.push("approve");
+    }
+    if (hasCapability(capabilities, "documents.reject")) {
+      actions.push("reject");
+    }
+  }
+  return actions;
+}
+
 export function workflowActionBody(action: WorkflowAction, actorId: string) {
   const actor = actorId.trim();
   if (action === "approve") return actor ? { reviewer: actor } : {};
@@ -111,12 +136,13 @@ export function isSelectedOriginalDocumentValid(
   return originalDocuments.some((document) => document.id === selectedId);
 }
 
-export function DocumentsPage() {
+export function DocumentsPage({ capabilities }: DocumentsPageProps) {
   const initialForm = useMemo(() => createInitialDocumentForm(), []);
   const emptyOptions = useMemo<DocumentEntryOptions>(
     () => ({ people: [], projects: [], merchants: [], accounts: [], currencies: [], categories: [] }),
     []
   );
+  const canCreate = canCreateDraftDocument(capabilities);
   const [documents, setDocuments] = useState<DocumentListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -141,6 +167,12 @@ export function DocumentsPage() {
     let isCurrent = true;
 
     async function loadOptions() {
+      if (!canCreate) {
+        setAreOptionsLoading(false);
+        setOptionsError(null);
+        return;
+      }
+
       setAreOptionsLoading(true);
       setOptionsError(null);
       try {
@@ -164,7 +196,7 @@ export function DocumentsPage() {
     return () => {
       isCurrent = false;
     };
-  }, []);
+  }, [canCreate]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -199,6 +231,13 @@ export function DocumentsPage() {
     let isCurrent = true;
 
     async function loadOriginalDocuments() {
+      if (!canCreate) {
+        setOriginalDocuments([]);
+        setOriginalDocumentsError(null);
+        setAreOriginalDocumentsLoading(false);
+        return;
+      }
+
       const queryDocumentType = originalDocumentQueryType(form.documentType, form.actionType);
       if (!queryDocumentType) {
         setOriginalDocuments([]);
@@ -236,7 +275,7 @@ export function DocumentsPage() {
     return () => {
       isCurrent = false;
     };
-  }, [form.actionType, form.documentType]);
+  }, [canCreate, form.actionType, form.documentType]);
 
   function refreshDocuments() {
     setReloadKey((value) => value + 1);
@@ -246,6 +285,11 @@ export function DocumentsPage() {
     event.preventDefault();
     setResult(null);
     setError(null);
+
+    if (!canCreate) {
+      setError("当前账号没有创建单据权限，不能创建草稿。");
+      return;
+    }
 
     const validationErrors = validateDocumentForm(form, entryOptions, "", entryState);
     if (validationErrors.length > 0) {
@@ -288,6 +332,11 @@ export function DocumentsPage() {
   async function handleWorkflowAction(document: DocumentListItem, action: WorkflowAction) {
     setResult(null);
     setError(null);
+
+    if (!documentWorkflowActions(document.status, capabilities).includes(action)) {
+      setError("当前账号没有该单据操作权限。");
+      return;
+    }
 
     const nextActionKey = `${document.id}:${action}`;
     setActionKey(nextActionKey);
@@ -343,31 +392,32 @@ export function DocumentsPage() {
                   </td>
                 </tr>
               ) : documents.length > 0 ? (
-                documents.map((document) => (
-                  <tr key={document.id}>
-                    <td className="mono">{document.document_no}</td>
-                    <td>{documentTypeLabels[document.document_type] ?? document.document_type}</td>
-                    <td className="mono">{document.business_date}</td>
-                    <td>
-                      <span className={document.status === "approved" ? "tag ok" : "tag muted"}>
-                        {statusLabels[document.status] ?? document.status}
-                      </span>
-                    </td>
-                    <td>{document.summary}</td>
-                    <td>
-                      <div className="inline-actions">
-                        {canSubmitDocument(document.status) ? (
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            onClick={() => void handleWorkflowAction(document, "submit")}
-                            disabled={Boolean(actionKey) || isSubmitting}
-                          >
-                            {actionKey === `${document.id}:submit` ? "提交中" : "提交"}
-                          </button>
-                        ) : null}
-                        {canApproveDocument(document.status) ? (
-                          <>
+                documents.map((document) => {
+                  const actions = documentWorkflowActions(document.status, capabilities);
+                  return (
+                    <tr key={document.id}>
+                      <td className="mono">{document.document_no}</td>
+                      <td>{documentTypeLabels[document.document_type] ?? document.document_type}</td>
+                      <td className="mono">{document.business_date}</td>
+                      <td>
+                        <span className={document.status === "approved" ? "tag ok" : "tag muted"}>
+                          {statusLabels[document.status] ?? document.status}
+                        </span>
+                      </td>
+                      <td>{document.summary}</td>
+                      <td>
+                        <div className="inline-actions">
+                          {actions.includes("submit") ? (
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => void handleWorkflowAction(document, "submit")}
+                              disabled={Boolean(actionKey) || isSubmitting}
+                            >
+                              {actionKey === `${document.id}:submit` ? "提交中" : "提交"}
+                            </button>
+                          ) : null}
+                          {actions.includes("approve") ? (
                             <button
                               type="button"
                               onClick={() => void handleWorkflowAction(document, "approve")}
@@ -375,6 +425,8 @@ export function DocumentsPage() {
                             >
                               {actionKey === `${document.id}:approve` ? "审核中" : "通过"}
                             </button>
+                          ) : null}
+                          {actions.includes("reject") ? (
                             <button
                               type="button"
                               className="secondary-button"
@@ -383,15 +435,13 @@ export function DocumentsPage() {
                             >
                               {actionKey === `${document.id}:reject` ? "退回中" : "退回"}
                             </button>
-                          </>
-                        ) : null}
-                        {!canSubmitDocument(document.status) && !canApproveDocument(document.status) ? (
-                          <span>无</span>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          ) : null}
+                          {actions.length === 0 ? <span>无</span> : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan={6} className="empty-cell">
@@ -408,11 +458,13 @@ export function DocumentsPage() {
         <div className="panel-header">
           <h2>创建草稿单据</h2>
           <div className="status-slot" role="status" aria-live="polite">
-            {isSubmitting ? "提交中" : actionKey ? "处理中" : error ? "失败" : result ? "完成" : "待提交"}
+            {!canCreate ? "只读" : isSubmitting ? "提交中" : actionKey ? "处理中" : error ? "失败" : result ? "完成" : "待提交"}
           </div>
         </div>
-        {optionsError ? <div className="notice error">{optionsError}</div> : null}
+        {!canCreate ? <div className="notice">当前账号没有创建单据权限，不能创建草稿。</div> : null}
+        {canCreate && optionsError ? <div className="notice error">{optionsError}</div> : null}
 
+        {canCreate ? (
         <form className="form-grid document-form" onSubmit={handleSubmit}>
           <label>
             单据类型
@@ -509,6 +561,7 @@ export function DocumentsPage() {
             </button>
           </div>
         </form>
+        ) : null}
 
         <div className="message-line" role="status" aria-live="polite">
           {error ? (

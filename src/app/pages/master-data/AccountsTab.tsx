@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { FieldHint, FormActions, MessageLine } from "./MasterDataForm";
+import { FieldHint, FormActions, MessageLine, ReadOnlyNotice } from "./MasterDataForm";
 import { MasterDataTable } from "./MasterDataTable";
 import { accountTypeLabels, accountTypes, activeStatusLabels, buildAccountPayload, isProtectedFieldDisabled } from "./masterDataModel";
 import { writeMasterData } from "./masterDataRequests";
@@ -36,11 +36,13 @@ export function AccountsTab({
   rows,
   people,
   currencies,
+  canWrite,
   onChanged
 }: {
   rows: AccountRow[];
   people: PersonRow[];
   currencies: CurrencyRow[];
+  canWrite: boolean;
   onChanged: () => void;
 }) {
   const [form, setForm] = useState<AccountForm>(emptyForm);
@@ -64,6 +66,11 @@ export function AccountsTab({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canWrite) {
+      setError("当前账号只能查看基础资料，不能修改账户。");
+      return;
+    }
+
     setIsSubmitting(true);
     setMessage(null);
     setError(null);
@@ -80,6 +87,11 @@ export function AccountsTab({
   }
 
   async function toggleArchive(row: AccountRow) {
+    if (!canWrite) {
+      setError("当前账号只能查看基础资料，不能修改账户。");
+      return;
+    }
+
     setIsSubmitting(true);
     setMessage(null);
     setError(null);
@@ -96,6 +108,7 @@ export function AccountsTab({
 
   return (
     <div className="master-data-tab-panel">
+      {canWrite ? (
       <form className="form-grid master-data-form" onSubmit={submit}>
         <label>
           账户名称
@@ -179,7 +192,10 @@ export function AccountsTab({
           onCancel={editingRow ? resetForm : undefined}
         />
       </form>
-      {protectedField ? <FieldHint>已有引用，受保护字段不能修改。</FieldHint> : null}
+      ) : (
+        <ReadOnlyNotice />
+      )}
+      {canWrite && protectedField ? <FieldHint>已有引用，受保护字段不能修改。</FieldHint> : null}
       <MessageLine error={error} message={message} />
       <MasterDataTable
         rows={rows}
@@ -205,7 +221,7 @@ export function AccountsTab({
           {
             key: "actions",
             header: "操作",
-            render: (row) => (
+            render: (row) => canWrite ? (
               <div className="inline-actions">
                 <button type="button" className="secondary-button" onClick={() => { setEditingRow(row); setForm(rowToForm(row)); }}>
                   编辑
@@ -214,6 +230,8 @@ export function AccountsTab({
                   {row.status === "active" ? "归档" : "恢复"}
                 </button>
               </div>
+            ) : (
+              <span>无</span>
             )
           }
         ]}

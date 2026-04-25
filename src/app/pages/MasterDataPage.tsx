@@ -7,7 +7,9 @@ import { MasterDataOverview } from "./master-data/MasterDataOverview";
 import { MerchantsTab } from "./master-data/MerchantsTab";
 import { PeopleTab } from "./master-data/PeopleTab";
 import { ProjectsTab } from "./master-data/ProjectsTab";
+import { canManagePeopleRoleAssignments, canWriteMasterData } from "./master-data/masterDataModel";
 import type { MasterDataSnapshot } from "./master-data/masterDataTypes";
+import type { Capability } from "../session/sessionTypes";
 
 type TabKey = "people" | "projects" | "merchants" | "accounts" | "currencies" | "categories";
 
@@ -29,12 +31,18 @@ const emptySnapshot: MasterDataSnapshot = {
   categories: []
 };
 
-export function MasterDataPage() {
+interface MasterDataPageProps {
+  capabilities: readonly Capability[];
+}
+
+export function MasterDataPage({ capabilities }: MasterDataPageProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("people");
   const [data, setData] = useState<MasterDataSnapshot>(emptySnapshot);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const canWrite = canWriteMasterData(capabilities);
+  const canManagePeopleRoles = canManagePeopleRoleAssignments(capabilities);
 
   useEffect(() => {
     let isCurrent = true;
@@ -102,12 +110,18 @@ export function MasterDataPage() {
           ))}
         </div>
         {activeTab === "people" ? (
-          <PeopleTab rows={data.people} onChanged={refreshMasterData} />
+          <PeopleTab
+            rows={data.people}
+            canWrite={canWrite}
+            canManagePeopleRoles={canManagePeopleRoles}
+            onChanged={refreshMasterData}
+          />
         ) : null}
         {activeTab === "projects" ? (
           <ProjectsTab
             rows={data.projects}
             people={data.people}
+            canWrite={canWrite}
             onChanged={refreshMasterData}
           />
         ) : null}
@@ -116,6 +130,7 @@ export function MasterDataPage() {
             rows={data.merchants}
             people={data.people}
             projects={data.projects}
+            canWrite={canWrite}
             onChanged={refreshMasterData}
           />
         ) : null}
@@ -124,14 +139,15 @@ export function MasterDataPage() {
             rows={data.accounts}
             people={data.people}
             currencies={data.currencies}
+            canWrite={canWrite}
             onChanged={refreshMasterData}
           />
         ) : null}
         {activeTab === "currencies" ? (
-          <CurrenciesTab rows={data.currencies} onChanged={refreshMasterData} />
+          <CurrenciesTab rows={data.currencies} canWrite={canWrite} onChanged={refreshMasterData} />
         ) : null}
         {activeTab === "categories" ? (
-          <CategoriesTab rows={data.categories} onChanged={refreshMasterData} />
+          <CategoriesTab rows={data.categories} canWrite={canWrite} onChanged={refreshMasterData} />
         ) : null}
       </section>
     </div>

@@ -36,3 +36,7 @@ export interface NavigationItem {
   label: string;
   capability: Capability;
 }
+
+export function hasCapability(capabilities: readonly Capability[], capability: Capability): boolean {
+  return capabilities.includes(capability);
+}

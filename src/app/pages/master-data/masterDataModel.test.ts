@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   accountTypeLabels,
   buildAccountPayload,
@@ -7,11 +11,141 @@ import {
   buildMerchantPayload,
   buildPersonPayload,
   buildProjectPayload,
+  canManagePeopleRoleAssignments,
+  canWriteMasterData,
   categoryTypeLabels,
   isProtectedFieldDisabled,
   normalizeCode,
+  personFormWithPermittedRoles,
   parseRoles
 } from "./masterDataModel";
+import { PeopleTab } from "./PeopleTab";
+import { ProjectsTab } from "./ProjectsTab";
+import type { PersonRow, ProjectRow } from "./masterDataTypes";
+
+const reactActEnvironment = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
+reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
+
+let root: Root | null = null;
+
+afterEach(async () => {
+  if (root) {
+    await act(async () => {
+      root?.unmount();
+    });
+    root = null;
+  }
+
+  document.body.innerHTML = "";
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe("master data capability gating", () => {
+  it("derives write and people role management permissions from capabilities", () => {
+    expect(canWriteMasterData(["masterData.view", "masterData.write"])).toBe(true);
+    expect(canWriteMasterData(["masterData.view"])).toBe(false);
+    expect(canManagePeopleRoleAssignments(["masterData.managePeopleRoles"])).toBe(true);
+    expect(canManagePeopleRoleAssignments(["masterData.write"])).toBe(false);
+  });
+
+  it("preserves existing person roles when role management is not allowed", () => {
+    expect(
+      personFormWithPermittedRoles(
+        { name: "Alice", alias: "", roles: ["finance_entry"], isEnabled: true },
+        ["admin"],
+        false
+      ).roles
+    ).toEqual(["admin"]);
+    expect(
+      personFormWithPermittedRoles(
+        { name: "Alice", alias: "", roles: ["finance_entry"], isEnabled: true },
+        ["admin"],
+        true
+      ).roles
+    ).toEqual(["finance_entry"]);
+  });
+
+  it("renders read-only tabs without write forms or status actions when master data write is missing", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        createElement(ProjectsTab, {
+          rows: [projectRow()],
+          people: [personRow()],
+          canWrite: false,
+          onChanged: () => undefined
+        })
+      );
+    });
+
+    expect(container.textContent).toContain("只读");
+    expect(buttonTexts(container)).not.toContain("创建项目");
+    expect(buttonTexts(container)).not.toContain("编辑");
+    expect(buttonTexts(container)).not.toContain("归档");
+  });
+
+  it("disables person role controls and preserves existing roles without manage people roles capability", async () => {
+    const fetchMock = vi.fn<FetchHandler>().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = await renderPeopleTab({ canWrite: true, canManagePeopleRoles: false });
+
+    await act(async () => {
+      buttonByText(container, "编辑").click();
+    });
+
+    const financeEntryRole = checkboxByLabel(container, "财务录入");
+    expect(financeEntryRole.disabled).toBe(true);
+
+    await act(async () => {
+      financeEntryRole.click();
+      const nameInput = inputByLabel(container, "姓名");
+      setInputValue(nameInput, "Alice Updated");
+    });
+
+    await act(async () => {
+      buttonByText(container, "保存人员").click();
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
+      name: "Alice Updated",
+      roles: ["admin"]
+    });
+  });
+
+  it("allows person role changes with manage people roles capability", async () => {
+    const fetchMock = vi.fn<FetchHandler>().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = await renderPeopleTab({ canWrite: true, canManagePeopleRoles: true });
+
+    await act(async () => {
+      buttonByText(container, "编辑").click();
+    });
+
+    const financeEntryRole = checkboxByLabel(container, "财务录入");
+    expect(financeEntryRole.disabled).toBe(false);
+
+    await act(async () => {
+      financeEntryRole.click();
+    });
+
+    await act(async () => {
+      buttonByText(container, "保存人员").click();
+      await Promise.resolve();
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
+      roles: ["admin", "finance_entry"]
+    });
+  });
+});
 
 describe("master data model", () => {
   it("normalizes business codes to uppercase", () => {
@@ -184,3 +318,110 @@ describe("master data accounting tab modules", () => {
     expect(categories.CategoriesTab).toBeTypeOf("function");
   });
 });
+
+type FetchHandler = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+function personRow(): PersonRow {
+  return {
+    id: "person_1",
+    name: "Alice",
+    alias: "ali",
+    roles_json: "[\"admin\"]",
+    is_enabled: 1,
+    created_at: "2026-04-25T10:00:00Z",
+    referenceCount: 0
+  };
+}
+
+function projectRow(): ProjectRow {
+  return {
+    id: "project_1",
+    code: "P1",
+    name: "Project One",
+    owner_person_id: "person_1",
+    status: "active",
+    note: null,
+    created_at: "2026-04-25T10:00:00Z",
+    referenceCount: 0
+  };
+}
+
+async function renderPeopleTab({
+  canWrite,
+  canManagePeopleRoles
+}: {
+  canWrite: boolean;
+  canManagePeopleRoles: boolean;
+}) {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+
+  await act(async () => {
+    root = createRoot(container);
+    root.render(
+      createElement(PeopleTab, {
+        rows: [personRow()],
+        canWrite,
+        canManagePeopleRoles,
+        onChanged: () => undefined
+      })
+    );
+  });
+
+  return container;
+}
+
+function buttonTexts(container: HTMLElement) {
+  return Array.from(container.querySelectorAll("button")).map((button) => button.textContent?.trim() ?? "");
+}
+
+function buttonByText(container: HTMLElement, text: string): HTMLButtonElement {
+  const button = Array.from(container.querySelectorAll("button")).find(
+    (candidate) => candidate.textContent?.trim() === text
+  );
+
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`Button not found: ${text}`);
+  }
+
+  return button;
+}
+
+function inputByLabel(container: HTMLElement, text: string): HTMLInputElement {
+  const input = controlByLabel(container, text, HTMLInputElement);
+  if (input.type === "checkbox") {
+    throw new Error(`Text input not found: ${text}`);
+  }
+  return input;
+}
+
+function checkboxByLabel(container: HTMLElement, text: string): HTMLInputElement {
+  const input = controlByLabel(container, text, HTMLInputElement);
+  if (input.type !== "checkbox") {
+    throw new Error(`Checkbox not found: ${text}`);
+  }
+  return input;
+}
+
+function setInputValue(input: HTMLInputElement, value: string) {
+  const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+  valueSetter?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function controlByLabel<T extends HTMLInputElement | HTMLSelectElement>(
+  container: HTMLElement,
+  text: string,
+  constructor: { new (): T }
+): T {
+  const label = Array.from(container.querySelectorAll("label")).find((candidate) =>
+    candidate.textContent?.includes(text)
+  );
+  const control = label?.querySelector("input, select");
+
+  if (!(control instanceof constructor)) {
+    throw new Error(`Control not found: ${text}`);
+  }
+
+  return control;
+}

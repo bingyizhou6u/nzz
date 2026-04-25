@@ -1,7 +1,13 @@
 import { type FormEvent, useState } from "react";
-import { FormActions, MessageLine } from "./MasterDataForm";
+import { FieldHint, FormActions, MessageLine, ReadOnlyNotice } from "./MasterDataForm";
 import { MasterDataTable } from "./MasterDataTable";
-import { buildPersonPayload, parseRoles, personRoleLabels, personRoles } from "./masterDataModel";
+import {
+  buildPersonPayload,
+  parseRoles,
+  personFormWithPermittedRoles,
+  personRoleLabels,
+  personRoles
+} from "./masterDataModel";
 import { writeMasterData } from "./masterDataRequests";
 import type { PersonForm, PersonRole, PersonRow } from "./masterDataTypes";
 
@@ -18,9 +24,13 @@ function rowToForm(row: PersonRow): PersonForm {
 
 export function PeopleTab({
   rows,
+  canWrite,
+  canManagePeopleRoles,
   onChanged
 }: {
   rows: PersonRow[];
+  canWrite: boolean;
+  canManagePeopleRoles: boolean;
   onChanged: () => void;
 }) {
   const [form, setForm] = useState<PersonForm>(emptyForm);
@@ -35,6 +45,7 @@ export function PeopleTab({
   }
 
   function toggleRole(role: PersonRole, checked: boolean) {
+    if (!canManagePeopleRoles) return;
     setForm((current) => ({
       ...current,
       roles: checked ? [...current.roles, role] : current.roles.filter((currentRole) => currentRole !== role)
@@ -43,6 +54,15 @@ export function PeopleTab({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canWrite) {
+      setError("当前账号只能查看基础资料，不能修改人员。");
+      return;
+    }
+    if (!canManagePeopleRoles && !editingRow) {
+      setError("创建人员需要人员角色管理权限。");
+      return;
+    }
+
     setIsSubmitting(true);
     setMessage(null);
     setError(null);
@@ -50,7 +70,12 @@ export function PeopleTab({
       const url = editingRow
         ? `/api/master-data/people/${encodeURIComponent(editingRow.id)}`
         : "/api/master-data/people";
-      await writeMasterData(url, editingRow ? "PATCH" : "POST", buildPersonPayload(form));
+      const existingRoles = editingRow ? parseRoles(editingRow.roles_json) : null;
+      await writeMasterData(
+        url,
+        editingRow ? "PATCH" : "POST",
+        buildPersonPayload(personFormWithPermittedRoles(form, existingRoles, canManagePeopleRoles))
+      );
       setMessage(editingRow ? "已更新人员" : "已创建人员");
       resetForm();
       onChanged();
@@ -62,6 +87,11 @@ export function PeopleTab({
   }
 
   async function toggleStatus(row: PersonRow) {
+    if (!canWrite) {
+      setError("当前账号只能查看基础资料，不能修改人员。");
+      return;
+    }
+
     setIsSubmitting(true);
     setMessage(null);
     setError(null);
@@ -82,6 +112,7 @@ export function PeopleTab({
 
   return (
     <div className="master-data-tab-panel">
+      {canWrite ? (
       <form className="form-grid master-data-form" onSubmit={submit}>
         <label>
           姓名
@@ -109,6 +140,7 @@ export function PeopleTab({
                 type="checkbox"
                 checked={form.roles.includes(role)}
                 onChange={(event) => toggleRole(role, event.target.checked)}
+                disabled={!canManagePeopleRoles}
               />
               <span>{personRoleLabels[role]}</span>
             </label>
@@ -117,9 +149,16 @@ export function PeopleTab({
         <FormActions
           isSubmitting={isSubmitting}
           submitLabel={editingRow ? "保存人员" : "创建人员"}
+          submitDisabled={!canManagePeopleRoles && !editingRow}
           onCancel={editingRow ? resetForm : undefined}
         />
       </form>
+      ) : (
+        <ReadOnlyNotice />
+      )}
+      {canWrite && !canManagePeopleRoles ? (
+        <FieldHint>{editingRow ? "角色仅可查看，保存时会保留原角色。" : "创建人员需要人员角色管理权限。"}</FieldHint>
+      ) : null}
       <MessageLine error={error} message={message} />
       <MasterDataTable
         rows={rows}
@@ -145,7 +184,7 @@ export function PeopleTab({
           {
             key: "actions",
             header: "操作",
-            render: (row) => (
+            render: (row) => canWrite ? (
               <div className="inline-actions">
                 <button type="button" className="secondary-button" onClick={() => { setEditingRow(row); setForm(rowToForm(row)); }}>
                   编辑
@@ -154,6 +193,8 @@ export function PeopleTab({
                   {row.is_enabled ? "停用" : "启用"}
                 </button>
               </div>
+            ) : (
+              <span>无</span>
             )
           }
         ]}

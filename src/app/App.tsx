@@ -101,12 +101,16 @@ export function App() {
         {session.status === "authenticated" && pages.length === 0 ? (
           <SessionStatusPanel title="暂无可访问功能" message="当前账号没有可用功能，请联系管理员调整权限。" />
         ) : null}
-        {session.status === "authenticated" && activePageKey === "documents" ? <DocumentsPage /> : null}
+        {session.status === "authenticated" && activePageKey === "documents" ? (
+          <DocumentsPage capabilities={session.capabilities} />
+        ) : null}
         {session.status === "authenticated" && activePageKey === "review" ? (
           <ReviewCenterPage capabilities={session.capabilities} />
         ) : null}
         {session.status === "authenticated" && activePageKey === "reports" ? <ReportsPage /> : null}
-        {session.status === "authenticated" && activePageKey === "master-data" ? <MasterDataPage /> : null}
+        {session.status === "authenticated" && activePageKey === "master-data" ? (
+          <MasterDataPage capabilities={session.capabilities} />
+        ) : null}
         {session.status === "authenticated" && activePageKey === "period-locks" ? (
           <PeriodLocksPage capabilities={session.capabilities} />
         ) : null}

@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { FormActions, MessageLine } from "./MasterDataForm";
+import { FormActions, MessageLine, ReadOnlyNotice } from "./MasterDataForm";
 import { MasterDataTable } from "./MasterDataTable";
 import { activeStatusLabels, buildProjectPayload } from "./masterDataModel";
 import { writeMasterData } from "./masterDataRequests";
@@ -25,10 +25,12 @@ function personName(people: PersonRow[], personId: string | null) {
 export function ProjectsTab({
   rows,
   people,
+  canWrite,
   onChanged
 }: {
   rows: ProjectRow[];
   people: PersonRow[];
+  canWrite: boolean;
   onChanged: () => void;
 }) {
   const [form, setForm] = useState<ProjectForm>(emptyForm);
@@ -49,6 +51,11 @@ export function ProjectsTab({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canWrite) {
+      setError("当前账号只能查看基础资料，不能修改项目。");
+      return;
+    }
+
     setIsSubmitting(true);
     setMessage(null);
     setError(null);
@@ -65,6 +72,11 @@ export function ProjectsTab({
   }
 
   async function toggleArchive(row: ProjectRow) {
+    if (!canWrite) {
+      setError("当前账号只能查看基础资料，不能修改项目。");
+      return;
+    }
+
     setIsSubmitting(true);
     setMessage(null);
     setError(null);
@@ -81,6 +93,7 @@ export function ProjectsTab({
 
   return (
     <div className="master-data-tab-panel">
+      {canWrite ? (
       <form className="form-grid master-data-form" onSubmit={submit}>
         <label>
           项目编码
@@ -121,6 +134,9 @@ export function ProjectsTab({
           onCancel={editingRow ? resetForm : undefined}
         />
       </form>
+      ) : (
+        <ReadOnlyNotice />
+      )}
       <MessageLine error={error} message={message} />
       <MasterDataTable
         rows={rows}
@@ -142,7 +158,7 @@ export function ProjectsTab({
           {
             key: "actions",
             header: "操作",
-            render: (row) => (
+            render: (row) => canWrite ? (
               <div className="inline-actions">
                 <button type="button" className="secondary-button" onClick={() => { setEditingRow(row); setForm(rowToForm(row)); }}>
                   编辑
@@ -151,6 +167,8 @@ export function ProjectsTab({
                   {row.status === "active" ? "归档" : "恢复"}
                 </button>
               </div>
+            ) : (
+              <span>无</span>
             )
           }
         ]}
