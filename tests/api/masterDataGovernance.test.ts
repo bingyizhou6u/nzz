@@ -64,11 +64,13 @@ function writeMockEnv(
     enabledCategories?: string[];
     projectStatuses?: Record<string, string>;
     firstRows?: unknown[];
+    runResults?: D1Result[];
     onBind?: (values: unknown[]) => void;
     onRunBindings?: (values: unknown[]) => void;
   } = {}
 ): Env {
   const firstRows = [...(options.firstRows ?? [])];
+  const runResults = [...(options.runResults ?? [])];
   return {
     AUTH_MODE: "development",
     ALLOW_INSECURE_DEV_AUTH: "true",
@@ -128,7 +130,7 @@ function writeMockEnv(
           },
           run(this: MockStatement) {
             options.onRunBindings?.(this.bindings);
-            return Promise.resolve({ success: true } as D1Result);
+            return Promise.resolve(runResults.shift() ?? ({ success: true } as D1Result));
           }
         }) as unknown as MockStatement
     } as unknown as D1Database,
@@ -351,6 +353,27 @@ describe("master data governance write API", () => {
     const body = (await response.json()) as { data: { login_email: string } };
     expect(body.data.login_email).toBe("new.admin@example.com");
     expect(runBindings.flat()).toContain("new.admin@example.com");
+  });
+
+  it("rejects invalid login email format", async () => {
+    const response = await createMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Bad Email",
+          alias: null,
+          roles: ["admin"],
+          loginEmail: "bad-email",
+          isEnabled: true
+        })
+      }),
+      env: writeMockEnv(),
+      params: {},
+      actor: adminActor
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "登录邮箱格式无效" });
   });
 
   it("rejects login email changes without people role management permission", async () => {
@@ -581,7 +604,10 @@ describe("master data governance write API", () => {
           isEnabled: true
         })
       }),
-      env: writeMockEnv({ firstRows: [existingAdmin, { count: 0 }] }),
+      env: writeMockEnv({
+        firstRows: [existingAdmin],
+        runResults: [{ success: true, meta: { changes: 0 } } as unknown as D1Result]
+      }),
       params: { id: "person_admin_target" },
       actor: adminActor
     });

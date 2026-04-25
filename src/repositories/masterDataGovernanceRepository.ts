@@ -385,20 +385,50 @@ export class MasterDataGovernanceRepository {
     };
   }
 
-  async updatePerson(id: string, input: UpdatePersonInput): Promise<GovernancePersonRow> {
+  async updatePerson(
+    id: string,
+    input: UpdatePersonInput,
+    options: { requireOtherEnabledLoginAdmin?: boolean } = {}
+  ): Promise<GovernancePersonRow> {
     const existing = await this.getPerson(id);
     const rolesJson = JSON.stringify(input.roles);
-    await run(
-      this.db
-        .prepare("UPDATE people SET name = ?, alias = ?, roles_json = ?, is_enabled = ?, login_email = ? WHERE id = ?")
-        .bind(input.name, input.alias, rolesJson, input.isEnabled ? 1 : 0, input.loginEmail, id)
-    );
+    const enabled = input.isEnabled ? 1 : 0;
+    const result = options.requireOtherEnabledLoginAdmin
+      ? await run(
+          this.db
+            .prepare(
+              `UPDATE people
+               SET name = ?, alias = ?, roles_json = ?, is_enabled = ?, login_email = ?
+               WHERE id = ?
+                 AND EXISTS (
+                   SELECT 1
+                   FROM people other_person
+                   WHERE other_person.id != ?
+                     AND other_person.is_enabled = 1
+                     AND other_person.login_email IS NOT NULL
+                     AND trim(other_person.login_email) != ''
+                     AND EXISTS (
+                       SELECT 1 FROM json_each(other_person.roles_json)
+                       WHERE json_each.value = 'admin'
+                     )
+                 )`
+            )
+            .bind(input.name, input.alias, rolesJson, enabled, input.loginEmail, id, id)
+        )
+      : await run(
+          this.db
+            .prepare("UPDATE people SET name = ?, alias = ?, roles_json = ?, is_enabled = ?, login_email = ? WHERE id = ?")
+            .bind(input.name, input.alias, rolesJson, enabled, input.loginEmail, id)
+        );
+    if (options.requireOtherEnabledLoginAdmin && result.meta?.changes === 0) {
+      throw new Error("系统至少需要保留一个可登录管理员");
+    }
     return {
       id,
       name: input.name,
       alias: input.alias,
       roles_json: rolesJson,
-      is_enabled: input.isEnabled ? 1 : 0,
+      is_enabled: enabled,
       login_email: input.loginEmail,
       access_subject: existing?.access_subject ?? null,
       last_login_at: existing?.last_login_at ?? null,

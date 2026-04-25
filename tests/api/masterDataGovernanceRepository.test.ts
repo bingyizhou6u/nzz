@@ -132,6 +132,47 @@ describe("MasterDataGovernanceRepository read model", () => {
     expect(runBindings.at(-1)).toEqual(["Alice", "ali", "[\"admin\"]", 1, "new@example.com", "person_1"]);
   });
 
+  it("rejects guarded person updates when no other login admin exists", async () => {
+    const existing = {
+      id: "person_admin",
+      name: "Admin",
+      alias: null,
+      roles_json: "[\"admin\"]",
+      is_enabled: 1,
+      login_email: "admin@example.com",
+      access_subject: null,
+      last_login_at: null,
+      created_at: "2026-04-25T00:00:00.000Z",
+      referenceCount: 0
+    };
+    const capturedSql: string[] = [];
+    const repo = new MasterDataGovernanceRepository(
+      mockDb({
+        firstRows: [existing],
+        runResult: { success: true, meta: { changes: 0 } } as unknown as D1Result,
+        onSql: (sql) => capturedSql.push(sql)
+      })
+    );
+
+    await expect(
+      repo.updatePerson(
+        "person_admin",
+        {
+          name: "Admin",
+          alias: null,
+          roles: ["finance_manager"],
+          isEnabled: true,
+          loginEmail: "admin@example.com"
+        },
+        { requireOtherEnabledLoginAdmin: true }
+      )
+    ).rejects.toThrow("系统至少需要保留一个可登录管理员");
+
+    const sql = capturedSql.map(normalizeSql).join(" ");
+    expect(sql).toContain("other_person.id != ?");
+    expect(sql).toContain("json_each(other_person.roles_json)");
+  });
+
   it("counts other enabled login admins", async () => {
     let capturedSql = "";
     const repo = new MasterDataGovernanceRepository(

@@ -140,8 +140,11 @@ export const updateMasterDataPerson: Handler = async ({ request, env, params, ac
     if (loginEmailsDiffer(before.login_email, input.loginEmail)) {
       assertCan(actor, "masterData.managePeopleRoles");
     }
-    await assertPersonIdentityUpdateAllowed(repository, actor, before, input);
-    const person = await repository.updatePerson(id, input);
+    assertPersonIdentityUpdateAllowed(actor, before, input);
+    const requiresOtherLoginAdmin = isLoginAdmin(before) && !requestedLoginAdmin(input);
+    const person = await repository.updatePerson(id, input, {
+      requireOtherEnabledLoginAdmin: requiresOtherLoginAdmin
+    });
     await auditRepo(env).record({
       ...auditFieldsForRequest(actor, request),
       action: statusAction("person", before.is_enabled, person.is_enabled),
@@ -422,7 +425,10 @@ function errorResponse(error: unknown) {
 function errorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "Request failed";
   const lowerMessage = message.toLowerCase();
-  if (lowerMessage.includes("idx_people_login_email") || lowerMessage.includes("people.login_email")) {
+  if (
+    lowerMessage.includes("unique constraint") &&
+    (lowerMessage.includes("idx_people_login_email") || lowerMessage.includes("people.login_email"))
+  ) {
     return "登录邮箱已绑定其他人员";
   }
   return message;
@@ -456,8 +462,7 @@ function assertCanManageRoleChanges(
   }
 }
 
-async function assertPersonIdentityUpdateAllowed(
-  repository: MasterDataGovernanceRepository,
+function assertPersonIdentityUpdateAllowed(
   actor: AuthenticatedActor,
   before: { id: string; is_enabled: number; login_email: string | null; roles_json: string },
   after: { isEnabled: boolean; loginEmail: string | null; roles: PersonRole[] }
@@ -467,10 +472,6 @@ async function assertPersonIdentityUpdateAllowed(
   }
   if (before.id === actor.personId && hasLoginEmail(before.login_email) && !hasLoginEmail(after.loginEmail)) {
     throw new Error("不能清空当前登录人的登录邮箱");
-  }
-  if (isLoginAdmin(before) && !requestedLoginAdmin(after)) {
-    const otherAdmins = await repository.countOtherEnabledLoginAdmins(before.id);
-    if (otherAdmins === 0) throw new Error("系统至少需要保留一个可登录管理员");
   }
 }
 
