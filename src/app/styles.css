@@ -592,6 +592,27 @@ textarea {
   font-size: 13px;
 }
 
+.period-lock-form {
+  grid-template-columns: minmax(150px, 180px) minmax(220px, 1fr) auto;
+  border-bottom: 1px solid #eaecf0;
+}
+
+.period-lock-table {
+  min-width: 780px;
+}
+
+.period-lock-unlock-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.period-lock-unlock-form input {
+  min-width: 0;
+}
+
 .review-layout {
   display: grid;
   grid-template-columns: minmax(420px, 1fr) minmax(340px, 0.78fr);
@@ -823,6 +844,8 @@ textarea {
   .document-form,
   .report-filter-grid,
   .master-data-form,
+  .period-lock-form,
+  .period-lock-unlock-form,
   .master-data-table-tools,
   .actor-panel,
   .review-layout,

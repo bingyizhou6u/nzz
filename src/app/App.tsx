@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { MasterDataPage } from "./pages/MasterDataPage";
+import { PeriodLocksPage } from "./pages/PeriodLocksPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { ReviewCenterPage } from "./pages/ReviewCenterPage";
 import { getSession } from "./session/sessionApi";
@@ -107,7 +108,7 @@ export function App() {
         {session.status === "authenticated" && activePageKey === "reports" ? <ReportsPage /> : null}
         {session.status === "authenticated" && activePageKey === "master-data" ? <MasterDataPage /> : null}
         {session.status === "authenticated" && activePageKey === "period-locks" ? (
-          <PlaceholderWorkspace title="锁账月结" description="锁账月结工作区将在后续任务中接入期间锁定操作。" />
+          <PeriodLocksPage capabilities={session.capabilities} />
         ) : null}
       </main>
     </div>
@@ -121,18 +122,6 @@ function SessionStatusPanel({ title, message, isError = false }: { title: string
         <h2>{title}</h2>
       </div>
       <div className={isError ? "notice error" : "workspace-placeholder"}>{message}</div>
-    </section>
-  );
-}
-
-function PlaceholderWorkspace({ title, description }: { title: string; description: string }) {
-  return (
-    <section className="panel">
-      <div className="panel-header">
-        <h2>{title}</h2>
-        <div className="status-slot">待接入</div>
-      </div>
-      <div className="workspace-placeholder">{description}</div>
     </section>
   );
 }
