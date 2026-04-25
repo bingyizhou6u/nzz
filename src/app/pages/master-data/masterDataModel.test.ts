@@ -16,7 +16,9 @@ import {
   categoryTypeLabels,
   isProtectedFieldDisabled,
   normalizeCode,
+  personFormWithPermittedIdentity,
   personFormWithPermittedRoles,
+  personLoginStatus,
   parseRoles
 } from "./masterDataModel";
 import { PeopleTab } from "./PeopleTab";
@@ -52,14 +54,14 @@ describe("master data capability gating", () => {
   it("preserves existing person roles when role management is not allowed", () => {
     expect(
       personFormWithPermittedRoles(
-        { name: "Alice", alias: "", roles: ["finance_entry"], isEnabled: true },
+        { name: "Alice", alias: "", roles: ["finance_entry"], loginEmail: "", isEnabled: true },
         ["admin"],
         false
       ).roles
     ).toEqual(["admin"]);
     expect(
       personFormWithPermittedRoles(
-        { name: "Alice", alias: "", roles: ["finance_entry"], isEnabled: true },
+        { name: "Alice", alias: "", roles: ["finance_entry"], loginEmail: "", isEnabled: true },
         ["admin"],
         true
       ).roles
@@ -162,14 +164,64 @@ describe("master data model", () => {
   it("builds people payloads with trimmed fields", () => {
     expect(
       buildPersonPayload(
-        { name: " Alice ", alias: " ali ", roles: ["finance_entry"], isEnabled: true },
+        { name: " Alice ", alias: " ali ", roles: ["finance_entry"], loginEmail: "", isEnabled: true },
         "person_admin"
       )
     ).toEqual({
       name: "Alice",
       alias: "ali",
       roles: ["finance_entry"],
+      loginEmail: null,
       isEnabled: true
+    });
+  });
+
+  it("builds people payloads with normalized login email", () => {
+    expect(
+      buildPersonPayload({
+        name: " Alice ",
+        alias: " ali ",
+        roles: ["admin"],
+        loginEmail: "  Alice@Example.COM  ",
+        isEnabled: true
+      })
+    ).toEqual({
+      name: "Alice",
+      alias: "ali",
+      roles: ["admin"],
+      loginEmail: "alice@example.com",
+      isEnabled: true
+    });
+  });
+
+  it("preserves existing person roles and login email without role management permission", () => {
+    expect(
+      personFormWithPermittedIdentity(
+        { name: "Alice", alias: "", roles: ["finance_entry"], loginEmail: "changed@example.com", isEnabled: true },
+        { roles: ["admin"], loginEmail: "admin@example.com" },
+        false
+      )
+    ).toEqual({
+      name: "Alice",
+      alias: "",
+      roles: ["admin"],
+      loginEmail: "admin@example.com",
+      isEnabled: true
+    });
+  });
+
+  it("derives person login statuses", () => {
+    expect(personLoginStatus({ is_enabled: 1, login_email: "admin@example.com" })).toEqual({
+      label: "可登录",
+      tone: "ok"
+    });
+    expect(personLoginStatus({ is_enabled: 1, login_email: null })).toEqual({
+      label: "未绑定邮箱，不可登录",
+      tone: "warning"
+    });
+    expect(personLoginStatus({ is_enabled: 0, login_email: "old@example.com" })).toEqual({
+      label: "已停用，不可登录",
+      tone: "muted"
     });
   });
 
@@ -328,6 +380,9 @@ function personRow(): PersonRow {
     alias: "ali",
     roles_json: "[\"admin\"]",
     is_enabled: 1,
+    login_email: "admin@example.com",
+    access_subject: null,
+    last_login_at: "2026-04-25T10:30:00Z",
     created_at: "2026-04-25T10:00:00Z",
     referenceCount: 0
   };

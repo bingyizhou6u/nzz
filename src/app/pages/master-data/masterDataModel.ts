@@ -114,18 +114,33 @@ export function isProtectedFieldDisabled(row: ReferencedRow | null | undefined, 
   ].includes(field);
 }
 
-function nullableText(value: string) {
+function nullableText(value: string | null | undefined) {
+  if (value == null) return null;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
 }
 
-export function buildPersonPayload(form: PersonForm, _actor?: string): Record<string, unknown> {
+function normalizedEmail(value: string) {
+  return nullableText(value)?.toLowerCase() ?? null;
+}
+
+export function buildPersonPayload(form: PersonForm): Record<string, unknown> {
   return {
     name: form.name.trim(),
     alias: nullableText(form.alias),
     roles: form.roles,
+    loginEmail: normalizedEmail(form.loginEmail),
     isEnabled: form.isEnabled
   };
+}
+
+export function personFormWithPermittedIdentity(
+  form: PersonForm,
+  existing: { roles: PersonRole[]; loginEmail: string } | null,
+  canManagePeopleRoles: boolean
+): PersonForm {
+  if (canManagePeopleRoles || !existing) return form;
+  return { ...form, roles: existing.roles, loginEmail: existing.loginEmail };
 }
 
 export function personFormWithPermittedRoles(
@@ -133,8 +148,17 @@ export function personFormWithPermittedRoles(
   existingRoles: PersonRole[] | null,
   canManagePeopleRoles: boolean
 ): PersonForm {
-  if (canManagePeopleRoles || !existingRoles) return form;
-  return { ...form, roles: existingRoles };
+  return personFormWithPermittedIdentity(
+    form,
+    existingRoles ? { roles: existingRoles, loginEmail: form.loginEmail } : null,
+    canManagePeopleRoles
+  );
+}
+
+export function personLoginStatus(row: { is_enabled: number; login_email: string | null }) {
+  if (!row.is_enabled) return { label: "已停用，不可登录", tone: "muted" as const };
+  if (!row.login_email?.trim()) return { label: "未绑定邮箱，不可登录", tone: "warning" as const };
+  return { label: "可登录", tone: "ok" as const };
 }
 
 export function buildProjectPayload(form: ProjectForm, _actor?: string): Record<string, unknown> {

@@ -20,6 +20,9 @@ export interface PersonRow extends ReferencedRow {
   alias: string | null;
   roles_json: string;
   is_enabled: number;
+  login_email: string | null;
+  access_subject: string | null;
+  last_login_at: string | null;
   created_at: string;
 }
 
@@ -92,6 +95,7 @@ export interface PersonForm {
   name: string;
   alias: string;
   roles: PersonRole[];
+  loginEmail: string;
   isEnabled: boolean;
 }
 
