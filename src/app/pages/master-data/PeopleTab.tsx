@@ -73,7 +73,11 @@ export function PeopleTab({
         ? `/api/master-data/people/${encodeURIComponent(editingRow.id)}`
         : "/api/master-data/people";
       const existingIdentity = editingRow
-        ? { roles: parseRoles(editingRow.roles_json), loginEmail: editingRow.login_email ?? "" }
+        ? {
+            roles: parseRoles(editingRow.roles_json),
+            loginEmail: editingRow.login_email ?? "",
+            isEnabled: Boolean(editingRow.is_enabled)
+          }
         : null;
       await writeMasterData(
         url,
@@ -93,6 +97,10 @@ export function PeopleTab({
   async function toggleStatus(row: PersonRow) {
     if (!canWrite) {
       setError("当前账号只能查看基础资料，不能修改人员。");
+      return;
+    }
+    if (!canManagePeopleRoles) {
+      setError("启用或停用人员需要人员角色管理权限。");
       return;
     }
 
@@ -139,6 +147,7 @@ export function PeopleTab({
           <select
             value={form.isEnabled ? "enabled" : "disabled"}
             onChange={(event) => setForm((current) => ({ ...current, isEnabled: event.target.value === "enabled" }))}
+            disabled={!canManagePeopleRoles}
           >
             <option value="enabled">启用</option>
             <option value="disabled">停用</option>
@@ -169,7 +178,7 @@ export function PeopleTab({
         <ReadOnlyNotice />
       )}
       {canWrite && !canManagePeopleRoles ? (
-        <FieldHint>{editingRow ? "角色和登录邮箱仅可查看，保存时会保留原值。" : "创建人员需要人员角色管理权限。"}</FieldHint>
+        <FieldHint>{editingRow ? "角色、登录邮箱和状态仅可查看，保存时会保留原值。" : "创建人员需要人员角色管理权限。"}</FieldHint>
       ) : null}
       <MessageLine error={error} message={message} />
       <MasterDataTable
@@ -219,7 +228,12 @@ export function PeopleTab({
                 <button type="button" className="secondary-button" onClick={() => { setEditingRow(row); setForm(rowToForm(row)); }}>
                   编辑
                 </button>
-                <button type="button" className="secondary-button" onClick={() => void toggleStatus(row)} disabled={isSubmitting}>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => void toggleStatus(row)}
+                  disabled={isSubmitting || !canManagePeopleRoles}
+                >
                   {row.is_enabled ? "停用" : "启用"}
                 </button>
               </div>

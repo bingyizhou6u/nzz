@@ -136,11 +136,11 @@ export function buildPersonPayload(form: PersonForm, _actor?: string): Record<st
 
 export function personFormWithPermittedIdentity(
   form: PersonForm,
-  existing: { roles: PersonRole[]; loginEmail: string } | null,
+  existing: { roles: PersonRole[]; loginEmail: string; isEnabled: boolean } | null,
   canManagePeopleRoles: boolean
 ): PersonForm {
   if (canManagePeopleRoles || !existing) return form;
-  return { ...form, roles: existing.roles, loginEmail: existing.loginEmail };
+  return { ...form, roles: existing.roles, loginEmail: existing.loginEmail, isEnabled: existing.isEnabled };
 }
 
 export function personFormWithPermittedRoles(
@@ -150,7 +150,7 @@ export function personFormWithPermittedRoles(
 ): PersonForm {
   return personFormWithPermittedIdentity(
     form,
-    existingRoles ? { roles: existingRoles, loginEmail: form.loginEmail } : null,
+    existingRoles ? { roles: existingRoles, loginEmail: form.loginEmail, isEnabled: form.isEnabled } : null,
     canManagePeopleRoles
   );
 }

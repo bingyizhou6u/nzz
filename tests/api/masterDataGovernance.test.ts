@@ -410,7 +410,76 @@ describe("master data governance write API", () => {
     await expect(response.json()).resolves.toEqual({ error: "权限不足" });
   });
 
-  it("lets master data writers update person fields when login email and roles are retained", async () => {
+  it("rejects person status changes without people role management permission", async () => {
+    const existingPerson = {
+      id: "person_entry",
+      name: "Entry",
+      alias: "old",
+      roles_json: "[\"finance_entry\"]",
+      is_enabled: 1,
+      login_email: "entry@example.com",
+      access_subject: null,
+      last_login_at: null,
+      created_at: "2026-04-25T00:00:00.000Z",
+      referenceCount: 0
+    };
+
+    const response = await updateMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people/person_entry", {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: "Entry",
+          alias: "old",
+          roles: ["finance_entry"],
+          loginEmail: "entry@example.com",
+          isEnabled: false
+        })
+      }),
+      env: writeMockEnv({ firstRows: [existingPerson] }),
+      params: { id: "person_entry" },
+      actor: financeManagerActor
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "权限不足" });
+  });
+
+  it("lets actors with people role management permission update person status", async () => {
+    const runBindings: unknown[][] = [];
+    const existingPerson = {
+      id: "person_entry",
+      name: "Entry",
+      alias: "old",
+      roles_json: "[\"finance_entry\"]",
+      is_enabled: 1,
+      login_email: "entry@example.com",
+      access_subject: null,
+      last_login_at: null,
+      created_at: "2026-04-25T00:00:00.000Z",
+      referenceCount: 0
+    };
+
+    const response = await updateMasterDataPerson({
+      request: new Request("https://ledger.test/api/master-data/people/person_entry", {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: "Entry",
+          alias: "old",
+          roles: ["finance_entry"],
+          loginEmail: "entry@example.com",
+          isEnabled: false
+        })
+      }),
+      env: writeMockEnv({ firstRows: [existingPerson, existingPerson], onRunBindings: (values) => runBindings.push(values) }),
+      params: { id: "person_entry" },
+      actor: adminActor
+    });
+
+    expect(response.status).toBe(200);
+    expect(runBindings).toContainEqual(["Entry", "old", "[\"finance_entry\"]", 0, "entry@example.com", "person_entry"]);
+  });
+
+  it("lets master data writers update person fields when identity fields are retained", async () => {
     const existingPerson = {
       id: "person_entry",
       name: "Entry",
@@ -432,7 +501,7 @@ describe("master data governance write API", () => {
           alias: "new",
           roles: ["finance_entry"],
           loginEmail: "entry@example.com",
-          isEnabled: false
+          isEnabled: true
         })
       }),
       env: writeMockEnv({ firstRows: [existingPerson, existingPerson] }),
@@ -734,7 +803,7 @@ describe("master data governance write API", () => {
     expect(response.status).toBe(200);
   });
 
-  it("lets finance managers update non-role person fields when roles are unchanged", async () => {
+  it("lets finance managers update non-identity person fields when identity is unchanged", async () => {
     const runBindings: unknown[][] = [];
     const existingPerson = {
       id: "person_entry",
@@ -757,7 +826,7 @@ describe("master data governance write API", () => {
           alias: "new",
           roles: ["finance_entry"],
           loginEmail: "entry@example.com",
-          isEnabled: false
+          isEnabled: true
         })
       }),
       env: writeMockEnv({ firstRows: [existingPerson, existingPerson], onRunBindings: (values) => runBindings.push(values) }),
@@ -766,7 +835,7 @@ describe("master data governance write API", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(runBindings).toContainEqual(["Entry Renamed", "new", "[\"finance_entry\"]", 0, "entry@example.com", "person_entry"]);
+    expect(runBindings).toContainEqual(["Entry Renamed", "new", "[\"finance_entry\"]", 1, "entry@example.com", "person_entry"]);
   });
 
   it("rejects admin role removal from actors without role management permission", async () => {

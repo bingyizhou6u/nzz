@@ -140,6 +140,9 @@ export const updateMasterDataPerson: Handler = async ({ request, env, params, ac
     if (loginEmailsDiffer(before.login_email, input.loginEmail)) {
       assertCan(actor, "masterData.managePeopleRoles");
     }
+    if (personStatusDiffers(before.is_enabled, input.isEnabled)) {
+      assertCan(actor, "masterData.managePeopleRoles");
+    }
     assertPersonIdentityUpdateAllowed(actor, before, input);
     const requiresOtherLoginAdmin = isLoginAdmin(before) && !requestedLoginAdmin(input);
     const person = await repository.updatePerson(id, input, {
@@ -532,6 +535,10 @@ function loginEmail(body: Record<string, unknown>): string | null {
 
 function loginEmailsDiffer(before: string | null, after: string | null) {
   return (before ?? "").trim().toLowerCase() !== (after ?? "").trim().toLowerCase();
+}
+
+function personStatusDiffers(before: number, after: boolean) {
+  return before !== (after ? 1 : 0);
 }
 
 function hasLoginEmail(value: string | null) {

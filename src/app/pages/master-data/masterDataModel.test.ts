@@ -152,6 +152,30 @@ describe("master data capability gating", () => {
     });
   });
 
+  it("disables person status controls without manage people roles capability", async () => {
+    const fetchMock = vi.fn<FetchHandler>().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = await renderPeopleTab({ canWrite: true, canManagePeopleRoles: false });
+
+    const statusAction = buttonByText(container, "停用");
+    expect(statusAction.disabled).toBe(true);
+
+    await act(async () => {
+      statusAction.click();
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      buttonByText(container, "编辑").click();
+    });
+
+    const status = selectByLabel(container, "状态");
+    expect(status.disabled).toBe(true);
+  });
+
   it("allows login email edits with manage people roles capability", async () => {
     const fetchMock = vi.fn<FetchHandler>().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
@@ -213,6 +237,33 @@ describe("master data capability gating", () => {
       roles: ["admin", "finance_entry"]
     });
   });
+
+  it("allows person status changes with manage people roles capability", async () => {
+    const fetchMock = vi.fn<FetchHandler>().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = await renderPeopleTab({ canWrite: true, canManagePeopleRoles: true });
+
+    await act(async () => {
+      buttonByText(container, "编辑").click();
+    });
+
+    const status = selectByLabel(container, "状态");
+    expect(status.disabled).toBe(false);
+
+    await act(async () => {
+      setSelectValue(status, "disabled");
+    });
+
+    await act(async () => {
+      buttonByText(container, "保存人员").click();
+      await Promise.resolve();
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
+      isEnabled: false
+    });
+  });
 });
 
 describe("master data model", () => {
@@ -260,11 +311,11 @@ describe("master data model", () => {
     });
   });
 
-  it("preserves existing person roles and login email without role management permission", () => {
+  it("preserves existing person roles, login email, and status without role management permission", () => {
     expect(
       personFormWithPermittedIdentity(
         { name: "Alice", alias: "", roles: ["finance_entry"], loginEmail: "changed@example.com", isEnabled: true },
-        { roles: ["admin"], loginEmail: "admin@example.com" },
+        { roles: ["admin"], loginEmail: "admin@example.com", isEnabled: false },
         false
       )
     ).toEqual({
@@ -272,7 +323,7 @@ describe("master data model", () => {
       alias: "",
       roles: ["admin"],
       loginEmail: "admin@example.com",
-      isEnabled: true
+      isEnabled: false
     });
   });
 
@@ -516,6 +567,10 @@ function inputByLabel(container: HTMLElement, text: string): HTMLInputElement {
   return input;
 }
 
+function selectByLabel(container: HTMLElement, text: string): HTMLSelectElement {
+  return controlByLabel(container, text, HTMLSelectElement);
+}
+
 function checkboxByLabel(container: HTMLElement, text: string): HTMLInputElement {
   const input = controlByLabel(container, text, HTMLInputElement);
   if (input.type !== "checkbox") {
@@ -528,6 +583,12 @@ function setInputValue(input: HTMLInputElement, value: string) {
   const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
   valueSetter?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function setSelectValue(select: HTMLSelectElement, value: string) {
+  const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")?.set;
+  valueSetter?.call(select, value);
+  select.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function controlByLabel<T extends HTMLInputElement | HTMLSelectElement>(
