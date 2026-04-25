@@ -224,7 +224,8 @@ export function amountMajorToMinor(value: string) {
 export function validateDocumentForm(
   form: DocumentEntryForm,
   options: DocumentEntryOptions,
-  currentActorId: string
+  currentActorId: string,
+  entryState?: { requiredFields: DocumentFieldKey[]; validationErrors: string[] }
 ): string[] {
   const errors: string[] = [];
   if (!currentActorId.trim()) errors.push("请选择当前操作人");
@@ -233,10 +234,12 @@ export function validateDocumentForm(
   if (isOriginalDocumentFieldRequired(form.documentType, form.actionType) && !form.originalDocumentId.trim()) {
     errors.push("请选择原单据");
   }
-  for (const field of getVisibleFieldKeys(form.documentType, form.actionType)) {
-    if (field === "merchantId" && form.documentType === "petty_cash_reimbursement") continue;
-    if (field === "operatorPersonId" && form.documentType === "petty_cash_reimbursement") continue;
-    if (field === "projectId" && form.documentType === "loan_writeoff") continue;
+
+  const requiredFields = entryState?.requiredFields ?? getVisibleFieldKeys(form.documentType, form.actionType);
+  for (const field of requiredFields) {
+    if (!entryState && field === "merchantId" && form.documentType === "petty_cash_reimbursement") continue;
+    if (!entryState && field === "operatorPersonId" && form.documentType === "petty_cash_reimbursement") continue;
+    if (!entryState && field === "projectId" && form.documentType === "loan_writeoff") continue;
     if (field === "originalDocumentId") continue;
     if (!form[field].trim()) errors.push(`请选择或填写${fieldLabels[field]}`);
   }
@@ -256,7 +259,7 @@ export function validateDocumentForm(
   ) {
     errors.push("币种必须与账户币种一致");
   }
-  return errors;
+  return [...errors, ...(entryState?.validationErrors ?? [])];
 }
 
 export function buildDocumentPayload(form: DocumentEntryForm, currentActorId: string) {

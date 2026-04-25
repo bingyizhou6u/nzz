@@ -218,6 +218,31 @@ describe("document entry model", () => {
     expect(loanWriteoffErrors).toContain("请选择原单据");
   });
 
+  it("uses derived entry state when validating required fields and residual selections", () => {
+    const errors = validateDocumentForm(
+      {
+        ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),
+        documentType: "petty_cash_reimbursement",
+        personId: "person_ops",
+        projectId: "proj_1",
+        categoryId: "cat_expense",
+        accountId: "acct_petty_ops",
+        currencyCode: "AED",
+        amountMajor: "20",
+        summary: "Borrower-specific reimbursement"
+      },
+      options,
+      "person_ops",
+      {
+        requiredFields: ["borrowerPersonId"],
+        validationErrors: ["科目类型不适用于当前单据类型"]
+      }
+    );
+
+    expect(errors).toContain("请选择或填写借款人");
+    expect(errors).toContain("科目类型不适用于当前单据类型");
+  });
+
   it("builds project income payload using current actor person id", () => {
     const payload = buildDocumentPayload(
       {
