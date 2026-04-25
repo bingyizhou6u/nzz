@@ -452,6 +452,7 @@ describe("ReportRepository", () => {
     expect(normalized).toContain("direct_petty_cash_cost");
     expect(normalized).toContain("pending_cost_application_cost");
     expect(normalized).toContain("not exists");
+    expect(normalized).toContain("d.action_type <> 'reversal'");
   });
 
   it("returns expense summary aggregated from expense detail rows", async () => {
@@ -560,7 +561,8 @@ describe("ReportRepository", () => {
 
         INSERT INTO document_lines (id, document_id, person_id, currency_code, amount_minor) VALUES
           ('line_active', 'doc_petty_active', 'person_1', 'AED', 8000),
-          ('line_reversed', 'doc_petty_reversed', 'person_2', 'AED', 12000);
+          ('line_reversed', 'doc_petty_reversed', 'person_2', 'AED', 12000),
+          ('line_reversal', 'doc_petty_reversal', 'person_2', 'AED', 12000);
 
         INSERT INTO lot_movements (id, document_id, movement_type, usdt_cost_minor) VALUES
           ('lot_move_active', 'doc_petty_active', 'petty_cash_reimbursement', 2400),
@@ -585,6 +587,19 @@ describe("ReportRepository", () => {
           matched_usdt_cost_minor: 2400,
           pending_amount_minor: 0,
           cost_status: "complete"
+        }
+      ]);
+
+      await expect(repo.expenseSummary({ period: "2026-04" })).resolves.toEqual([
+        {
+          period: "2026-04",
+          project_id: "proj_1",
+          category_id: "cat_expense",
+          person_id: "person_1",
+          currency_code: "AED",
+          amount_minor: 8000,
+          matched_usdt_cost_minor: 2400,
+          pending_amount_minor: 0
         }
       ]);
     } finally {

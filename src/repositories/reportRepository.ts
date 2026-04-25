@@ -274,6 +274,7 @@ export class ReportRepository {
           LEFT JOIN pending_cost_remaining ON pending_cost_remaining.document_id = d.id
           WHERE d.status = 'approved'
             AND d.document_type = 'petty_cash_reimbursement'
+            AND d.action_type <> 'reversal'
             AND NOT EXISTS (
               SELECT 1
               FROM documents reversal
