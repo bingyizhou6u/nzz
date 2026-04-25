@@ -198,4 +198,58 @@ describe("MasterDataRepository", () => {
     expect(normalized).toContain("where is_enabled = 1");
     expect(normalized).toContain("order by code");
   });
+
+  it("loads people by ids without filtering enabled status", async () => {
+    let capturedSql = "";
+    const repo = new MasterDataRepository(
+      mockDb({
+        rows: [{ id: "person_disabled", name: "Disabled", alias: null, roles_json: "[]", is_enabled: 0 }],
+        onSql: (sql) => (capturedSql = sql)
+      })
+    );
+
+    await expect(repo.getPeopleByIds(["person_disabled"])).resolves.toEqual([
+      { id: "person_disabled", name: "Disabled", alias: null, roles_json: "[]", is_enabled: 0 }
+    ]);
+    expect(normalizeSql(capturedSql)).toContain("from people");
+    expect(normalizeSql(capturedSql)).not.toContain("where is_enabled = 1");
+  });
+
+  it("loads accounts by ids without filtering active status", async () => {
+    let capturedSql = "";
+    const repo = new MasterDataRepository(
+      mockDb({
+        rows: [
+          {
+            id: "acct_archived",
+            name: "Old AED",
+            account_type: "currency_reserve",
+            currency_code: "AED",
+            owner_person_id: null,
+            is_company_account: 1,
+            allow_negative: 0,
+            status: "archived"
+          }
+        ],
+        onSql: (sql) => (capturedSql = sql)
+      })
+    );
+
+    await expect(repo.getAccountsByIds(["acct_archived"])).resolves.toHaveLength(1);
+    expect(normalizeSql(capturedSql)).toContain("from accounts");
+    expect(normalizeSql(capturedSql)).not.toContain("where status = 'active'");
+  });
+
+  it("returns empty arrays without querying for empty batch lookup inputs", async () => {
+    let prepareCount = 0;
+    const repo = new MasterDataRepository(mockDb({ onSql: () => (prepareCount += 1) }));
+
+    await expect(repo.getPeopleByIds([])).resolves.toEqual([]);
+    await expect(repo.getProjectsByIds([])).resolves.toEqual([]);
+    await expect(repo.getMerchantsByIds([])).resolves.toEqual([]);
+    await expect(repo.getAccountsByIds([])).resolves.toEqual([]);
+    await expect(repo.getCategoriesByIds([])).resolves.toEqual([]);
+    await expect(repo.getCurrenciesByCodes([])).resolves.toEqual([]);
+    expect(prepareCount).toBe(0);
+  });
 });
