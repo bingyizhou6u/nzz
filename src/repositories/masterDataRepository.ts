@@ -223,7 +223,7 @@ export class MasterDataRepository {
   }
 
   getCurrenciesByCodes(codes: string[]): Promise<CurrencyRow[]> {
-    const values = uniqueValues(codes).map((code) => code.toUpperCase());
+    const values = uniqueValues(codes.map((code) => code.toUpperCase()));
     if (values.length === 0) return Promise.resolve([]);
     return all<CurrencyRow>(
       this.db

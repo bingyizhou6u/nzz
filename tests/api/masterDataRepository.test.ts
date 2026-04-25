@@ -6,12 +6,14 @@ function mockDb(options: {
   firstRow?: unknown | null;
   runResult?: D1Result;
   onSql?: (sql: string) => void;
+  onBind?: (args: unknown[]) => void;
 }): D1Database {
   return {
     prepare: (sql: string) => {
       options.onSql?.(sql);
       return {
-        bind() {
+        bind(...args: unknown[]) {
+          options.onBind?.(args);
           return this;
         },
         all: async () => ({ success: true, results: options.rows ?? [] }),
@@ -212,7 +214,50 @@ describe("MasterDataRepository", () => {
       { id: "person_disabled", name: "Disabled", alias: null, roles_json: "[]", is_enabled: 0 }
     ]);
     expect(normalizeSql(capturedSql)).toContain("from people");
-    expect(normalizeSql(capturedSql)).not.toContain("where is_enabled = 1");
+    expect(normalizeSql(capturedSql)).not.toContain("is_enabled = 1");
+  });
+
+  it("loads projects by ids without filtering active status", async () => {
+    let capturedSql = "";
+    const row = {
+      id: "project_archived",
+      code: "OLD",
+      name: "Old Project",
+      owner_person_id: null,
+      status: "archived"
+    };
+    const repo = new MasterDataRepository(
+      mockDb({
+        rows: [row],
+        onSql: (sql) => (capturedSql = sql)
+      })
+    );
+
+    await expect(repo.getProjectsByIds(["project_archived"])).resolves.toEqual([row]);
+    expect(normalizeSql(capturedSql)).toContain("from projects");
+    expect(normalizeSql(capturedSql)).not.toContain("status = 'active'");
+  });
+
+  it("loads merchants by ids without filtering active status", async () => {
+    let capturedSql = "";
+    const row = {
+      id: "merchant_archived",
+      code: "OLD",
+      name: "Old Merchant",
+      project_id: "project_archived",
+      merchant_type: "store",
+      status: "archived"
+    };
+    const repo = new MasterDataRepository(
+      mockDb({
+        rows: [row],
+        onSql: (sql) => (capturedSql = sql)
+      })
+    );
+
+    await expect(repo.getMerchantsByIds(["merchant_archived"])).resolves.toEqual([row]);
+    expect(normalizeSql(capturedSql)).toContain("from merchants");
+    expect(normalizeSql(capturedSql)).not.toContain("status = 'active'");
   });
 
   it("loads accounts by ids without filtering active status", async () => {
@@ -237,7 +282,67 @@ describe("MasterDataRepository", () => {
 
     await expect(repo.getAccountsByIds(["acct_archived"])).resolves.toHaveLength(1);
     expect(normalizeSql(capturedSql)).toContain("from accounts");
-    expect(normalizeSql(capturedSql)).not.toContain("where status = 'active'");
+    expect(normalizeSql(capturedSql)).not.toContain("status = 'active'");
+  });
+
+  it("loads categories by ids without filtering enabled status", async () => {
+    let capturedSql = "";
+    const row = {
+      id: "category_disabled",
+      name: "Old Travel",
+      parent_id: null,
+      category_type: "expense",
+      direction: "out",
+      affects_expense_report: 1,
+      affects_project_report: 0,
+      requires_merchant: 1,
+      requires_person: 0,
+      requires_borrower: 0,
+      is_enabled: 0
+    };
+    const repo = new MasterDataRepository(
+      mockDb({
+        rows: [row],
+        onSql: (sql) => (capturedSql = sql)
+      })
+    );
+
+    await expect(repo.getCategoriesByIds(["category_disabled"])).resolves.toEqual([row]);
+    expect(normalizeSql(capturedSql)).toContain("from categories");
+    expect(normalizeSql(capturedSql)).not.toContain("is_enabled = 1");
+  });
+
+  it("loads currencies by codes without filtering enabled status", async () => {
+    let capturedSql = "";
+    const row = { code: "USD", name: "US Dollar", minor_units: 2, is_enabled: 0 };
+    const repo = new MasterDataRepository(
+      mockDb({
+        rows: [row],
+        onSql: (sql) => (capturedSql = sql)
+      })
+    );
+
+    await expect(repo.getCurrenciesByCodes(["usd"])).resolves.toEqual([row]);
+    expect(normalizeSql(capturedSql)).toContain("from currencies");
+    expect(normalizeSql(capturedSql)).not.toContain("is_enabled = 1");
+  });
+
+  it("trims blanks and deduplicates id batch lookup binds", async () => {
+    let capturedBindArgs: unknown[] = [];
+    const repo = new MasterDataRepository(mockDb({ onBind: (args) => (capturedBindArgs = args) }));
+
+    await repo.getPeopleByIds([" person_1 ", "", "person_1", " person_2 ", " "]);
+
+    expect(capturedBindArgs).toEqual(["person_1", "person_2"]);
+  });
+
+  it("uppercases currency codes before deduplicating batch lookup binds", async () => {
+    let capturedBindArgs: unknown[] = [];
+    const repo = new MasterDataRepository(mockDb({ onBind: (args) => (capturedBindArgs = args) }));
+
+    await repo.getCurrenciesByCodes([" usd ", "USD", " "]);
+
+    expect(capturedBindArgs).toEqual(["USD"]);
   });
 
   it("returns empty arrays without querying for empty batch lookup inputs", async () => {
