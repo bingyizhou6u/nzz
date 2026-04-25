@@ -51,6 +51,27 @@ Current Workers hostname:
 https://management-ledger.bingyizhou6u.workers.dev
 ```
 
+## Cloudflare Access Authentication
+
+Production deployments must be protected by a Cloudflare Access self-hosted application. Configure Access for the deployed Worker hostname and set these Worker variables:
+
+```sh
+AUTH_MODE=access
+CF_ACCESS_TEAM_DOMAIN=https://<team-name>.cloudflareaccess.com
+CF_ACCESS_AUD=<Application Audience AUD tag>
+```
+
+The Worker validates the `Cf-Access-Jwt-Assertion` request header against the configured team domain and Access application audience before resolving the actor from `people.login_email`.
+
+Do not share the deployed hostname until Access is enabled and at least one `people.login_email` is mapped to an enabled admin account. For local development, use development auth with a local mapped login email:
+
+```sh
+AUTH_MODE=development
+DEV_ACTOR_EMAIL=<local mapped people.login_email>
+```
+
+Do not commit real email addresses, secrets, Access audience tags, or account-specific credentials to the repository. Keep `.dev.vars` local-only for developer environment values.
+
 ## Data Safety
 
 Do not edit balances manually. Correct accounting errors through correction or reversal documents so the ledger remains auditable.

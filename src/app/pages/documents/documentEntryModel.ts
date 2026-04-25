@@ -224,7 +224,7 @@ export function amountMajorToMinor(value: string) {
 export function validateDocumentForm(
   form: DocumentEntryForm,
   options: DocumentEntryOptions,
-  currentActorId: string,
+  _currentActorId: string,
   entryState?: { requiredFields: DocumentFieldKey[]; validationErrors: string[] }
 ): string[] {
   const errors: string[] = [];
