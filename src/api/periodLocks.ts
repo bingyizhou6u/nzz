@@ -1,7 +1,7 @@
 import { assertCan, type Capability } from "../auth/permissions";
 import { AuthError, type AuthenticatedActor } from "../auth/types";
 import { AuditLogRepository } from "../repositories/auditLogRepository";
-import { PeriodLockRepository } from "../repositories/periodLockRepository";
+import { PeriodLockNotFoundError, PeriodLockRepository } from "../repositories/periodLockRepository";
 import type { Handler } from "../worker/env";
 
 export const listPeriodLocks: Handler = async ({ env, actor: contextActor }) => {
@@ -21,8 +21,8 @@ export const createPeriodLock: Handler = async ({ request, env, actor: contextAc
     const actor = requireActorWithCapability(contextActor, "periodLocks.lock");
     const period = periodValue(body.period);
     const note = optionalText(body.note);
-    await new PeriodLockRepository(env.DB).lock({ period, lockedBy: actor.personId, note });
-    await auditRepo(env.DB).record({
+    const locks = new PeriodLockRepository(env.DB);
+    const audit = auditRepo(env.DB).prepareRecord({
       actor: actor.personId,
       action: "period_lock.create",
       entityType: "period_lock",
@@ -31,6 +31,7 @@ export const createPeriodLock: Handler = async ({ request, env, actor: contextAc
       actorPersonId: actor.personId,
       actorEmail: actor.email
     });
+    await locks.lockWithAudit({ period, lockedBy: actor.personId, note }, audit);
     return Response.json({ data: { period, status: "locked" } }, { status: 201 });
   } catch (error) {
     return errorResponse(error);
@@ -45,17 +46,23 @@ export const deletePeriodLock: Handler = async ({ request, env, params, actor: c
     const actor = requireActorWithCapability(contextActor, "periodLocks.unlock");
     const period = periodValue(params.period);
     const reason = requiredText(body.reason, "reason");
-    await new PeriodLockRepository(env.DB).unlock(period);
-    await auditRepo(env.DB).record({
-      actor: actor.personId,
-      action: "period_lock.delete",
-      entityType: "period_lock",
-      entityId: period,
-      reason,
-      before: { period },
-      actorPersonId: actor.personId,
-      actorEmail: actor.email
-    });
+    const locks = new PeriodLockRepository(env.DB);
+    const existing = await locks.get(period);
+    if (!existing) throw new PeriodLockNotFoundError();
+    const audit = auditRepo(env.DB).prepareRecordWhen(
+      {
+        actor: actor.personId,
+        action: "period_lock.delete",
+        entityType: "period_lock",
+        entityId: period,
+        reason,
+        before: existing,
+        actorPersonId: actor.personId,
+        actorEmail: actor.email
+      },
+      { sql: "EXISTS (SELECT 1 FROM period_locks WHERE period = ?)", bindings: [period] }
+    );
+    await locks.unlockWithAudit(period, audit);
     return Response.json({ data: { period, status: "unlocked" } });
   } catch (error) {
     return errorResponse(error);
@@ -108,6 +115,7 @@ function badRequest(error: string) {
 }
 
 function errorResponse(error: unknown) {
+  if (error instanceof PeriodLockNotFoundError) return Response.json({ error: error.message }, { status: 404 });
   if (error instanceof AuthError) return Response.json({ error: error.message }, { status: error.status });
   return badRequest(error instanceof Error ? error.message : "Request failed");
 }
