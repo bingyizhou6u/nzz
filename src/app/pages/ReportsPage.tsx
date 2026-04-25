@@ -123,7 +123,7 @@ export function ReportsPage() {
     <div className="page-stack">
       <section className="panel">
         <div className="panel-header">
-          <h2>报表中心</h2>
+          <h2>报表读取</h2>
           <div className="header-actions">
             <div className="status-slot" role="status" aria-live="polite">
               {isLoading ? "读取中" : error ? "失败" : "已更新"}

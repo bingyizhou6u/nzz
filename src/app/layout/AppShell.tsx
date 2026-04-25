@@ -11,18 +11,42 @@ interface AppShellProps {
   children: ReactNode;
 }
 
-const pageDescriptions: Partial<Record<PageKey, string>> = {
-  workspace: "集中查看待处理事项与常用业务入口。",
-  documents: "创建、提交和查询业务单据。",
-  review: "处理待审核单据并查看入账影响。",
-  reports: "按期间、项目、往来和账户查看正式报表。",
-  "master-data": "维护人员、项目、账户、币种和分类等基础资料。",
-  "period-locks": "管理期间锁账状态和月结控制。"
+interface PageHeaderMetadata {
+  title: string;
+  description: string;
+}
+
+const pageHeaderMetadata: Record<PageKey, PageHeaderMetadata> = {
+  workspace: {
+    title: "工作台",
+    description: "集中查看待处理事项、单据快照和常用业务入口。"
+  },
+  documents: {
+    title: "单据中心",
+    description: "创建、提交、查看和跟踪业务单据。"
+  },
+  review: {
+    title: "审核中心",
+    description: "处理待审核单据，查看入账影响后再确认。"
+  },
+  reports: {
+    title: "报表中心",
+    description: "按资金、项目、费用、备用金、借款和异常口径查看管理报表。"
+  },
+  "master-data": {
+    title: "基础资料治理",
+    description: "维护人员、项目、商户、账户、币种和管理科目。"
+  },
+  "period-locks": {
+    title: "期间锁账",
+    description: "锁定已完成期间，防止历史期间继续产生过账变化。"
+  }
 };
 
 export function AppShell({ session, pages, activePage, onPageChange, children }: AppShellProps) {
-  const activeNavigationItem = pages.find((page) => page.key === activePage);
-  const pageTitle = activeNavigationItem?.label ?? "内部管理会计台账";
+  const activePageMetadata = activePage ? pageHeaderMetadata[activePage] : null;
+  const pageTitle = activePageMetadata?.title ?? "内部管理会计台账";
+  const pageDescription = activePageMetadata?.description ?? "正式系统 Beta";
 
   return (
     <div className="app-shell">
@@ -74,7 +98,7 @@ export function AppShell({ session, pages, activePage, onPageChange, children }:
           )}
         </div>
 
-        <PageHeader title={pageTitle} description={activePage ? pageDescriptions[activePage] : "正式系统 Beta"} />
+        <PageHeader title={pageTitle} description={pageDescription} />
 
         <main className="app-content">{children}</main>
       </div>

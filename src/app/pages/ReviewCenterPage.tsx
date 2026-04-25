@@ -155,7 +155,7 @@ export function ReviewCenterPage({ capabilities }: ReviewCenterPageProps) {
     return (
       <section className="panel">
         <div className="panel-header">
-          <h2>审核中心</h2>
+          <h2>审核权限</h2>
           <div className="status-slot">无权限</div>
         </div>
         <div className="workspace-placeholder">当前账号没有审核权限。</div>

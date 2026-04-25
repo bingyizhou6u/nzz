@@ -81,7 +81,7 @@ export function MasterDataPage({ capabilities }: MasterDataPageProps) {
     <div className="page-stack">
       <section className="panel">
         <div className="panel-header">
-          <h2>基础资料治理中心</h2>
+          <h2>治理概览</h2>
           <div className="document-toolbar">
             <div className="status-slot" role="status" aria-live="polite">
               {isLoading ? "读取中" : error ? "读取失败" : "已读取"}

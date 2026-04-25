@@ -170,7 +170,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(document.querySelector(".sidebar-nav-button.active")?.textContent).toContain("业务单据");
       expect(document.querySelector(".sidebar-nav-button.active")?.getAttribute("aria-current")).toBe("page");
-      expect(document.querySelector(".page-header h1")?.textContent).toBe("业务单据");
+      expect(document.querySelector(".page-header h1")?.textContent).toBe("单据中心");
       expect(document.querySelector("main")?.textContent).toContain("单据列表");
     });
   });
