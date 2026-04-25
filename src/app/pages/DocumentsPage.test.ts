@@ -1,13 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDocumentPayload,
-  canApproveDocument,
-  canSubmitDocument,
   formatLocalDateInputValue,
   formatLocalMonthInputValue,
-  isLineAccountRequired,
   isOriginalDocumentRequired
-} from "./DocumentsPage";
+} from "./documents/documentEntryModel";
+import { canApproveDocument, canSubmitDocument, isLineAccountRequired } from "./DocumentsPage";
 
 describe("document date defaults", () => {
   it("formats date inputs from local calendar fields", () => {
@@ -51,7 +49,6 @@ describe("document date defaults", () => {
         period: "2026-04",
         originalDocumentId: "",
         summary: "Income",
-        createdBy: "user_1",
         operatorPersonId: "",
         projectId: "proj_1",
         merchantId: "merchant_1",
@@ -63,7 +60,7 @@ describe("document date defaults", () => {
         counterpartyAccountId: "",
         personId: "",
         usdtAmountMajor: ""
-      })
+      }, "user_1")
     ).toEqual({
       documentType: "project_income",
       actionType: "normal",
@@ -87,7 +84,6 @@ describe("document date defaults", () => {
         period: "2026-04",
         originalDocumentId: "",
         summary: "Exchange",
-        createdBy: "user_1",
         operatorPersonId: "",
         projectId: "",
         merchantId: "",
@@ -99,7 +95,7 @@ describe("document date defaults", () => {
         counterpartyAccountId: " acct_usdt ",
         personId: "",
         usdtAmountMajor: "100.25"
-      })
+      }, "user_1")
     ).toEqual({
       documentType: "exchange",
       actionType: "normal",
@@ -129,7 +125,6 @@ describe("document date defaults", () => {
         period: "2026-04",
         originalDocumentId: "",
         summary: "Reimbursement",
-        createdBy: "user_1",
         operatorPersonId: "",
         projectId: "",
         merchantId: "",
@@ -141,7 +136,7 @@ describe("document date defaults", () => {
         counterpartyAccountId: " ",
         personId: " person_1 ",
         usdtAmountMajor: " "
-      })
+      }, "user_1")
     ).toEqual({
       documentType: "petty_cash_reimbursement",
       actionType: "normal",
@@ -171,7 +166,6 @@ describe("document date defaults", () => {
         period: "2026-04",
         originalDocumentId: "doc_loan",
         summary: "Write off bad loan",
-        createdBy: "user_1",
         operatorPersonId: "",
         projectId: "proj_1",
         merchantId: "",
@@ -183,7 +177,7 @@ describe("document date defaults", () => {
         counterpartyAccountId: "",
         personId: "",
         usdtAmountMajor: ""
-      })
+      }, "user_1")
     ).toEqual({
       documentType: "loan_writeoff",
       actionType: "normal",
