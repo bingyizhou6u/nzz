@@ -84,6 +84,71 @@ describe("MasterDataGovernanceRepository read model", () => {
     expect(sql).toContain("last_login_at");
   });
 
+  it("creates people with normalized login email", async () => {
+    const runBindings: unknown[][] = [];
+    const repo = new MasterDataGovernanceRepository(
+      mockDb({ onBind: (values) => runBindings.push(values) })
+    );
+
+    const person = await repo.createPerson({
+      name: "Alice",
+      alias: "ali",
+      roles: ["admin"],
+      isEnabled: true,
+      loginEmail: "alice@example.com"
+    });
+
+    expect(person.login_email).toBe("alice@example.com");
+    expect(runBindings.at(-1)).toContain("alice@example.com");
+  });
+
+  it("updates people login email", async () => {
+    const runBindings: unknown[][] = [];
+    const existing = {
+      id: "person_1",
+      name: "Alice",
+      alias: "ali",
+      roles_json: "[\"admin\"]",
+      is_enabled: 1,
+      login_email: "old@example.com",
+      access_subject: null,
+      last_login_at: null,
+      created_at: "2026-04-25T00:00:00.000Z",
+      referenceCount: 0
+    };
+    const repo = new MasterDataGovernanceRepository(
+      mockDb({ firstRows: [existing], onBind: (values) => runBindings.push(values) })
+    );
+
+    const person = await repo.updatePerson("person_1", {
+      name: "Alice",
+      alias: "ali",
+      roles: ["admin"],
+      isEnabled: true,
+      loginEmail: "new@example.com"
+    });
+
+    expect(person.login_email).toBe("new@example.com");
+    expect(runBindings.at(-1)).toEqual(["Alice", "ali", "[\"admin\"]", 1, "new@example.com", "person_1"]);
+  });
+
+  it("counts other enabled login admins", async () => {
+    let capturedSql = "";
+    const repo = new MasterDataGovernanceRepository(
+      mockDb({
+        firstRow: { count: 2 },
+        onSql: (sql) => (capturedSql = sql)
+      })
+    );
+
+    await expect(repo.countOtherEnabledLoginAdmins("person_1")).resolves.toBe(2);
+    const sql = normalizeSql(capturedSql);
+    expect(sql).toContain("from people");
+    expect(sql).toContain("login_email is not null");
+    expect(sql).toContain("json_each");
+    expect(sql).toContain("id != ?");
+  });
+
   it("avoids compound selects for high fan-out reference counts", async () => {
     const capturedSql: string[] = [];
     const repo = new MasterDataGovernanceRepository(

@@ -109,6 +109,7 @@ export interface CreatePersonInput {
   alias: string | null;
   roles: PersonRole[];
   isEnabled: boolean;
+  loginEmail: string | null;
 }
 
 export type UpdatePersonInput = CreatePersonInput;
@@ -364,8 +365,11 @@ export class MasterDataGovernanceRepository {
     const rolesJson = JSON.stringify(input.roles);
     await run(
       this.db
-        .prepare("INSERT INTO people (id, name, alias, roles_json, is_enabled, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-        .bind(id, input.name, input.alias, rolesJson, input.isEnabled ? 1 : 0, createdAt)
+        .prepare(
+          `INSERT INTO people (id, name, alias, roles_json, is_enabled, created_at, login_email)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(id, input.name, input.alias, rolesJson, input.isEnabled ? 1 : 0, createdAt, input.loginEmail)
     );
     return {
       id,
@@ -373,7 +377,7 @@ export class MasterDataGovernanceRepository {
       alias: input.alias,
       roles_json: rolesJson,
       is_enabled: input.isEnabled ? 1 : 0,
-      login_email: null,
+      login_email: input.loginEmail,
       access_subject: null,
       last_login_at: null,
       created_at: createdAt,
@@ -386,8 +390,8 @@ export class MasterDataGovernanceRepository {
     const rolesJson = JSON.stringify(input.roles);
     await run(
       this.db
-        .prepare("UPDATE people SET name = ?, alias = ?, roles_json = ?, is_enabled = ? WHERE id = ?")
-        .bind(input.name, input.alias, rolesJson, input.isEnabled ? 1 : 0, id)
+        .prepare("UPDATE people SET name = ?, alias = ?, roles_json = ?, is_enabled = ?, login_email = ? WHERE id = ?")
+        .bind(input.name, input.alias, rolesJson, input.isEnabled ? 1 : 0, input.loginEmail, id)
     );
     return {
       id,
@@ -395,12 +399,32 @@ export class MasterDataGovernanceRepository {
       alias: input.alias,
       roles_json: rolesJson,
       is_enabled: input.isEnabled ? 1 : 0,
-      login_email: existing?.login_email ?? null,
+      login_email: input.loginEmail,
       access_subject: existing?.access_subject ?? null,
       last_login_at: existing?.last_login_at ?? null,
       created_at: existing?.created_at ?? nowIso(),
       referenceCount: existing?.referenceCount ?? 0
     };
+  }
+
+  async countOtherEnabledLoginAdmins(personId: string): Promise<number> {
+    const row = await first<{ count: number }>(
+      this.db
+        .prepare(
+          `SELECT COUNT(*) AS count
+           FROM people
+           WHERE id != ?
+             AND is_enabled = 1
+             AND login_email IS NOT NULL
+             AND trim(login_email) != ''
+             AND EXISTS (
+               SELECT 1 FROM json_each(people.roles_json)
+               WHERE json_each.value = 'admin'
+             )`
+        )
+        .bind(personId)
+    );
+    return row?.count ?? 0;
   }
 
   async createProject(input: CreateProjectInput): Promise<GovernanceProjectRow> {
