@@ -18,7 +18,10 @@ const invalidBusinessDateOrPeriodResponse = () =>
   Response.json({ error: "Invalid business date or period" }, { status: 400 });
 
 const requiredOriginalDocumentResponse = () =>
-  Response.json({ error: "originalDocumentId is required for correction or reversal" }, { status: 400 });
+  Response.json(
+    { error: "originalDocumentId is required for reversal, loan repayment, or loan writeoff" },
+    { status: 400 }
+  );
 
 const badRequestResponse = (error: string) => Response.json({ error }, { status: 400 });
 

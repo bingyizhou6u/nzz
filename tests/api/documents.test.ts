@@ -116,7 +116,9 @@ describe("documents API", () => {
   };
   const invalidDocumentTypeOrActionTypeError = { error: "Invalid document type or action type" };
   const invalidBusinessDateOrPeriodError = { error: "Invalid business date or period" };
-  const requiredOriginalDocumentError = { error: "originalDocumentId is required for correction or reversal" };
+  const requiredOriginalDocumentError = {
+    error: "originalDocumentId is required for reversal, loan repayment, or loan writeoff"
+  };
 
   it("rejects document creation when createdBy is not an enabled person", async () => {
     const response = await createDocument({
