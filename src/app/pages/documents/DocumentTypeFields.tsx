@@ -1,5 +1,10 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { DocumentEntryForm, DocumentEntryOptions, OriginalDocumentOption } from "./documentEntryTypes";
+import type {
+  AccountOption,
+  DocumentEntryForm,
+  DocumentEntryOptions,
+  OriginalDocumentOption
+} from "./documentEntryTypes";
 import {
   accountCurrencyCode,
   categoryOptionsForDocumentType,
@@ -27,8 +32,23 @@ interface DocumentTypeFieldsProps {
   originalDocuments: OriginalDocumentOption[];
 }
 
+function accountsWithCurrency(accounts: AccountOption[], currencyCode: string) {
+  if (!currencyCode) return accounts;
+  return accounts.filter((account) => account.currency_code === currencyCode);
+}
+
 export function DocumentTypeFields({ form, setForm, options, originalDocuments }: DocumentTypeFieldsProps) {
   const fields = getVisibleFieldKeys(form.documentType, form.actionType);
+  const selectedAccountCurrency = accountCurrencyCode(options, form.accountId);
+  const companyAccountOptions = companyAccounts(options);
+  const personPettyCashAccountOptions = pettyCashAccountsForPerson(options, form.personId);
+  const accountOptions =
+    form.documentType === "petty_cash_return" || form.documentType === "petty_cash_reimbursement"
+      ? personPettyCashAccountOptions
+      : companyAccountOptions;
+  const counterpartyAccountOptions = getCounterpartyAccountOptions();
+  const isProjectRequired =
+    form.documentType === "project_income" || form.documentType === "petty_cash_reimbursement";
 
   function updateField<K extends keyof DocumentEntryForm>(key: K, value: DocumentEntryForm[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -39,8 +59,27 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
       ...current,
       [key]: value,
       currencyCode:
-        key === "accountId" && value ? accountCurrencyCode(options, value) || current.currencyCode : current.currencyCode
+        key === "accountId" && value ? accountCurrencyCode(options, value) || current.currencyCode : current.currencyCode,
+      counterpartyAccountId: key === "accountId" ? "" : value
     }));
+  }
+
+  function getCounterpartyAccountOptions() {
+    if (form.documentType === "exchange") {
+      return accountsWithCurrency(companyAccountOptions, "USDT");
+    }
+    if (form.documentType === "account_transfer") {
+      return accountsWithCurrency(companyAccountOptions, selectedAccountCurrency).filter(
+        (account) => account.id !== form.accountId
+      );
+    }
+    if (form.documentType === "petty_cash_issue") {
+      return accountsWithCurrency(personPettyCashAccountOptions, selectedAccountCurrency);
+    }
+    if (form.documentType === "petty_cash_return") {
+      return accountsWithCurrency(companyAccountOptions, selectedAccountCurrency);
+    }
+    return accountsWithCurrency(companyAccountOptions, selectedAccountCurrency);
   }
 
   return (
@@ -65,6 +104,7 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
           getValue={(person) => person.id}
           getLabel={personLabel}
           onChange={(value) => updateField("operatorPersonId", value)}
+          required
         />
       ) : null}
 
@@ -108,7 +148,7 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
           getValue={(project) => project.id}
           getLabel={projectLabel}
           onChange={(value) => setForm((current) => ({ ...current, projectId: value, merchantId: "" }))}
-          required={form.documentType === "project_income"}
+          required={isProjectRequired}
         />
       ) : null}
 
@@ -149,11 +189,7 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
                   : "账户"
           }
           value={form.accountId}
-          options={
-            form.documentType === "petty_cash_return" || form.documentType === "petty_cash_reimbursement"
-              ? pettyCashAccountsForPerson(options, form.personId)
-              : companyAccounts(options)
-          }
+          options={accountOptions}
           getValue={(account) => account.id}
           getLabel={accountLabel}
           onChange={(value) => updateAccount("accountId", value)}
@@ -173,11 +209,7 @@ export function DocumentTypeFields({ form, setForm, options, originalDocuments }
                   : "转入账户"
           }
           value={form.counterpartyAccountId}
-          options={
-            form.documentType === "petty_cash_issue"
-              ? pettyCashAccountsForPerson(options, form.personId)
-              : companyAccounts(options)
-          }
+          options={counterpartyAccountOptions}
           getValue={(account) => account.id}
           getLabel={accountLabel}
           onChange={(value) => updateAccount("counterpartyAccountId", value)}
