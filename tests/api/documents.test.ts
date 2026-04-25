@@ -60,6 +60,61 @@ function lineRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function validProjectIncomeDocumentRow(overrides: Record<string, unknown> = {}) {
+  return documentRow({
+    operator_person_id: "user_1",
+    project_id: "proj_1",
+    merchant_id: "merchant_1",
+    category_id: "cat_income",
+    ...overrides
+  });
+}
+
+function projectIncomeMasterDataResults() {
+  return [
+    [{ id: "user_1", name: "User", alias: null, roles_json: "[]", is_enabled: 1 }],
+    [{ id: "proj_1", code: "P1", name: "Project", owner_person_id: null, status: "active" }],
+    [
+      {
+        id: "merchant_1",
+        code: "M1",
+        name: "Merchant",
+        project_id: "proj_1",
+        merchant_type: "site",
+        status: "active"
+      }
+    ],
+    [
+      {
+        id: "acct_usdt",
+        name: "USDT Wallet",
+        account_type: "usdt_wallet",
+        currency_code: "USDT",
+        owner_person_id: null,
+        is_company_account: 1,
+        allow_negative: 0,
+        status: "active"
+      }
+    ],
+    [
+      {
+        id: "cat_income",
+        name: "Income",
+        parent_id: null,
+        category_type: "income",
+        direction: "in",
+        affects_expense_report: 0,
+        affects_project_report: 1,
+        requires_merchant: 1,
+        requires_person: 0,
+        requires_borrower: 0,
+        is_enabled: 1
+      }
+    ],
+    [{ code: "USDT", name: "Tether", minor_units: 2, is_enabled: 1 }]
+  ];
+}
+
 function mockEnv(
   options: {
     runResult?: D1Result;
@@ -485,7 +540,10 @@ describe("documents API", () => {
         method: "POST",
         body: JSON.stringify({ actor: "user_1" })
       }),
-      mockEnv({ firstResult: documentRow({ status: "draft" }) })
+      mockEnv({
+        firstResult: validProjectIncomeDocumentRow({ status: "draft" }),
+        allResultsQueue: [[lineRow()], ...projectIncomeMasterDataResults()]
+      })
     );
 
     expect(response.status).toBe(200);
@@ -499,8 +557,8 @@ describe("documents API", () => {
         body: JSON.stringify({ reviewer: "reviewer_1" })
       }),
       mockEnv({
-        firstResults: [documentRow({ status: "pending" }), null],
-        allResults: [lineRow()]
+        firstResults: [validProjectIncomeDocumentRow({ status: "pending" }), null],
+        allResultsQueue: [[lineRow()], ...projectIncomeMasterDataResults()]
       })
     );
 
@@ -529,7 +587,7 @@ describe("documents API", () => {
           null,
           documentRow({ id: "doc_original", status: "approved" })
         ],
-        allResultsQueue: [[{ account_id: "acct_usdt", currency_code: "USDT", amount_minor: 120000 }], []],
+        allResultsQueue: [[], [], [{ account_id: "acct_usdt", currency_code: "USDT", amount_minor: 120000 }], []],
         onBind: (bindings, sql) => {
           bindCalls.push({ sql, bindings });
         },
@@ -546,7 +604,8 @@ describe("documents API", () => {
       call.sql.toLowerCase().includes("from account_entries")
     );
     expect(originalAccountEntriesRead?.bindings).toEqual(["doc_original"]);
-    expect(bindCalls.some((call) => call.sql.toLowerCase().includes("from document_lines"))).toBe(false);
+    const documentLineReads = bindCalls.filter((call) => call.sql.toLowerCase().includes("from document_lines"));
+    expect(documentLineReads.map((call) => call.bindings)).toEqual([["doc_reversal"], ["doc_original"]]);
 
     const accountEntryStatement = batchStatements.find((statement) =>
       statement.sql.toLowerCase().includes("insert into account_entries")

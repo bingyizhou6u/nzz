@@ -451,7 +451,7 @@ describe("DocumentService", () => {
   });
 
   it("rejects submit when a draft is incomplete", async () => {
-    const { repo, service } = createMocks({
+    const { repo, audit, service } = createMocks({
       getDocument: vi.fn(async () => documentRow({ status: "draft", merchant_id: null })),
       getDocumentLines: vi.fn(async () => [lineRow()])
     });
@@ -459,10 +459,11 @@ describe("DocumentService", () => {
     await expect(service.submit("doc_1", "submitter_1")).rejects.toThrow("项目收入必须选择商户");
 
     expect(repo.markSubmitted).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("rejects submit when referenced account is archived", async () => {
-    const { repo, masterData, service } = createMocks({
+    const { repo, audit, masterData, service } = createMocks({
       getDocument: vi.fn(async () =>
         documentRow({
           status: "draft",
@@ -490,6 +491,88 @@ describe("DocumentService", () => {
     await expect(service.submit("doc_1", "submitter_1")).rejects.toThrow("账户必须是启用状态");
 
     expect(repo.markSubmitted).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("ignores stale optional original linkage for normal documents that do not require it", async () => {
+    const getDocument = vi
+      .fn()
+      .mockResolvedValueOnce(documentRow({ status: "draft", original_document_id: "doc_stale" }))
+      .mockResolvedValueOnce(null);
+    const { repo, service } = createMocks({ getDocument });
+
+    await service.submit("doc_1", "submitter_1");
+
+    expect(getDocument).toHaveBeenCalledTimes(1);
+    expect(repo.markSubmitted).toHaveBeenCalledWith("doc_1");
+  });
+
+  it("requests persisted submit master data for referenced ids", async () => {
+    const { masterData, service } = createMocks({
+      getDocument: vi.fn(async () =>
+        documentRow({
+          status: "draft",
+          document_type: "loan_out",
+          operator_person_id: "person_1",
+          project_id: null,
+          merchant_id: null,
+          category_id: "cat_loan"
+        })
+      ),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({
+          account_id: "acct_aed",
+          person_id: "person_bob",
+          borrower_person_id: "person_borrower",
+          currency_code: "AED",
+          amount_minor: 10000,
+          usdt_amount_minor: 10000
+        })
+      ])
+    });
+
+    await service.submit("doc_1", "submitter_1");
+
+    expect(masterData.getPeopleByIds).toHaveBeenCalledWith(["person_1", "person_bob", "person_borrower"]);
+    expect(masterData.getProjectsByIds).toHaveBeenCalledWith([]);
+    expect(masterData.getMerchantsByIds).toHaveBeenCalledWith([]);
+    expect(masterData.getAccountsByIds).toHaveBeenCalledWith(["acct_aed"]);
+    expect(masterData.getCategoriesByIds).toHaveBeenCalledWith(["cat_loan"]);
+    expect(masterData.getCurrenciesByCodes).toHaveBeenCalledWith(["AED"]);
+  });
+
+  it("requests persisted approve master data for referenced ids", async () => {
+    const { masterData, service } = createMocks({
+      getDocument: vi.fn(async () =>
+        documentRow({
+          status: "pending",
+          document_type: "loan_out",
+          operator_person_id: "person_1",
+          project_id: null,
+          merchant_id: null,
+          category_id: "cat_loan"
+        })
+      ),
+      getDocumentLines: vi.fn(async () => [
+        lineRow({
+          account_id: "acct_aed",
+          person_id: "person_bob",
+          borrower_person_id: "person_borrower",
+          currency_code: "AED",
+          amount_minor: 10000,
+          usdt_amount_minor: 10000
+        })
+      ])
+    });
+
+    await service.approve("doc_1", "reviewer_1");
+
+    expect(masterData.getPeopleByIds).toHaveBeenCalledWith(["person_1", "person_bob", "person_borrower"]);
+    expect(masterData.getProjectsByIds).toHaveBeenCalledWith([]);
+    expect(masterData.getMerchantsByIds).toHaveBeenCalledWith([]);
+    expect(masterData.getAccountsByIds).toHaveBeenCalledWith(["acct_aed"]);
+    expect(masterData.getCategoriesByIds).toHaveBeenCalledWith(["cat_loan"]);
+    expect(masterData.getCurrenciesByCodes).toHaveBeenCalledWith(["AED"]);
   });
 
   it("rejects approve before posting when master data validation fails", async () => {

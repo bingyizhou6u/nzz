@@ -211,7 +211,8 @@ export class DocumentService {
     assertNoDocumentRuleViolations(validateDocumentStructure({ stage, document: ruleDocument, lines: ruleLines }));
 
     const originalDocumentId = document.original_document_id?.trim() ?? "";
-    const originalDocument = originalDocumentId ? await this.requireDocument(originalDocumentId) : null;
+    const originalDocument =
+      originalDocumentId && shouldLoadOriginalForRules(document) ? await this.requireDocument(originalDocumentId) : null;
     const originalLines = originalDocument ? await this.documents.getDocumentLines(originalDocument.id) : [];
     const masterData = await this.loadMasterDataSnapshot(document, lines, originalDocument, originalLines);
 
@@ -738,6 +739,14 @@ function mapCurrencies<T extends { code: string }>(rows: T[]) {
 
 function uniqueTextValues(values: Array<string | null | undefined>) {
   return [...new Set(values.map((value) => value?.trim() ?? "").filter(Boolean))];
+}
+
+function shouldLoadOriginalForRules(document: DocumentDetailRow) {
+  return (
+    document.action_type === "reversal" ||
+    (document.action_type === "normal" &&
+      (document.document_type === "loan_repayment" || document.document_type === "loan_writeoff"))
+  );
 }
 
 export function firstBorrower(lines: Array<{ borrower_person_id: string | null }>) {
