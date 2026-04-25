@@ -68,9 +68,8 @@ describe("document page capability gating", () => {
     ]);
 
     await waitFor(() => {
-      expect(container.textContent).toContain("DOC-DRAFT");
-      expect(container.textContent).toContain("DOC-APPROVED");
-      expect(container.textContent).toContain("DOC-PENDING");
+      expect(documentNumbers(container)).toEqual(["DOC-DRAFT", "DOC-APPROVED", "DOC-PENDING"]);
+      expect(documentListStatusText(container)).toBe("3 条");
     });
 
     const statusSelect = container.querySelector('select[aria-label="单据状态"]') as HTMLSelectElement | null;
@@ -81,9 +80,37 @@ describe("document page capability gating", () => {
       statusSelect!.dispatchEvent(new Event("change", { bubbles: true }));
     });
 
-    expect(container.textContent).toContain("DOC-DRAFT");
-    expect(container.textContent).not.toContain("DOC-APPROVED");
-    expect(container.textContent).not.toContain("DOC-PENDING");
+    expect(documentListStatusText(container)).toBe("显示 1 / 总计 3");
+    expect(documentNumbers(container)).toEqual(["DOC-DRAFT"]);
+    expect(documentTableBodyText(container)).not.toContain("DOC-APPROVED");
+    expect(documentTableBodyText(container)).not.toContain("DOC-PENDING");
+  });
+
+  it("shows filtered counts and empty state when no documents match the selected status", async () => {
+    const container = await renderDocumentsPage(["documents.view"], [
+      draftDocument("doc_draft", "DOC-DRAFT", "draft"),
+      draftDocument("doc_approved", "DOC-APPROVED", "approved"),
+      draftDocument("doc_pending", "DOC-PENDING", "pending")
+    ]);
+
+    await waitFor(() => {
+      expect(documentNumbers(container)).toEqual(["DOC-DRAFT", "DOC-APPROVED", "DOC-PENDING"]);
+    });
+
+    const statusSelect = container.querySelector('select[aria-label="单据状态"]') as HTMLSelectElement | null;
+    expect(statusSelect).not.toBeNull();
+
+    await act(async () => {
+      statusSelect!.value = "rejected";
+      statusSelect!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(documentListStatusText(container)).toBe("显示 0 / 总计 3");
+    expect(documentNumbers(container)).toEqual([]);
+    expect(documentEmptyCellText(container)).toBe("当前筛选下暂无单据");
+    expect(documentTableBodyText(container)).not.toContain("DOC-DRAFT");
+    expect(documentTableBodyText(container)).not.toContain("DOC-APPROVED");
+    expect(documentTableBodyText(container)).not.toContain("DOC-PENDING");
   });
 
   it("derives create and row workflow actions from capabilities", () => {
@@ -563,4 +590,32 @@ async function unmountRoot() {
 
 function buttonTexts(container: HTMLElement) {
   return Array.from(container.querySelectorAll("button")).map((button) => button.textContent?.trim() ?? "");
+}
+
+function documentListPanel(container: HTMLElement) {
+  const panel = container.querySelector(".document-list-panel");
+  expect(panel).not.toBeNull();
+  return panel as HTMLElement;
+}
+
+function documentListStatusText(container: HTMLElement) {
+  return documentListPanel(container).querySelector(".status-slot")?.textContent?.trim();
+}
+
+function documentTableRows(container: HTMLElement) {
+  return Array.from(documentListPanel(container).querySelectorAll("tbody tr"));
+}
+
+function documentNumbers(container: HTMLElement) {
+  return documentTableRows(container)
+    .filter((row) => !row.querySelector(".empty-cell"))
+    .map((row) => row.querySelector("td")?.textContent?.trim() ?? "");
+}
+
+function documentEmptyCellText(container: HTMLElement) {
+  return documentListPanel(container).querySelector(".empty-cell")?.textContent?.trim();
+}
+
+function documentTableBodyText(container: HTMLElement) {
+  return documentListPanel(container).querySelector("tbody")?.textContent ?? "";
 }

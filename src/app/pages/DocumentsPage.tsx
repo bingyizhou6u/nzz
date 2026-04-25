@@ -168,6 +168,11 @@ export function DocumentsPage({ capabilities }: DocumentsPageProps) {
     () => filterDocumentsByStatus(documents, statusFilter),
     [documents, statusFilter]
   );
+  const hasStatusFilter = statusFilter !== "all";
+  const documentListStatusText = hasStatusFilter
+    ? `显示 ${visibleDocuments.length} / 总计 ${documents.length}`
+    : `${documents.length} 条`;
+  const emptyDocumentListText = hasStatusFilter ? "当前筛选下暂无单据" : "暂无数据";
 
   useEffect(() => {
     let isCurrent = true;
@@ -380,7 +385,7 @@ export function DocumentsPage({ capabilities }: DocumentsPageProps) {
                 <option value="rejected">已退回</option>
               </select>
               <div className="status-slot" role="status" aria-live="polite">
-                {isLoading ? "读取中" : loadError ? "读取失败" : `${documents.length} 条`}
+                {isLoading ? "读取中" : loadError ? "读取失败" : documentListStatusText}
               </div>
               <button type="button" className="secondary-button" onClick={refreshDocuments} disabled={isLoading}>
                 重新读取
@@ -463,7 +468,7 @@ export function DocumentsPage({ capabilities }: DocumentsPageProps) {
                 ) : (
                   <tr>
                     <td colSpan={6} className="empty-cell">
-                      暂无数据
+                      {emptyDocumentListText}
                     </td>
                   </tr>
                 )}
