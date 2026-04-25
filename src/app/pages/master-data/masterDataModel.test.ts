@@ -21,9 +21,10 @@ import {
   personLoginStatus,
   parseRoles
 } from "./masterDataModel";
+import { MasterDataPage } from "../MasterDataPage";
 import { PeopleTab } from "./PeopleTab";
 import { ProjectsTab } from "./ProjectsTab";
-import type { PersonRow, ProjectRow } from "./masterDataTypes";
+import type { MasterDataSnapshot, PersonRow, ProjectRow } from "./masterDataTypes";
 
 const reactActEnvironment = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
 reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
@@ -88,6 +89,52 @@ describe("master data capability gating", () => {
     expect(buttonTexts(container)).not.toContain("创建项目");
     expect(buttonTexts(container)).not.toContain("编辑");
     expect(buttonTexts(container)).not.toContain("归档");
+  });
+
+  it("renders master data governance layout with side navigation and detail region", async () => {
+    const fetchMock = vi.fn<FetchHandler>().mockResolvedValue(
+      new Response(JSON.stringify({ data: masterDataSnapshot() }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        createElement(MasterDataPage, {
+          capabilities: ["masterData.view", "masterData.write", "masterData.managePeopleRoles"]
+        })
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const governanceLayout = container.querySelector(".master-data-governance-layout");
+    expect(governanceLayout).toBeInstanceOf(HTMLElement);
+    expect(governanceLayout?.textContent).toContain("人员");
+
+    const sideNav = container.querySelector(".master-data-side-nav");
+    expect(sideNav).toBeInstanceOf(HTMLElement);
+    expect(sideNav?.textContent).toContain("管理科目");
+
+    expect(container.querySelector(".master-data-detail-region")).toBeInstanceOf(HTMLElement);
+  });
+
+  it("groups person login identity fields in a dedicated identity section", async () => {
+    const container = await renderPeopleTab({ canWrite: true, canManagePeopleRoles: true });
+
+    const identitySection = container.querySelector(".person-identity-section");
+    expect(identitySection).toBeInstanceOf(HTMLFieldSetElement);
+    expect(identitySection?.textContent).toContain("登录身份");
+    expect(identitySection?.textContent).toContain("登录邮箱");
+    expect(identitySection?.textContent).toContain("状态");
+    expect(identitySection?.textContent).toContain("管理员");
   });
 
   it("disables person role controls and preserves existing roles without manage people roles capability", async () => {
@@ -515,6 +562,17 @@ function projectRow(): ProjectRow {
     note: null,
     created_at: "2026-04-25T10:00:00Z",
     referenceCount: 0
+  };
+}
+
+function masterDataSnapshot(): MasterDataSnapshot {
+  return {
+    people: [personRow()],
+    projects: [projectRow()],
+    merchants: [],
+    accounts: [],
+    currencies: [],
+    categories: []
   };
 }
 

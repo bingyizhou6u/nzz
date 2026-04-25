@@ -871,6 +871,54 @@ textarea {
   padding-inline: 12px;
 }
 
+.master-data-governance-layout {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.master-data-side-nav {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  border-right: 1px solid #e5e7eb;
+  background: #fafbfc;
+  padding: 12px;
+}
+
+.side-nav-lite {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: 38px;
+  border-color: transparent;
+  background: transparent;
+  color: #344054;
+  padding-inline: 10px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-align: left;
+  white-space: normal;
+}
+
+.side-nav-lite:hover:not(:disabled) {
+  border-color: #d9dde3;
+  background: #f1f4f6;
+}
+
+.side-nav-lite.active {
+  border-color: #d9dde3;
+  background: #ffffff;
+  color: #17202a;
+  box-shadow: inset 3px 0 0 #1f5e5a;
+}
+
+.master-data-detail-region {
+  min-width: 0;
+}
+
 .master-data-tab-panel {
   display: grid;
   gap: 10px;
@@ -939,6 +987,42 @@ textarea {
   min-height: 16px;
   margin: 0;
   padding: 0;
+}
+
+.person-identity-section {
+  display: grid;
+  grid-column: 1 / -2;
+  grid-template-columns: repeat(2, minmax(140px, 1fr));
+  gap: 12px;
+  min-width: 0;
+  min-inline-size: 0;
+  margin: 0;
+  border: 1px solid #d9dde3;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 10px 12px 12px;
+}
+
+.person-identity-section legend {
+  padding: 0 6px;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.person-identity-section label {
+  min-width: 0;
+}
+
+.person-role-options {
+  grid-column: 1 / -1;
+}
+
+.checkbox-group-heading {
+  flex: 0 0 100%;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .master-data-table {
@@ -1277,6 +1361,29 @@ textarea {
     width: 100%;
   }
 
+  .master-data-governance-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .master-data-side-nav {
+    display: flex;
+    flex-wrap: wrap;
+    border-right: 0;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 10px;
+  }
+
+  .side-nav-lite {
+    flex: 1 1 calc((100% - 12px) / 3);
+    justify-content: center;
+    min-width: 96px;
+    text-align: center;
+  }
+
+  .side-nav-lite.active {
+    box-shadow: inset 0 -3px 0 #1f5e5a;
+  }
+
   .form-grid,
   .project-form,
   .document-form,
@@ -1311,6 +1418,15 @@ textarea {
   }
 
   .wide-field {
+    grid-column: auto;
+  }
+
+  .person-identity-section {
+    grid-column: auto;
+    grid-template-columns: 1fr;
+  }
+
+  .person-role-options {
     grid-column: auto;
   }
 

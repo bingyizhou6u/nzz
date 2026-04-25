@@ -94,13 +94,13 @@ export function MasterDataPage({ capabilities }: MasterDataPageProps) {
         {error ? <div className="notice error">{error}</div> : <MasterDataOverview data={data} />}
       </section>
 
-      <section className="panel">
-        <div className="master-data-tabs" role="tablist" aria-label="基础资料分类">
+      <section className="panel master-data-governance-layout">
+        <div className="master-data-side-nav" role="tablist" aria-label="基础资料分类">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               type="button"
-              className={activeTab === tab.key ? "tab active" : "tab"}
+              className={activeTab === tab.key ? "side-nav-lite active" : "side-nav-lite"}
               onClick={() => setActiveTab(tab.key)}
               aria-selected={activeTab === tab.key}
               role="tab"
@@ -109,46 +109,48 @@ export function MasterDataPage({ capabilities }: MasterDataPageProps) {
             </button>
           ))}
         </div>
-        {activeTab === "people" ? (
-          <PeopleTab
-            rows={data.people}
-            canWrite={canWrite}
-            canManagePeopleRoles={canManagePeopleRoles}
-            onChanged={refreshMasterData}
-          />
-        ) : null}
-        {activeTab === "projects" ? (
-          <ProjectsTab
-            rows={data.projects}
-            people={data.people}
-            canWrite={canWrite}
-            onChanged={refreshMasterData}
-          />
-        ) : null}
-        {activeTab === "merchants" ? (
-          <MerchantsTab
-            rows={data.merchants}
-            people={data.people}
-            projects={data.projects}
-            canWrite={canWrite}
-            onChanged={refreshMasterData}
-          />
-        ) : null}
-        {activeTab === "accounts" ? (
-          <AccountsTab
-            rows={data.accounts}
-            people={data.people}
-            currencies={data.currencies}
-            canWrite={canWrite}
-            onChanged={refreshMasterData}
-          />
-        ) : null}
-        {activeTab === "currencies" ? (
-          <CurrenciesTab rows={data.currencies} canWrite={canWrite} onChanged={refreshMasterData} />
-        ) : null}
-        {activeTab === "categories" ? (
-          <CategoriesTab rows={data.categories} canWrite={canWrite} onChanged={refreshMasterData} />
-        ) : null}
+        <div className="master-data-detail-region">
+          {activeTab === "people" ? (
+            <PeopleTab
+              rows={data.people}
+              canWrite={canWrite}
+              canManagePeopleRoles={canManagePeopleRoles}
+              onChanged={refreshMasterData}
+            />
+          ) : null}
+          {activeTab === "projects" ? (
+            <ProjectsTab
+              rows={data.projects}
+              people={data.people}
+              canWrite={canWrite}
+              onChanged={refreshMasterData}
+            />
+          ) : null}
+          {activeTab === "merchants" ? (
+            <MerchantsTab
+              rows={data.merchants}
+              people={data.people}
+              projects={data.projects}
+              canWrite={canWrite}
+              onChanged={refreshMasterData}
+            />
+          ) : null}
+          {activeTab === "accounts" ? (
+            <AccountsTab
+              rows={data.accounts}
+              people={data.people}
+              currencies={data.currencies}
+              canWrite={canWrite}
+              onChanged={refreshMasterData}
+            />
+          ) : null}
+          {activeTab === "currencies" ? (
+            <CurrenciesTab rows={data.currencies} canWrite={canWrite} onChanged={refreshMasterData} />
+          ) : null}
+          {activeTab === "categories" ? (
+            <CategoriesTab rows={data.categories} canWrite={canWrite} onChanged={refreshMasterData} />
+          ) : null}
+        </div>
       </section>
     </div>
   );

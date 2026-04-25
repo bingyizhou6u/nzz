@@ -134,38 +134,41 @@ export function PeopleTab({
           别名
           <input value={form.alias} onChange={(event) => setForm((current) => ({ ...current, alias: event.target.value }))} />
         </label>
-        <label>
-          登录邮箱
-          <input
-            value={form.loginEmail}
-            onChange={(event) => setForm((current) => ({ ...current, loginEmail: event.target.value }))}
-            disabled={!canManagePeopleRoles}
-          />
-        </label>
-        <label>
-          状态
-          <select
-            value={form.isEnabled ? "enabled" : "disabled"}
-            onChange={(event) => setForm((current) => ({ ...current, isEnabled: event.target.value === "enabled" }))}
-            disabled={!canManagePeopleRoles}
-          >
-            <option value="enabled">启用</option>
-            <option value="disabled">停用</option>
-          </select>
-        </label>
-        <fieldset className="checkbox-group wide-field">
-          <legend>角色</legend>
-          {personRoles.map((role) => (
-            <label key={role}>
-              <input
-                type="checkbox"
-                checked={form.roles.includes(role)}
-                onChange={(event) => toggleRole(role, event.target.checked)}
-                disabled={!canManagePeopleRoles}
-              />
-              <span>{personRoleLabels[role]}</span>
-            </label>
-          ))}
+        <fieldset className="person-identity-section wide-field">
+          <legend>登录身份</legend>
+          <label>
+            登录邮箱
+            <input
+              value={form.loginEmail}
+              onChange={(event) => setForm((current) => ({ ...current, loginEmail: event.target.value }))}
+              disabled={!canManagePeopleRoles}
+            />
+          </label>
+          <label>
+            状态
+            <select
+              value={form.isEnabled ? "enabled" : "disabled"}
+              onChange={(event) => setForm((current) => ({ ...current, isEnabled: event.target.value === "enabled" }))}
+              disabled={!canManagePeopleRoles}
+            >
+              <option value="enabled">启用</option>
+              <option value="disabled">停用</option>
+            </select>
+          </label>
+          <div className="checkbox-group person-role-options" aria-label="角色">
+            <span className="checkbox-group-heading">角色</span>
+            {personRoles.map((role) => (
+              <label key={role}>
+                <input
+                  type="checkbox"
+                  checked={form.roles.includes(role)}
+                  onChange={(event) => toggleRole(role, event.target.checked)}
+                  disabled={!canManagePeopleRoles}
+                />
+                <span>{personRoleLabels[role]}</span>
+              </label>
+            ))}
+          </div>
         </fieldset>
         <FormActions
           isSubmitting={isSubmitting}
