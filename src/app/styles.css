@@ -328,6 +328,11 @@ tbody tr:last-child td {
   color: #116149;
 }
 
+.tag.warning {
+  background: #fff4d6;
+  color: #8a5a00;
+}
+
 .tag.muted {
   background: #eef0f3;
   color: #596272;

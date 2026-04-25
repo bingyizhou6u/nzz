@@ -122,6 +122,71 @@ describe("master data capability gating", () => {
     });
   });
 
+  it("disables login email controls without manage people roles capability", async () => {
+    const fetchMock = vi.fn<FetchHandler>().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = await renderPeopleTab({ canWrite: true, canManagePeopleRoles: false });
+
+    await act(async () => {
+      buttonByText(container, "编辑").click();
+    });
+
+    const loginEmail = inputByLabel(container, "登录邮箱");
+    expect(loginEmail.disabled).toBe(true);
+
+    await act(async () => {
+      setInputValue(loginEmail, "changed@example.com");
+      setInputValue(inputByLabel(container, "姓名"), "Alice Updated");
+    });
+
+    await act(async () => {
+      buttonByText(container, "保存人员").click();
+      await Promise.resolve();
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
+      name: "Alice Updated",
+      roles: ["admin"],
+      loginEmail: "admin@example.com"
+    });
+  });
+
+  it("allows login email edits with manage people roles capability", async () => {
+    const fetchMock = vi.fn<FetchHandler>().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = await renderPeopleTab({ canWrite: true, canManagePeopleRoles: true });
+
+    await act(async () => {
+      buttonByText(container, "编辑").click();
+    });
+
+    const loginEmail = inputByLabel(container, "登录邮箱");
+    expect(loginEmail.disabled).toBe(false);
+
+    await act(async () => {
+      setInputValue(loginEmail, "  Changed@Example.COM  ");
+    });
+
+    await act(async () => {
+      buttonByText(container, "保存人员").click();
+      await Promise.resolve();
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
+      loginEmail: "changed@example.com"
+    });
+  });
+
+  it("renders login email status and last login columns", async () => {
+    const container = await renderPeopleTab({ canWrite: true, canManagePeopleRoles: true });
+
+    expect(container.textContent).toContain("admin@example.com");
+    expect(container.textContent).toContain("可登录");
+    expect(container.textContent).toContain("2026-04-25T10:30:00Z");
+  });
+
   it("allows person role changes with manage people roles capability", async () => {
     const fetchMock = vi.fn<FetchHandler>().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);

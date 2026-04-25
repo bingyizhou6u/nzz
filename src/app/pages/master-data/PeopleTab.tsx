@@ -4,7 +4,8 @@ import { MasterDataTable } from "./MasterDataTable";
 import {
   buildPersonPayload,
   parseRoles,
-  personFormWithPermittedRoles,
+  personFormWithPermittedIdentity,
+  personLoginStatus,
   personRoleLabels,
   personRoles
 } from "./masterDataModel";
@@ -71,11 +72,13 @@ export function PeopleTab({
       const url = editingRow
         ? `/api/master-data/people/${encodeURIComponent(editingRow.id)}`
         : "/api/master-data/people";
-      const existingRoles = editingRow ? parseRoles(editingRow.roles_json) : null;
+      const existingIdentity = editingRow
+        ? { roles: parseRoles(editingRow.roles_json), loginEmail: editingRow.login_email ?? "" }
+        : null;
       await writeMasterData(
         url,
         editingRow ? "PATCH" : "POST",
-        buildPersonPayload(personFormWithPermittedRoles(form, existingRoles, canManagePeopleRoles))
+        buildPersonPayload(personFormWithPermittedIdentity(form, existingIdentity, canManagePeopleRoles))
       );
       setMessage(editingRow ? "已更新人员" : "已创建人员");
       resetForm();
@@ -124,6 +127,14 @@ export function PeopleTab({
           <input value={form.alias} onChange={(event) => setForm((current) => ({ ...current, alias: event.target.value }))} />
         </label>
         <label>
+          登录邮箱
+          <input
+            value={form.loginEmail}
+            onChange={(event) => setForm((current) => ({ ...current, loginEmail: event.target.value }))}
+            disabled={!canManagePeopleRoles}
+          />
+        </label>
+        <label>
           状态
           <select
             value={form.isEnabled ? "enabled" : "disabled"}
@@ -158,7 +169,7 @@ export function PeopleTab({
         <ReadOnlyNotice />
       )}
       {canWrite && !canManagePeopleRoles ? (
-        <FieldHint>{editingRow ? "角色仅可查看，保存时会保留原角色。" : "创建人员需要人员角色管理权限。"}</FieldHint>
+        <FieldHint>{editingRow ? "角色和登录邮箱仅可查看，保存时会保留原值。" : "创建人员需要人员角色管理权限。"}</FieldHint>
       ) : null}
       <MessageLine error={error} message={message} />
       <MasterDataTable
@@ -175,6 +186,24 @@ export function PeopleTab({
             key: "roles",
             header: "角色",
             render: (row) => parseRoles(row.roles_json).map((role) => personRoleLabels[role]).join("、") || "无"
+          },
+          {
+            key: "loginEmail",
+            header: "登录邮箱",
+            render: (row) => row.login_email || "未绑定"
+          },
+          {
+            key: "loginStatus",
+            header: "登录状态",
+            render: (row) => {
+              const status = personLoginStatus(row);
+              return <span className={`tag ${status.tone}`}>{status.label}</span>;
+            }
+          },
+          {
+            key: "lastLogin",
+            header: "最近登录",
+            render: (row) => row.last_login_at || "无"
           },
           {
             key: "status",
