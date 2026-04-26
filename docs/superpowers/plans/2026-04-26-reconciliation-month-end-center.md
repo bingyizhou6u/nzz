@@ -441,16 +441,17 @@ npm run build
 
 ## 12. Task 7：锁账、解锁与快照
 
-状态：待做。
+状态：已完成。
 
 文件：
 
-- [ ] `src/services/monthCloseService.ts`
-- [ ] `src/api/monthClose.ts`
-- [ ] `src/repositories/monthCloseRepository.ts`
-- [ ] 必要时扩展 `src/repositories/periodLockRepository.ts`
-- [ ] `tests/services/monthCloseService.test.ts`
-- [ ] `tests/api/monthClose.test.ts`
+- [x] `src/services/monthCloseService.ts`
+- [x] `src/api/monthClose.ts`
+- [x] `src/repositories/monthCloseRepository.ts`
+- [x] `src/worker/router.ts`
+- [x] `tests/services/monthCloseService.test.ts`
+- [x] `tests/api/monthClose.test.ts`
+- [x] `tests/api/monthCloseRepository.test.ts`
 
 新增 API：
 
@@ -487,6 +488,22 @@ npm run build
 - `exceptionChecks`
 - `monthCloseChecks`
 - `monthCloseReconciliation`
+
+TDD 步骤：
+
+- [x] RED：补服务层、API、路由权限和快照 report keys 测试。提交：`0b305a7 test: cover month close period lock snapshots`。
+- [x] GREEN：实现 `lockPeriod` / `unlockPeriod`，新增正式月结锁账 API，仓储层用一次 D1 batch 写入期间锁、快照、报表快照和审计日志。提交：`789a16d feat: add month close lock snapshots`。
+- [x] 提交。
+
+验收命令：
+
+```bash
+npm test -- tests/services/monthCloseService.test.ts tests/api/monthClose.test.ts tests/api/monthCloseRepository.test.ts
+npx tsc --noEmit
+npm test
+npm run build
+git diff --check
+```
 
 ## 13. Task 8：快照查看与报表版本切换
 
