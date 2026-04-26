@@ -1,72 +1,83 @@
-# Reconciliation and Month-End Center Implementation Plan
+# 对账与月结中心实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Superpowers 执行要求：** 后续开发必须按 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans` 执行。每个任务都必须按 TDD 拆成 RED、GREEN、审查、提交四步；步骤使用 checkbox 记录状态。
 
-**Goal:** Build a formal reconciliation and month-end close center that turns existing reports and period locks into an auditable close workflow: run checks, resolve or acknowledge exceptions, reconcile balances, lock the period, and preserve close snapshots.
+日期：2026-04-26
 
-**Architecture:** Keep approved documents, account entries, lots, pending cost matches, loan rows, and report SQL as the source of truth. Add a month-close layer that persists check runs, check results, exception handling state, and close snapshots. The current `period_locks` table remains the hard period lock; month-close tables provide the workflow, evidence, and snapshot versioning around it.
+状态：v2 计划。基于《对账与月结中心设计方案》重新整理，并纳入当前代码仓库真实进度。
 
-**Tech Stack:** Cloudflare Workers, D1 SQLite, TypeScript, React, Vite, Vitest.
+## 1. 目标
 
----
+建设正式的“对账与月结中心”，把现有报表、异常检查和期间锁账升级为可审计的月结闭环：
 
-## Source Documents
+- 运行月结检查。
+- 识别并处理 critical / warning / info 异常。
+- 展示资金、备用金、借款、项目经营对账汇总。
+- 在检查通过后锁账。
+- 锁账时生成月结快照。
+- 报表中心可区分实时数据和已结账快照。
 
-- Design spec: `docs/superpowers/specs/2026-04-26-reconciliation-month-end-center-design.md`
-- Existing reports plan: `docs/superpowers/plans/2026-04-25-report-center-formal-metrics.md`
-- Existing period lock API: `src/api/periodLocks.ts`
-- Existing period lock repository: `src/repositories/periodLockRepository.ts`
-- Existing report repository: `src/repositories/reportRepository.ts`
-- Existing audit helper: `src/repositories/auditLogRepository.ts`
-- Existing report UI: `src/app/pages/ReportsPage.tsx`
-- Existing period lock UI: `src/app/pages/PeriodLocksPage.tsx`
+核心原则：
 
-## File Structure
+- 已审核单据及其过账副作用仍是唯一会计源数据。
+- 月结快照只用于归档、审计和导出，不反向参与过账。
+- `period_locks` 仍是硬锁账开关。
+- 月结中心负责锁账前检查、处理闭环、快照版本和用户操作流。
 
-Create:
+## 2. 当前进度
 
-- `migrations/0008_month_close_center.sql` - month-close runs, check results, snapshots, and report snapshots.
-- `src/repositories/monthCloseRepository.ts` - D1 persistence for runs, check results, state updates, and snapshots.
-- `src/services/monthCloseChecks.ts` - pure check-rule builders and result normalization.
-- `src/services/monthCloseService.ts` - orchestration for run checks, update results, lock, unlock, and snapshot creation.
-- `src/api/monthClose.ts` - month-close HTTP handlers.
-- `src/app/pages/MonthClosePage.tsx` - reconciliation and month-end center shell.
-- `src/app/pages/month-close/monthCloseTypes.ts` - frontend row and API types.
-- `src/app/pages/month-close/monthCloseModel.ts` - frontend status labels, grouping, payload builders, and view helpers.
-- `src/app/pages/month-close/MonthClosePeriodList.tsx`
-- `src/app/pages/month-close/MonthCloseStatusBar.tsx`
-- `src/app/pages/month-close/MonthCloseChecksTab.tsx`
-- `src/app/pages/month-close/MonthCloseReconciliationTabs.tsx`
-- `src/app/pages/month-close/MonthCloseSnapshotsTab.tsx`
-- `src/app/pages/month-close/monthCloseModel.test.ts`
-- `tests/api/monthCloseRepository.test.ts`
-- `tests/services/monthCloseChecks.test.ts`
-- `tests/services/monthCloseService.test.ts`
-- `tests/api/monthClose.test.ts`
+已经完成：
 
-Modify:
+- [x] Task 1 RED：月结 Repository 持久化测试。
+  - Commit：`e9db40c test: cover month close repository persistence`
+- [x] Task 1 GREEN：月结表结构和 `MonthCloseRepository`。
+  - Commit：`16803b4 feat: add month close repository persistence`
+- [x] Task 2 RED：月结检查规则测试已写入。
+  - Commit：`0747b47 test: cover month close check rules`
 
-- `src/worker/router.ts` - add month-close routes.
-- `src/app/session/sessionTypes.ts` - add the `month-close` page key.
-- `src/app/session/sessionModel.ts` - add navigation entry for `对账月结`.
-- `src/app/session/sessionModel.test.ts` - cover new navigation.
-- `src/app/App.tsx` - route to `MonthClosePage`.
-- `src/app/styles.css` - add month-close layouts, status cards, check list, and reconciliation tabs.
-- `src/api/periodLocks.ts` - keep existing API working; do not remove until month-close lock endpoint is stable.
-- `src/app/pages/ReportsPage.tsx` - later add realtime/snapshot selector after snapshot APIs exist.
+当前注意事项：
 
-Do not modify in the first three tasks:
+- 当前 `main` 包含 Task 2 RED 检查点，`tests/services/monthCloseChecks.test.ts` 会因为 `src/services/monthCloseChecks.ts` 尚未实现而失败。
+- 下一步不是重做 Task 1，而是先审查 Task 1，再完成 Task 2 GREEN。
+- 在 Task 2 GREEN 前，不应跑全量测试作为最终验收依据。
 
-- `src/domain/posting.ts`
-- `src/domain/fifoEffects.ts`
-- `src/domain/loanEffects.ts`
-- existing report SQL semantics
+## 3. 源文档
 
----
+- 设计方案：`docs/superpowers/specs/2026-04-26-reconciliation-month-end-center-design.md`
+- 本实施计划：`docs/superpowers/plans/2026-04-26-reconciliation-month-end-center.md`
+- 已有期间锁账 API：`src/api/periodLocks.ts`
+- 已有期间锁账仓储：`src/repositories/periodLockRepository.ts`
+- 已有报表仓储：`src/repositories/reportRepository.ts`
+- 已有审计仓储：`src/repositories/auditLogRepository.ts`
+- 已有报表前端：`src/app/pages/ReportsPage.tsx`
+- 已有期间锁账前端：`src/app/pages/PeriodLocksPage.tsx`
 
-## Shared Domain Decisions
+## 4. 分层架构
 
-Use these domain constants consistently in backend and frontend tests:
+```mermaid
+flowchart TD
+  A["已审核单据与过账副作用"] --> B["报表与月结查询"]
+  B --> C["月结检查规则 Pure Functions"]
+  C --> D["MonthCloseService 编排"]
+  D --> E["MonthCloseRepository 持久化"]
+  D --> F["月结 API"]
+  F --> G["对账与月结中心前端"]
+  D --> H["period_locks 硬锁账"]
+  D --> I["月结快照"]
+  I --> J["报表快照视图与导出"]
+```
+
+分层边界：
+
+- Repository 只负责 D1 持久化，不做业务判断。
+- Check Rules 只做纯函数判断，不读数据库。
+- Service 负责编排检查、状态变更、锁账、解锁、快照和审计。
+- API 只做参数解析、权限控制和响应格式。
+- 前端只消费 API，不自行计算会计口径。
+
+## 5. 领域常量
+
+后端和前端测试应保持一致：
 
 ```ts
 export const MONTH_CLOSE_STATUSES = ["open", "checking", "ready_to_lock", "locked", "reopened"] as const;
@@ -75,483 +86,270 @@ export const MONTH_CLOSE_SEVERITIES = ["critical", "warning", "info"] as const;
 export const MONTH_CLOSE_RESULT_STATUSES = ["open", "assigned", "acknowledged", "resolved", "waived"] as const;
 ```
 
-Lock eligibility rules:
+锁账判定：
 
-- A period can be locked only from the month-close endpoint once this feature is enabled.
-- The latest check run for the period must be `completed`.
-- No `critical` check result may remain unresolved.
-- All `warning` check results must be `resolved`, `acknowledged`, or `waived`.
-- Lock note is required.
-- The period must not already exist in `period_locks`.
+- 最近一次检查运行必须完成。
+- 不存在未处理 critical。
+- warning 必须是 `resolved`、`acknowledged` 或 `waived`。
+- info 不阻断锁账。
+- 锁账备注必填。
+- 期间不能已存在于 `period_locks`。
 
-Business rules:
+## 6. Task 1：月结持久化层
 
-- `critical` means lock-blocking.
-- `warning` means follow-up required; lock allowed only after explicit handling.
-- `info` means visibility only.
-- Petty cash can be negative; negative petty cash is warning by default, upgraded by age or amount threshold in later tasks.
-- Approved documents and posting side effects remain the accounting source of truth.
-- Snapshots are archived evidence, not posting sources.
+状态：已完成。
 
----
+文件：
 
-## Task 1: Add Month-Close Schema
+- [x] `migrations/0008_month_close_center.sql`
+- [x] `src/repositories/monthCloseRepository.ts`
+- [x] `tests/api/monthCloseRepository.test.ts`
 
-**Files:**
+已实现能力：
 
-- Create: `migrations/0008_month_close_center.sql`
-- Create: `tests/api/monthCloseRepository.test.ts`
-- Create: `src/repositories/monthCloseRepository.ts`
+- [x] 创建检查运行 `createRun`
+- [x] 完成检查运行 `completeRun`
+- [x] 标记检查失败 `failRun`
+- [x] 插入检查结果 `insertCheckResults`
+- [x] 查询最近运行 `latestRun`
+- [x] 查询运行历史 `listRuns`
+- [x] 查询检查结果 `listCheckResults`
+- [x] 更新检查处理状态 `updateCheckResult`
+- [x] 获取下一个快照版本 `nextSnapshotVersion`
+- [x] 创建快照和报表快照 `createSnapshotWithReports`
+- [x] 查询快照列表 `listSnapshots`
+- [x] 查询快照头 `getSnapshot`
+- [x] 查询报表快照 `getReportSnapshot`
 
-- [ ] **Step 1: Write failing repository tests for runs and check results**
+审查结论：
 
-Create `tests/api/monthCloseRepository.test.ts` covering:
+- Repository 没有做状态流转合法性判断，符合分层设计；状态流转由 Task 3 Service 负责。
+- `createSnapshotWithReports` 使用 D1 batch 写入快照头和明细，符合后续锁账原子化的基础要求。
+- Task 1 无需重做。
 
-- creating a check run with status `running`
-- completing a run with summary counts and `can_lock`
-- inserting check results for a run
-- listing latest results by period
-- updating a result to `acknowledged`, `resolved`, or `waived`
-- rejecting invalid result transitions at repository/service boundary later
-- creating a snapshot header and report snapshot rows
+## 7. Task 2：月结检查规则纯函数
 
-Expected RED: module import failure because `monthCloseRepository.ts` and migration do not exist.
+状态：RED 已完成，GREEN 待做。
 
-- [ ] **Step 2: Add migration**
+文件：
 
-Create `migrations/0008_month_close_center.sql`:
+- [x] `tests/services/monthCloseChecks.test.ts`
+- [ ] `src/services/monthCloseChecks.ts`
 
-```sql
-CREATE TABLE IF NOT EXISTS month_close_runs (
-  id TEXT PRIMARY KEY,
-  period TEXT NOT NULL,
-  status TEXT NOT NULL,
-  can_lock INTEGER NOT NULL DEFAULT 0,
-  critical_count INTEGER NOT NULL DEFAULT 0,
-  warning_count INTEGER NOT NULL DEFAULT 0,
-  info_count INTEGER NOT NULL DEFAULT 0,
-  started_by TEXT NOT NULL,
-  started_at TEXT NOT NULL,
-  finished_at TEXT,
-  error_message TEXT,
-  FOREIGN KEY (started_by) REFERENCES people(id)
-);
+### 7.1 RED
 
-CREATE INDEX IF NOT EXISTS idx_month_close_runs_period_started
-  ON month_close_runs(period, started_at DESC);
-
-CREATE TABLE IF NOT EXISTS month_close_check_results (
-  id TEXT PRIMARY KEY,
-  run_id TEXT NOT NULL,
-  period TEXT NOT NULL,
-  check_type TEXT NOT NULL,
-  severity TEXT NOT NULL,
-  entity_type TEXT NOT NULL,
-  entity_id TEXT NOT NULL,
-  business_date TEXT,
-  currency_code TEXT,
-  amount_minor INTEGER,
-  usdt_cost_minor INTEGER,
-  message TEXT NOT NULL,
-  suggested_action TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'open',
-  assignee_person_id TEXT,
-  resolved_by TEXT,
-  resolved_at TEXT,
-  resolution_note TEXT,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (run_id) REFERENCES month_close_runs(id),
-  FOREIGN KEY (assignee_person_id) REFERENCES people(id),
-  FOREIGN KEY (resolved_by) REFERENCES people(id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_month_close_check_results_run
-  ON month_close_check_results(run_id, severity, status);
-
-CREATE INDEX IF NOT EXISTS idx_month_close_check_results_period
-  ON month_close_check_results(period, severity, status);
-
-CREATE TABLE IF NOT EXISTS month_close_snapshots (
-  id TEXT PRIMARY KEY,
-  period TEXT NOT NULL,
-  version INTEGER NOT NULL,
-  run_id TEXT NOT NULL,
-  locked_by TEXT NOT NULL,
-  locked_at TEXT NOT NULL,
-  note TEXT NOT NULL,
-  summary_json TEXT NOT NULL,
-  UNIQUE(period, version),
-  FOREIGN KEY (run_id) REFERENCES month_close_runs(id),
-  FOREIGN KEY (locked_by) REFERENCES people(id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_month_close_snapshots_period
-  ON month_close_snapshots(period, version DESC);
-
-CREATE TABLE IF NOT EXISTS month_close_report_snapshots (
-  id TEXT PRIMARY KEY,
-  snapshot_id TEXT NOT NULL,
-  report_key TEXT NOT NULL,
-  row_count INTEGER NOT NULL,
-  data_json TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (snapshot_id) REFERENCES month_close_snapshots(id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_month_close_report_snapshots_snapshot
-  ON month_close_report_snapshots(snapshot_id, report_key);
-```
-
-- [ ] **Step 3: Implement `MonthCloseRepository`**
-
-Required methods:
-
-- `createRun(input)`
-- `completeRun(input)`
-- `failRun(input)`
-- `insertCheckResults(runId, period, rows)`
-- `latestRun(period)`
-- `listRuns(period)`
-- `listCheckResults(period, runId?)`
-- `updateCheckResult(id, patch)`
-- `nextSnapshotVersion(period)`
-- `createSnapshotWithReports(input)`
-- `listSnapshots(period)`
-- `getSnapshot(id)`
-- `getReportSnapshot(snapshotId, reportKey)`
-
-- [ ] **Step 4: Verify repository GREEN**
-
-Run:
-
-```bash
-npm test -- tests/api/monthCloseRepository.test.ts
-```
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add migrations/0008_month_close_center.sql src/repositories/monthCloseRepository.ts tests/api/monthCloseRepository.test.ts
-git commit -m "feat: add month close persistence"
-```
-
----
-
-## Task 2: Build Pure Month-Close Check Rules
-
-**Files:**
-
-- Create: `src/services/monthCloseChecks.ts`
-- Create: `tests/services/monthCloseChecks.test.ts`
-- Use existing repository interfaces as inputs, but keep rule functions pure where possible.
-
-- [ ] **Step 1: Write failing tests for check normalization**
-
-Cover:
-
-- pending documents in the target period become `critical`
-- draft documents become `info`
-- rejected documents become `warning`
-- negative company accounts become `critical`
-- negative petty cash becomes `warning`
-- pending costs become `warning`
-- stale pending costs become `critical`
-- stale loans become `warning`
-- project income without merchant becomes `critical`
-- merchant/project mismatch becomes `critical`
-
-Expected RED: `monthCloseChecks.ts` does not exist.
-
-- [ ] **Step 2: Define check result shape**
-
-Create `MonthCloseCheckResultInput` with:
-
-- `checkType`
-- `severity`
-- `entityType`
-- `entityId`
-- `businessDate`
-- `currencyCode`
-- `amountMinor`
-- `usdtCostMinor`
-- `message`
-- `suggestedAction`
-
-- [ ] **Step 3: Implement pure builders**
-
-Add pure helpers:
-
-- `documentWorkflowChecks(rows, options)`
-- `accountBalanceChecks(rows, options)`
-- `pendingCostChecks(rows, options)`
-- `loanAgingChecks(rows, options)`
-- `projectIntegrityChecks(rows, options)`
-- `summarizeCheckResults(rows)`
-- `canLockFromCheckResults(rows)`
-
-Keep thresholds configurable:
-
-```ts
-export interface MonthCloseCheckOptions {
-  staleDays: number;
-  stalePendingCostDays: number;
-  staleLoanDays: number;
-  pettyCashNegativeCriticalDays: number;
-  pettyCashNegativeCriticalAmountMinor: number;
-}
-```
-
-- [ ] **Step 4: Verify pure checks GREEN**
-
-Run:
+- [x] 写失败测试。
+- [x] 运行：
 
 ```bash
 npm test -- tests/services/monthCloseChecks.test.ts
 ```
 
-- [ ] **Step 5: Commit**
+当前预期失败原因：
+
+```text
+Cannot find module '../../src/services/monthCloseChecks'
+```
+
+### 7.2 GREEN
+
+创建 `src/services/monthCloseChecks.ts`。
+
+必须导出：
+
+- `MonthCloseCheckOptions`
+- `MonthCloseCheckResultInput`
+- `MonthCloseHandledCheckResult`
+- `documentWorkflowChecks`
+- `accountBalanceChecks`
+- `pendingCostChecks`
+- `loanAgingChecks`
+- `projectIntegrityChecks`
+- `summarizeCheckResults`
+- `canLockFromCheckResults`
+
+检查规则：
+
+- pending 单据 -> `pending_document` / `critical`
+- draft 单据 -> `draft_document` / `info`
+- rejected 单据 -> `rejected_document` / `warning`
+- 公司账户负数 -> `negative_company_account` / `critical`
+- 备用金负数 -> `negative_petty_cash` / `warning`
+- 待匹配成本 -> `pending_cost` / `warning`
+- 超期待匹配成本 -> `stale_pending_cost` / `critical`
+- 超期借款 -> `stale_loan` / `warning`
+- 项目收入缺少商户 -> `project_income_missing_merchant` / `critical`
+- 商户归属项目与单据项目不一致 -> `merchant_project_mismatch` / `critical`
+
+验收命令：
+
+```bash
+npm test -- tests/services/monthCloseChecks.test.ts
+npx tsc --noEmit
+```
+
+提交：
 
 ```bash
 git add src/services/monthCloseChecks.ts tests/services/monthCloseChecks.test.ts
 git commit -m "feat: add month close check rules"
 ```
 
----
+## 8. Task 3：月结服务编排
 
-## Task 3: Add Month-Close Service Orchestration
+状态：待做。
 
-**Files:**
+文件：
 
-- Create: `src/services/monthCloseService.ts`
-- Test: `tests/services/monthCloseService.test.ts`
-- Modify only as needed: `src/repositories/reportRepository.ts`
+- [ ] `src/services/monthCloseService.ts`
+- [ ] `tests/services/monthCloseService.test.ts`
+- [ ] 必要时扩展 `src/repositories/reportRepository.ts`
 
-- [ ] **Step 1: Write failing service tests**
+目标：
 
-Cover:
+- 把数据库查询结果喂给 Task 2 的纯规则。
+- 创建并完成检查运行。
+- 持久化检查结果。
+- 计算 critical / warning / info 数量。
+- 判断 `can_lock`。
+- 失败时把运行标记为 `failed` 并记录错误。
 
-- `runChecks(period, actor)` creates a run and persists result rows.
-- completed run stores correct critical/warning/info counts.
-- service marks `can_lock = 0` when any open critical exists.
-- service marks `can_lock = 1` when no critical and all warnings are handled.
-- failed check run stores `failed` and `error_message`.
+TDD 步骤：
 
-- [ ] **Step 2: Add query methods needed by checks**
+- [ ] RED：写 `runChecks(period, actor)` 服务测试。
+- [ ] GREEN：实现最小服务。
+- [ ] 审查：确认 Service 不绕过 Repository、不直接拼接用户 SQL。
+- [ ] 提交。
 
-Prefer adding focused read methods to `ReportRepository` or a small internal query helper rather than duplicating large SQL:
+必须覆盖：
 
-- document workflow rows by period
-- account balances by period and account type
-- pending cost rows by period
-- loan aging rows by period
-- project integrity rows by period
+- `runChecks` 创建 running run。
+- 成功后变成 completed。
+- open critical 使 `can_lock = 0`。
+- warning 未处理使 `can_lock = 0`。
+- 无阻断项时 `can_lock = 1`。
+- 查询或插入失败时 run 变成 failed。
 
-Use existing report SQL where it already expresses the right business meaning.
+建议新增查询：
 
-- [ ] **Step 3: Implement `MonthCloseService.runChecks`**
+- `documentWorkflowRows(period)`
+- `accountBalanceRowsForMonthClose(period)`
+- `pendingCostRowsForMonthClose(period)`
+- `loanAgingRowsForMonthClose(period)`
+- `projectIntegrityRows(period)`
 
-Flow:
-
-1. Validate `period`.
-2. Create `month_close_runs` row with `running`.
-3. Load source rows from existing tables/repositories.
-4. Build check result inputs.
-5. Insert check results.
-6. Summarize counts.
-7. Complete run with `can_lock`.
-8. On error, mark run `failed`.
-
-- [ ] **Step 4: Verify service GREEN**
-
-Run:
+验收命令：
 
 ```bash
-npm test -- tests/services/monthCloseService.test.ts
+npm test -- tests/services/monthCloseService.test.ts tests/services/monthCloseChecks.test.ts
+npx tsc --noEmit
 ```
 
-- [ ] **Step 5: Commit**
+## 9. Task 4：月结检查 API
 
-```bash
-git add src/services/monthCloseService.ts tests/services/monthCloseService.test.ts src/repositories/reportRepository.ts
-git commit -m "feat: orchestrate month close checks"
-```
+状态：待做。
 
----
+文件：
 
-## Task 4: Add Month-Close API
+- [ ] `src/api/monthClose.ts`
+- [ ] `src/worker/router.ts`
+- [ ] `tests/api/monthClose.test.ts`
 
-**Files:**
+API：
 
-- Create: `src/api/monthClose.ts`
-- Modify: `src/worker/router.ts`
-- Test: `tests/api/monthClose.test.ts`
+| 方法 | 路径 | 权限 |
+| --- | --- | --- |
+| `GET` | `/api/month-close/periods` | `periodLocks.view` |
+| `GET` | `/api/month-close/:period` | `periodLocks.view` |
+| `POST` | `/api/month-close/:period/checks/run` | `periodLocks.lock` |
+| `GET` | `/api/month-close/:period/checks` | `periodLocks.view` |
+| `PATCH` | `/api/month-close/check-results/:id` | `periodLocks.lock` |
 
-- [ ] **Step 1: Write failing API tests**
+TDD 步骤：
 
-Cover:
+- [ ] RED：写路由和 handler 测试。
+- [ ] GREEN：实现 handlers 和 router。
+- [ ] 审查：确认权限先于写操作，错误响应不泄漏内部 SQL。
+- [ ] 提交。
 
-- `GET /api/month-close/periods`
-- `GET /api/month-close/:period`
-- `POST /api/month-close/:period/checks/run`
-- `GET /api/month-close/:period/checks`
-- `PATCH /api/month-close/check-results/:id`
-- permission denial before executing writes
-- invalid period returns 400
-- check result update requires note for `acknowledged` and `waived`
+必须覆盖：
 
-- [ ] **Step 2: Implement handlers**
+- 无权限用户不能运行检查或更新结果。
+- invalid period 返回 400。
+- `acknowledged` / `waived` 必须填写处理说明。
+- PATCH 写入审计日志。
 
-Handlers:
-
-- `listMonthClosePeriods`
-- `getMonthClosePeriod`
-- `runMonthCloseChecks`
-- `listMonthCloseChecks`
-- `updateMonthCloseCheckResult`
-
-Use permissions:
-
-- view endpoints: `periodLocks.view`
-- run/update endpoints: `periodLocks.lock`
-
-Use `AuditLogRepository` for check result state changes.
-
-- [ ] **Step 3: Register routes**
-
-Add to `src/worker/router.ts`:
-
-```ts
-defineRoute("GET", "/api/month-close/periods", listMonthClosePeriods, "periodLocks.view"),
-defineRoute("GET", "/api/month-close/:period", getMonthClosePeriod, "periodLocks.view"),
-defineRoute("POST", "/api/month-close/:period/checks/run", runMonthCloseChecks, "periodLocks.lock"),
-defineRoute("GET", "/api/month-close/:period/checks", listMonthCloseChecks, "periodLocks.view"),
-defineRoute("PATCH", "/api/month-close/check-results/:id", updateMonthCloseCheckResult, "periodLocks.lock")
-```
-
-- [ ] **Step 4: Verify API GREEN**
-
-Run:
+验收命令：
 
 ```bash
 npm test -- tests/api/monthClose.test.ts tests/api/periodLocks.test.ts
+npx tsc --noEmit
 ```
 
-- [ ] **Step 5: Commit**
+## 10. Task 5：月结中心前端 MVP
 
-```bash
-git add src/api/monthClose.ts src/worker/router.ts tests/api/monthClose.test.ts
-git commit -m "feat: expose month close checks api"
-```
+状态：待做。
 
----
+文件：
 
-## Task 5: Add Month-Close Frontend MVP
+- [ ] `src/app/pages/MonthClosePage.tsx`
+- [ ] `src/app/pages/month-close/monthCloseTypes.ts`
+- [ ] `src/app/pages/month-close/monthCloseModel.ts`
+- [ ] `src/app/pages/month-close/monthCloseModel.test.ts`
+- [ ] `src/app/pages/month-close/MonthClosePeriodList.tsx`
+- [ ] `src/app/pages/month-close/MonthCloseStatusBar.tsx`
+- [ ] `src/app/pages/month-close/MonthCloseChecksTab.tsx`
+- [ ] `src/app/session/sessionTypes.ts`
+- [ ] `src/app/session/sessionModel.ts`
+- [ ] `src/app/session/sessionModel.test.ts`
+- [ ] `src/app/App.tsx`
+- [ ] `src/app/styles.css`
 
-**Files:**
+范围：
 
-- Create: `src/app/pages/MonthClosePage.tsx`
-- Create: `src/app/pages/month-close/monthCloseTypes.ts`
-- Create: `src/app/pages/month-close/monthCloseModel.ts`
-- Create: `src/app/pages/month-close/monthCloseModel.test.ts`
-- Create: `src/app/pages/month-close/MonthClosePeriodList.tsx`
-- Create: `src/app/pages/month-close/MonthCloseStatusBar.tsx`
-- Create: `src/app/pages/month-close/MonthCloseChecksTab.tsx`
-- Modify: `src/app/session/sessionTypes.ts`
-- Modify: `src/app/session/sessionModel.ts`
-- Modify: `src/app/session/sessionModel.test.ts`
-- Modify: `src/app/App.tsx`
-- Modify: `src/app/styles.css`
+- 新增一级导航 `对账月结`。
+- 期间列表。
+- 期间状态条。
+- 检查清单。
+- 运行检查。
+- 刷新。
+- 确认保留。
+- 标记已处理。
+- 分配责任人。
 
-- [ ] **Step 1: Write failing frontend model tests**
+不做：
 
-Cover:
+- 不做对账汇总 tabs。
+- 不做锁账按钮。
+- 不做快照归档。
 
-- status labels for open/checking/ready/locked/reopened
-- severity sort critical before warning before info
-- action payload builder trims note and status
-- lock button disabled when period is locked or checks are blocking
-
-- [ ] **Step 2: Add navigation**
-
-Add `month-close` page key and navigation label `对账月结`, visible with `periodLocks.view`.
-
-- [ ] **Step 3: Build page MVP**
-
-MVP layout:
-
-- period list on left
-- status bar at top
-- check results list in main area
-- buttons:
-  - `运行检查`
-  - `刷新`
-  - result action buttons for `确认保留`, `标记已处理`, `分配责任人`
-
-Do not include reconciliation tabs yet; they are Task 6.
-
-- [ ] **Step 4: Add render tests**
-
-Add or extend page tests to verify:
-
-- page loads latest period
-- running checks calls `/api/month-close/:period/checks/run`
-- critical results are visually first
-- check-result update calls `PATCH /api/month-close/check-results/:id`
-- users without lock permission can view but cannot update
-
-- [ ] **Step 5: Verify frontend GREEN**
-
-Run:
+验收命令：
 
 ```bash
 npm test -- src/app/pages/month-close/monthCloseModel.test.ts src/app/session/sessionModel.test.ts src/app/App.test.tsx
 npx tsc --noEmit
+npm run build
 ```
 
-- [ ] **Step 6: Commit**
+## 11. Task 6：对账汇总 Tabs
 
-```bash
-git add src/app/pages/MonthClosePage.tsx src/app/pages/month-close src/app/session src/app/App.tsx src/app/styles.css
-git commit -m "feat: add month close center frontend"
+状态：待做。
+
+文件：
+
+- [ ] `src/services/monthCloseService.ts`
+- [ ] `src/api/monthClose.ts`
+- [ ] `src/app/pages/month-close/MonthCloseReconciliationTabs.tsx`
+- [ ] `tests/services/monthCloseService.test.ts`
+- [ ] `tests/api/monthClose.test.ts`
+
+接口：
+
+```http
+GET /api/month-close/:period/reconciliation
 ```
 
----
-
-## Task 6: Add Reconciliation Summary Tabs
-
-**Files:**
-
-- Modify: `src/services/monthCloseService.ts`
-- Modify: `src/api/monthClose.ts`
-- Create: `src/app/pages/month-close/MonthCloseReconciliationTabs.tsx`
-- Test: `tests/services/monthCloseService.test.ts`
-- Test: `tests/api/monthClose.test.ts`
-- Test: frontend page tests
-
-- [ ] **Step 1: Write failing service tests for summaries**
-
-Cover summary shapes:
-
-- funding reconciliation: account, currency, opening, inflow, outflow, closing
-- petty cash reconciliation: person, account, currency, issue, reimbursement, return, pending
-- loan reconciliation: borrower, currency, loan out, repayment, writeoff, closing, oldest date
-- project reconciliation: project, income, expense, pending, net
-
-- [ ] **Step 2: Implement summary queries**
-
-Add read methods that derive summaries from approved documents and posting tables. Keep them period-scoped.
-
-Important:
-
-- opening balance comes from entries before period start, or previous snapshot later.
-- current phase may compute opening by cumulative entries before target period.
-- group by original currency; do not mix currencies.
-
-- [ ] **Step 3: Add API response**
-
-Add `GET /api/month-close/:period/reconciliation`.
-
-Response:
+返回：
 
 ```ts
 {
@@ -564,78 +362,50 @@ Response:
 }
 ```
 
-- [ ] **Step 4: Implement tabs**
+对账页签：
 
-Tabs:
+- 资金对账
+- 备用金
+- 借款
+- 项目经营
 
-- `资金对账`
-- `备用金`
-- `借款`
-- `项目经营`
+要求：
 
-Tables must not be stacked all at once. Only the active tab renders its detailed table.
+- 只渲染当前激活 tab 的明细表。
+- 多币种按原币分组，不混币种汇总。
+- 期初余额第一版可按期间前累计分录计算。
 
-- [ ] **Step 5: Verify GREEN**
+## 12. Task 7：锁账、解锁与快照
 
-Run:
+状态：待做。
 
-```bash
-npm test -- tests/services/monthCloseService.test.ts tests/api/monthClose.test.ts src/app/pages/MonthClosePage.test.tsx
-npm run build
-```
+文件：
 
-- [ ] **Step 6: Commit**
+- [ ] `src/services/monthCloseService.ts`
+- [ ] `src/api/monthClose.ts`
+- [ ] `src/repositories/monthCloseRepository.ts`
+- [ ] 必要时扩展 `src/repositories/periodLockRepository.ts`
+- [ ] `tests/services/monthCloseService.test.ts`
+- [ ] `tests/api/monthClose.test.ts`
 
-```bash
-git add src/services/monthCloseService.ts src/api/monthClose.ts src/app/pages/month-close src/app/styles.css tests
-git commit -m "feat: add month close reconciliation summaries"
-```
+新增 API：
 
----
+| 方法 | 路径 | 权限 |
+| --- | --- | --- |
+| `POST` | `/api/month-close/:period/lock` | `periodLocks.lock` |
+| `POST` | `/api/month-close/:period/unlock` | `periodLocks.unlock` |
 
-## Task 7: Add Lock, Unlock, and Snapshot Creation
+锁账必须原子化：
 
-**Files:**
+1. 验证最近检查运行。
+2. 验证不存在未处理 critical。
+3. 验证 warning 已处理。
+4. 写 `period_locks`。
+5. 写 `month_close_snapshots`。
+6. 写 `month_close_report_snapshots`。
+7. 写审计日志。
 
-- Modify: `src/services/monthCloseService.ts`
-- Modify: `src/api/monthClose.ts`
-- Modify: `src/repositories/monthCloseRepository.ts`
-- Modify: `src/repositories/periodLockRepository.ts` if batch composition is needed
-- Test: `tests/services/monthCloseService.test.ts`
-- Test: `tests/api/monthClose.test.ts`
-
-- [ ] **Step 1: Write failing lock eligibility tests**
-
-Cover:
-
-- cannot lock without completed run
-- cannot lock with unresolved critical
-- cannot lock with open warning
-- can lock with resolved critical and acknowledged warning
-- lock note is required
-- cannot lock already locked period
-- lock creates `period_locks`, snapshot header, report snapshots, and audit record in one batch
-
-- [ ] **Step 2: Implement lock endpoint**
-
-Route:
-
-```ts
-defineRoute("POST", "/api/month-close/:period/lock", lockMonthClosePeriod, "periodLocks.lock")
-```
-
-Body:
-
-```ts
-{
-  note: string,
-  runId?: string
-}
-```
-
-- [ ] **Step 3: Snapshot report data**
-
-Snapshot initial report keys:
+快照初始 report keys：
 
 - `accountBalances`
 - `lotBalances`
@@ -654,119 +424,44 @@ Snapshot initial report keys:
 - `monthCloseChecks`
 - `monthCloseReconciliation`
 
-- [ ] **Step 4: Implement unlock endpoint**
+## 13. Task 8：快照查看与报表版本切换
 
-Route:
+状态：待做。
 
-```ts
-defineRoute("POST", "/api/month-close/:period/unlock", unlockMonthClosePeriod, "periodLocks.unlock")
+文件：
+
+- [ ] `src/api/monthClose.ts`
+- [ ] `src/app/pages/month-close/MonthCloseSnapshotsTab.tsx`
+- [ ] `src/app/pages/ReportsPage.tsx`
+- [ ] `src/app/pages/reports/reportTypes.ts`
+- [ ] `src/app/pages/reports/reportExport.ts`
+- [ ] `tests/api/monthClose.test.ts`
+- [ ] `src/app/pages/ReportsPage.test.tsx`
+
+新增 API：
+
+| 方法 | 路径 | 权限 |
+| --- | --- | --- |
+| `GET` | `/api/month-close/:period/snapshots` | `periodLocks.view` |
+| `GET` | `/api/month-close/snapshots/:id/reports/:reportKey` | `reports.view` |
+
+报表中心版本：
+
+- 实时数据。
+- 已结账快照。
+
+导出命名：
+
+```text
+项目经营报表-2026-04-v1.csv
+月结包-2026-04-v1.xlsx
 ```
 
-Rules:
+## 14. Task 9：最终验收与部署准备
 
-- reason required
-- delete `period_locks`
-- do not delete snapshots
-- audit `month_close.unlock`
-- period overview returns `reopened`
+状态：待做。
 
-- [ ] **Step 5: Verify GREEN**
-
-Run:
-
-```bash
-npm test -- tests/services/monthCloseService.test.ts tests/api/monthClose.test.ts tests/api/periodLocks.test.ts
-npx tsc --noEmit
-```
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add src/services/monthCloseService.ts src/api/monthClose.ts src/repositories/monthCloseRepository.ts src/repositories/periodLockRepository.ts tests
-git commit -m "feat: lock month close with snapshots"
-```
-
----
-
-## Task 8: Add Snapshot Viewing and Report Version Switching
-
-**Files:**
-
-- Modify: `src/api/monthClose.ts`
-- Modify: `src/app/pages/month-close/MonthCloseSnapshotsTab.tsx`
-- Modify: `src/app/pages/ReportsPage.tsx`
-- Modify: `src/app/pages/reports/reportTypes.ts`
-- Modify: `src/app/pages/reports/reportExport.ts`
-- Test: `tests/api/monthClose.test.ts`
-- Test: `src/app/pages/ReportsPage.test.tsx`
-- Test: month-close page tests
-
-- [ ] **Step 1: Write failing API tests for snapshots**
-
-Cover:
-
-- `GET /api/month-close/:period/snapshots`
-- `GET /api/month-close/snapshots/:id/reports/:reportKey`
-- report snapshot endpoint requires `reports.view`
-- missing snapshot returns 404
-
-- [ ] **Step 2: Implement snapshot APIs**
-
-Routes:
-
-```ts
-defineRoute("GET", "/api/month-close/:period/snapshots", listMonthCloseSnapshots, "periodLocks.view"),
-defineRoute("GET", "/api/month-close/snapshots/:id/reports/:reportKey", getMonthCloseReportSnapshot, "reports.view")
-```
-
-- [ ] **Step 3: Add snapshot tab**
-
-Show:
-
-- version
-- locked at
-- locked by
-- note
-- check counts
-- buttons to view reports and export close package
-
-- [ ] **Step 4: Add report version selector**
-
-In `ReportsPage`:
-
-- keep `实时数据`
-- add `已结账快照`
-- when a locked period and snapshot exists, prefer snapshot view for that period
-- export file names include period and snapshot version
-
-- [ ] **Step 5: Verify GREEN**
-
-Run:
-
-```bash
-npm test -- tests/api/monthClose.test.ts src/app/pages/ReportsPage.test.tsx
-npm test
-npm run build
-```
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add src/api/monthClose.ts src/app/pages/month-close src/app/pages/ReportsPage.tsx src/app/pages/reports tests
-git commit -m "feat: view month close snapshots in reports"
-```
-
----
-
-## Task 9: Final Verification and Production Readiness
-
-**Files:**
-
-- Modify docs only if needed:
-  - `docs/deployment.md`
-  - `docs/superpowers/specs/2026-04-26-reconciliation-month-end-center-design.md`
-
-- [ ] **Step 1: Run complete verification**
+必须运行：
 
 ```bash
 npm test
@@ -776,7 +471,7 @@ npm audit --audit-level=high
 git diff --check
 ```
 
-- [ ] **Step 2: Run local migration smoke**
+本地数据库烟测：
 
 ```bash
 npm run db:migrate:local
@@ -784,63 +479,48 @@ npm run db:seed:local
 npm run cf:dev
 ```
 
-Manual smoke:
+人工验收：
 
-- open `/`
-- enter `对账月结`
-- select current demo period
-- run checks
-- process a warning
-- verify lock is blocked when critical exists
-- lock after checks are clear or handled
-- verify snapshot appears
-- verify reports can view snapshot data
+- 打开系统。
+- 进入 `对账月结`。
+- 选择演示期间。
+- 运行检查。
+- 处理 warning。
+- critical 未处理时锁账被阻断。
+- 处理后可锁账。
+- 快照生成。
+- 报表中心可查看快照版本。
 
-- [ ] **Step 3: Review security**
+## 15. 推荐执行顺序
 
-Confirm:
+必须顺序执行：
 
-- all write endpoints require authenticated actor
-- permissions are enforced before DB writes
-- no user-supplied SQL fragments
-- audit records include actor person id and email
-- lock and snapshot creation cannot partially succeed silently
-- no secrets were committed
+1. Task 2：先补齐 RED 后的检查规则实现。
+2. Task 3：服务编排。
+3. Task 4：API。
+4. Task 5：前端 MVP。
+5. Task 6：对账汇总。
+6. Task 7：锁账和快照。
+7. Task 8：快照报表。
+8. Task 9：最终验收。
 
-- [ ] **Step 4: Commit final docs/readiness changes**
+不要提前：
 
-```bash
-git add docs src tests
-git commit -m "docs: document month close verification"
-```
+- 不要在 Task 7 前做报表快照切换。
+- 不要在 Task 4 前做前端真实 API 联调。
+- 不要在 Service 层测试前把锁账入口暴露给前端。
 
----
+## 16. 完成标准
 
-## Implementation Order Recommendation
+整个计划完成时必须满足：
 
-Use this order:
-
-1. Task 1: schema and repository
-2. Task 2: pure check rules
-3. Task 3: service orchestration
-4. Task 4: API
-5. Task 5: frontend MVP
-6. Task 6: reconciliation summaries
-7. Task 7: lock/unlock/snapshots
-8. Task 8: snapshot viewing and report switching
-9. Task 9: final verification
-
-Do not start snapshot report switching before lock snapshots exist. Do not wire frontend lock buttons before the backend lock eligibility rules are tested.
-
-## Acceptance Criteria
-
-- A finance user can run month-close checks for a selected period.
-- The system persists the check run and check result rows.
-- Critical issues block locking until resolved.
-- Warning issues require resolution, acknowledgement, or waiver.
-- Period lock writes `period_locks` and creates a snapshot version.
-- Unlock keeps old snapshots and requires a reason.
-- Re-lock creates a new snapshot version.
-- Month-close center separates check list, reconciliation summaries, and snapshot archive.
-- Reports can distinguish realtime data from close snapshots.
-- Full test suite, typecheck, build, and audit pass.
+- 月结检查可运行并持久化。
+- 检查结果可处理、确认保留、标记已解决。
+- critical 未处理时不能锁账。
+- warning 未处理时不能锁账。
+- 锁账写入 `period_locks`。
+- 锁账生成快照版本。
+- 解锁保留历史快照。
+- 重新锁账生成新快照版本。
+- 报表中心能区分实时数据和已结账快照。
+- 全量测试、类型检查、构建、安全审计全部通过。
