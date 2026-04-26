@@ -201,13 +201,26 @@ describe("report routes", () => {
     "/api/reports/expense-summary",
     "/api/reports/project-profit-loss",
     "/api/reports/monthly-operating",
-    "/api/reports/exception-checks",
-    "/api/reports/filter-options"
+    "/api/reports/exception-checks"
   ])("routes GET %s", async (pathname) => {
     const response = await route(new Request(`https://ledger.test${pathname}`), mockEnv());
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ data: [] });
+  });
+
+  it("routes GET /api/reports/filter-options", async () => {
+    const response = await route(new Request("https://ledger.test/api/reports/filter-options"), mockEnv());
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        projects: [],
+        merchants: [],
+        people: [],
+        currencies: []
+      }
+    });
   });
 
   it("rejects report reads without view permission before running the report query", async () => {

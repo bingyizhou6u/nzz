@@ -55,7 +55,8 @@ import {
   pendingCostMatches,
   pettyCashPendingMatches,
   projectIncome,
-  projectProfitLoss
+  projectProfitLoss,
+  reportFilterOptions
 } from "../api/reports";
 import { assertCan, type Capability } from "../auth/permissions";
 import { authenticateRequest } from "../auth/authenticate";
@@ -118,6 +119,7 @@ const routes: Route[] = [
   defineRoute("GET", "/api/reports/project-profit-loss", projectProfitLoss, "reports.view"),
   defineRoute("GET", "/api/reports/monthly-operating", monthlyOperatingSummary, "reports.view"),
   defineRoute("GET", "/api/reports/exception-checks", exceptionChecks, "reports.view"),
+  defineRoute("GET", "/api/reports/filter-options", reportFilterOptions, "reports.view"),
   defineRoute("GET", "/api/period-locks", listPeriodLocks, "periodLocks.view"),
   defineRoute("POST", "/api/period-locks", createPeriodLock, "periodLocks.lock"),
   defineRoute("DELETE", "/api/period-locks/:period", deletePeriodLock, "periodLocks.unlock"),

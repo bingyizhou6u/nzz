@@ -1,9 +1,9 @@
 import { ReportTable } from "./ReportTable";
 import type { ReportColumn } from "./ReportTable";
+import { exceptionActionLabel, sortedExceptionChecks } from "./reportExperience";
 import { formatMinor, formatOptional } from "./reportFormat";
 import type {
   AccountBalance,
-  ExceptionCheck,
   ExpenseDetail,
   ExpenseSummary,
   LoanAging,
@@ -170,19 +170,6 @@ const loanWriteoffColumns: ReportColumn<LoanWriteoff>[] = [
   { key: "usdt", header: "USDT成本", className: "number-cell", render: (row) => formatMinor(row.usdt_cost_minor) }
 ];
 
-const exceptionCheckColumns: ReportColumn<ExceptionCheck>[] = [
-  { key: "type", header: "类型", render: (row) => <span className="mono">{row.exception_type}</span> },
-  { key: "severity", header: "级别", render: (row) => <span className="mono">{row.severity}</span> },
-  { key: "entityType", header: "对象类型", render: (row) => <span className="mono">{row.entity_type}</span> },
-  { key: "entity", header: "对象ID", render: (row) => <span className="mono">{row.entity_id}</span> },
-  { key: "period", header: "期间", render: (row) => <span className="mono">{formatOptional(row.period)}</span> },
-  { key: "date", header: "日期", render: (row) => <span className="mono">{formatOptional(row.business_date)}</span> },
-  { key: "currency", header: "币种", render: (row) => <span className="mono">{formatOptional(row.currency_code)}</span> },
-  { key: "amount", header: "金额", className: "number-cell", render: (row) => formatMinor(row.amount_minor) },
-  { key: "usdt", header: "USDT成本", className: "number-cell", render: (row) => formatMinor(row.usdt_cost_minor) },
-  { key: "message", header: "说明", render: (row) => row.message }
-];
-
 export const reportGroupLabels = ["资金", "项目经营", "费用", "备用金", "借款", "异常"] as const;
 
 export function FundingReports({ reports, emptyLabel }: { reports: ReportsState; emptyLabel: string }) {
@@ -214,7 +201,37 @@ export function FundingReports({ reports, emptyLabel }: { reports: ReportsState;
   );
 }
 
-export function ProjectReports({ reports, emptyLabel }: { reports: ReportsState; emptyLabel: string }) {
+export function ProjectReports({
+  reports,
+  emptyLabel,
+  selectedProjectId,
+  onSelectProject,
+  onClearProject
+}: {
+  reports: ReportsState;
+  emptyLabel: string;
+  selectedProjectId?: string | null;
+  onSelectProject?: (projectId: string | null) => void;
+  onClearProject?: () => void;
+}) {
+  const profitColumns: ReportColumn<ProjectProfitLoss>[] = onSelectProject
+    ? [
+        ...projectProfitLossColumns,
+        {
+          key: "drilldown",
+          header: "钻取",
+          render: (row) => (
+            <button type="button" className="secondary-button table-action-button" onClick={() => onSelectProject(row.project_id)}>
+              钻取项目 {formatOptional(row.project_id)}
+            </button>
+          )
+        }
+      ]
+    : projectProfitLossColumns;
+  const drilldownIncome = reports.projectIncome.filter((row) => row.project_id === selectedProjectId);
+  const drilldownMerchantIncome = reports.merchantIncome.filter((row) => row.project_id === selectedProjectId);
+  const drilldownExpenses = reports.expenseDetails.filter((row) => row.project_id === selectedProjectId);
+
   return (
     <div className="report-group">
       <h2 className="report-group-title">项目经营</h2>
@@ -223,8 +240,44 @@ export function ProjectReports({ reports, emptyLabel }: { reports: ReportsState;
         rows={reports.projectProfitLoss}
         rowKey={(row) => `${row.period}-${row.project_id ?? "none"}`}
         emptyLabel={emptyLabel}
-        columns={projectProfitLossColumns}
+        columns={profitColumns}
       />
+      {selectedProjectId ? (
+        <div className="report-drilldown-panel">
+          <div className="report-drilldown-header">
+            <div>
+              <span>钻取视图</span>
+              <h2>项目 {selectedProjectId}</h2>
+            </div>
+            <button type="button" className="secondary-button" onClick={onClearProject}>
+              关闭钻取
+            </button>
+          </div>
+          <ReportTable
+            title="项目收入表"
+            rows={drilldownIncome}
+            rowKey={(row) =>
+              `${row.period}-${row.project_id ?? "none"}-${row.merchant_id ?? "none"}-${row.category_id ?? "none"}-${row.currency_code}`
+            }
+            emptyLabel={emptyLabel}
+            columns={projectIncomeColumns}
+          />
+          <ReportTable
+            title="商户收入表"
+            rows={drilldownMerchantIncome}
+            rowKey={(row) => `${row.period}-${row.project_id ?? "none"}-${row.merchant_id ?? "none"}-${row.currency_code}`}
+            emptyLabel={emptyLabel}
+            columns={merchantIncomeColumns}
+          />
+          <ReportTable
+            title="费用明细表"
+            rows={drilldownExpenses}
+            rowKey={(row) => row.document_id}
+            emptyLabel={emptyLabel}
+            columns={expenseDetailColumns}
+          />
+        </div>
+      ) : null}
       <ReportTable
         title="项目收入表"
         rows={reports.projectIncome}
@@ -335,16 +388,45 @@ export function LoanReports({ reports, emptyLabel }: { reports: ReportsState; em
 }
 
 export function ExceptionReports({ reports, emptyLabel }: { reports: ReportsState; emptyLabel: string }) {
+  const exceptionChecks = sortedExceptionChecks(reports.exceptionChecks);
+
   return (
     <div className="report-group">
       <h2 className="report-group-title">异常</h2>
-      <ReportTable
-        title="异常检查"
-        rows={reports.exceptionChecks}
-        rowKey={(row) => `${row.exception_type}-${row.entity_type}-${row.entity_id}`}
-        emptyLabel={emptyLabel}
-        columns={exceptionCheckColumns}
-      />
+      <section className="panel exception-action-panel">
+        <div className="report-table-header">
+          <h2>异常处理清单</h2>
+          <span>{exceptionChecks.length} 项</span>
+        </div>
+        {exceptionChecks.length > 0 ? (
+          <div className="exception-action-list">
+            {exceptionChecks.map((row) => (
+              <article key={`${row.exception_type}-${row.entity_type}-${row.entity_id}`} className={`exception-action-item ${row.severity}`}>
+                <div className="exception-action-heading">
+                  <div>
+                    <span className="exception-action-type">{row.exception_type}</span>
+                    <h3>{row.message}</h3>
+                  </div>
+                  <span className="exception-severity">{row.severity}</span>
+                </div>
+                <div className="exception-action-meta">
+                  <span>{row.entity_type}</span>
+                  <span className="mono">{row.entity_id}</span>
+                  <span>{formatOptional(row.period)}</span>
+                  <span>{formatOptional(row.business_date)}</span>
+                  <span>{formatOptional(row.currency_code)}</span>
+                  <span>{formatMinor(row.amount_minor)}</span>
+                </div>
+                <p className="exception-action-suggestion">{exceptionActionLabel(row)}</p>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <strong>{emptyLabel}</strong>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { all } from "../repositories/db";
 import { ReportRepository } from "../repositories/reportRepository";
 import type { ReportFilters } from "../repositories/reportRepository";
 import type { Handler } from "../worker/env";
@@ -100,4 +101,30 @@ export const monthlyOperatingSummary: Handler = async ({ request, env }) => {
 export const exceptionChecks: Handler = async ({ request, env }) => {
   const repo = new ReportRepository(env.DB);
   return Response.json({ data: await repo.exceptionChecks(reportFiltersFromRequest(request)) });
+};
+
+export const reportFilterOptions: Handler = async ({ env }) => {
+  const [projects, merchants, people, currencies] = await Promise.all([
+    all<{ id: string; code: string; name: string }>(
+      env.DB.prepare("SELECT id, code, name FROM projects WHERE status = 'active' ORDER BY code, name")
+    ),
+    all<{ id: string; code: string; name: string; project_id: string }>(
+      env.DB.prepare("SELECT id, code, name, project_id FROM merchants WHERE status = 'active' ORDER BY code, name")
+    ),
+    all<{ id: string; name: string; alias: string | null }>(
+      env.DB.prepare("SELECT id, name, alias FROM people WHERE is_enabled = 1 ORDER BY name, alias")
+    ),
+    all<{ code: string; name: string }>(
+      env.DB.prepare("SELECT code, name FROM currencies WHERE is_enabled = 1 ORDER BY code")
+    )
+  ]);
+
+  return Response.json({
+    data: {
+      projects,
+      merchants,
+      people,
+      currencies
+    }
+  });
 };
