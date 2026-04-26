@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { getJson, type ApiEnvelope } from "../api";
 import { EmptyState, Notice, SectionTitle, StatusTag, type Tone } from "../components/ui";
 import { hasCapability, type Capability, type PageKey, type SessionState } from "../session/sessionTypes";
-import { buildWorkspaceTasks, summarizeDocumentCounts, type WorkspaceDocument } from "./workspace/workspaceModel";
+import {
+  buildWorkspaceNextActions,
+  buildWorkspaceTasks,
+  summarizeDocumentCounts,
+  type WorkspaceDocument
+} from "./workspace/workspaceModel";
 
 interface WorkspacePageProps {
   session: Extract<SessionState, { status: "authenticated" }>;
@@ -29,6 +34,10 @@ export function WorkspacePage({ session, onNavigate }: WorkspacePageProps) {
   const [isLoading, setIsLoading] = useState(canViewDocuments);
   const [loadError, setLoadError] = useState<string | null>(null);
   const counts = useMemo(() => summarizeDocumentCounts(documents), [documents]);
+  const nextActions = useMemo(
+    () => buildWorkspaceNextActions(counts, session.capabilities),
+    [counts, session.capabilities]
+  );
   const tasks = useMemo(() => buildWorkspaceTasks(documents), [documents]);
   const quickActions = useMemo(() => buildQuickActions(session.capabilities, onNavigate), [onNavigate, session.capabilities]);
   const workspaceStatus = !canViewDocuments ? "无权限" : isLoading ? "读取中" : loadError ? "读取失败" : "工作台已更新";
@@ -84,47 +93,82 @@ export function WorkspacePage({ session, onNavigate }: WorkspacePageProps) {
   }
 
   return (
-    <div className="page-stack">
+    <div className="page-stack workspace-page">
       {isLoading ? <Notice tone="muted">工作台单据读取中...</Notice> : null}
       {loadError ? <Notice tone="danger">{loadError}</Notice> : null}
 
+      <section className="workspace-command-strip" aria-label="工作台状态">
+        <div>
+          <span className="section-eyebrow">下一步任务</span>
+          <h2>先处理会影响入账和月结的事项</h2>
+        </div>
+        <StatusTag tone={!canViewDocuments ? "muted" : loadError ? "danger" : isLoading ? "muted" : "ok"}>
+          {workspaceStatus}
+        </StatusTag>
+      </section>
+
       <section className="workspace-grid" aria-label="工作台内容">
-        <article className="workspace-card">
+        <article className="workspace-card workspace-next-card">
           <div className="workspace-card-header">
-            <SectionTitle title="待处理" />
-            <StatusTag tone={!canViewDocuments ? "muted" : loadError ? "danger" : isLoading ? "muted" : "ok"}>
-              {workspaceStatus}
-            </StatusTag>
+            <SectionTitle title="下一步任务" description="按当前单据状态和权限排序。" />
           </div>
 
-          {!canViewDocuments ? (
-            <EmptyState title="无单据查看权限" message="当前账号没有单据查看权限，无法读取或打开待处理单据。" />
-          ) : isLoading ? (
-            <EmptyState title="正在读取待处理单据" message="请稍候，系统正在读取现有单据。" />
-          ) : loadError ? (
-            <EmptyState title="无法读取单据" message="请稍后重试，或联系管理员检查单据服务状态。" />
-          ) : tasks.length > 0 ? (
-            <div className="task-list">
-              {tasks.map((task) => (
+          {canViewDocuments && isLoading ? (
+            <EmptyState title="正在生成下一步任务" message="请稍候，系统正在读取单据状态。" />
+          ) : canViewDocuments && loadError ? (
+            <EmptyState title="无法生成任务" message="单据读取失败，暂不显示单据相关待办。" />
+          ) : nextActions.length > 0 ? (
+            <div className="next-action-list">
+              {nextActions.map((action) => (
                 <button
-                  key={task.id}
+                  key={action.id}
                   type="button"
-                  className="task-row"
-                  onClick={() => navigateTask(task.status)}
+                  className="next-action-row"
+                  onClick={() => onNavigate(action.page)}
                 >
-                  <span>{task.label}</span>
-                  <small>{task.meta}</small>
-                  <StatusTag tone={statusTones[task.status]}>{statusLabels[task.status]}</StatusTag>
+                  <span className="next-action-copy">
+                    <strong>{action.title}</strong>
+                    <small>{action.description}</small>
+                  </span>
+                  <StatusTag tone={action.tone}>{action.meta}</StatusTag>
                 </button>
               ))}
             </div>
           ) : (
-            <EmptyState title="暂无待处理单据" message="草稿、待审核和退回单据会出现在这里。" />
+            <EmptyState title="暂无明确待办" message="当前没有草稿、待审核、退回单据或月结检查入口。" />
           )}
+
+          <div className="workspace-detail-block">
+            <SectionTitle title="待办明细" description="最近需要关注的单据。" />
+            {!canViewDocuments ? (
+              <EmptyState title="无单据查看权限" message="当前账号没有单据查看权限，无法读取或打开待处理单据。" />
+            ) : isLoading ? (
+              <EmptyState title="正在读取待处理单据" message="请稍候，系统正在读取现有单据。" />
+            ) : loadError ? (
+              <EmptyState title="无法读取单据" message="请稍后重试，或联系管理员检查单据服务状态。" />
+            ) : tasks.length > 0 ? (
+              <div className="task-list">
+                {tasks.map((task) => (
+                  <button
+                    key={task.id}
+                    type="button"
+                    className="task-row"
+                    onClick={() => navigateTask(task.status)}
+                  >
+                    <span>{task.label}</span>
+                    <small>{task.meta}</small>
+                    <StatusTag tone={statusTones[task.status]}>{statusLabels[task.status]}</StatusTag>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="暂无待处理单据" message="草稿、待审核和退回单据会出现在这里。" />
+            )}
+          </div>
         </article>
 
-        <article className="workspace-card">
-          <SectionTitle title="单据快照" />
+        <article className="workspace-card workspace-summary-card">
+          <SectionTitle title="单据快照" description="按当前可见单据汇总。" />
           {!canViewDocuments ? (
             <EmptyState title="无可查看单据" message="当前账号没有单据查看权限，单据快照不可用。" />
           ) : isLoading ? (
@@ -141,8 +185,8 @@ export function WorkspacePage({ session, onNavigate }: WorkspacePageProps) {
           )}
         </article>
 
-        <article className="workspace-card">
-          <SectionTitle title="快捷入口" />
+        <article className="workspace-card workspace-quick-card">
+          <SectionTitle title="常用入口" description="按当前权限显示。" />
           {quickActions.length > 0 ? (
             <div className="quick-actions">
               {quickActions.map((action) => (
@@ -159,6 +203,13 @@ export function WorkspacePage({ session, onNavigate }: WorkspacePageProps) {
           ) : (
             <EmptyState title="暂无快捷入口" message="当前账号没有额外业务功能权限。" />
           )}
+        </article>
+
+        <article className="workspace-card workspace-demo-card">
+          <SectionTitle title="演示数据提醒" />
+          <Notice tone="warning">
+            当前环境保留演示数据用于流程演示；正式使用前请核对初始化数据、人员权限和期初余额。
+          </Notice>
         </article>
       </section>
     </div>
@@ -215,6 +266,14 @@ function buildQuickActions(capabilities: readonly Capability[], onNavigate: (pag
       label: "基础资料",
       page: "master-data",
       onClick: () => onNavigate("master-data")
+    });
+  }
+
+  if (hasCapability(capabilities, "periodLocks.view")) {
+    actions.push({
+      label: "对账月结",
+      page: "month-close",
+      onClick: () => onNavigate("month-close")
     });
   }
 

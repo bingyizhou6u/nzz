@@ -142,6 +142,8 @@ describe("App", () => {
     await waitFor(() => {
       expect(document.querySelector(".app-sidebar")?.textContent).toContain("工作台");
       expect(document.querySelector(".top-status-bar")?.textContent).toContain("Finance Manager");
+      expect(document.querySelector(".top-status-bar")?.textContent).toContain("部署目标：Cloudflare Workers");
+      expect(document.querySelector(".top-status-bar")?.textContent).toContain("数据模式：演示数据保留");
     });
   });
 

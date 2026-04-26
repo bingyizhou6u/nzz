@@ -193,14 +193,14 @@ git commit -m "feat: add formal interaction primitives"
 
 **Steps:**
 
-- [ ] Step 1: 在 `workspaceModel.test.ts` 增加 `buildWorkspaceNextActions()` 测试，输入单据统计和权限，输出明确任务列表。
-- [ ] Step 2: 运行 `npm test -- src/app/pages/workspace/workspaceModel.test.ts`，预期 RED。
-- [ ] Step 3: 在 `workspaceModel.ts` 实现 `buildWorkspaceNextActions()`。
-- [ ] Step 4: 改造 `WorkspacePage.tsx`，将旧的卡片改成“待办 + 快捷入口 + 演示数据提醒”。
-- [ ] Step 5: 改造 `AppShell.tsx`，顶部状态栏更清晰，但不增加退出登录功能，因为 Cloudflare Access 负责登录态。
-- [ ] Step 6: 运行 `npm test -- src/app/pages/WorkspacePage.test.tsx src/app/App.test.tsx src/app/pages/workspace/workspaceModel.test.ts`。
-- [ ] Step 7: 运行 `npx tsc --noEmit` 和 `npm run build`。
-- [ ] Step 8: 提交。
+- [x] Step 1: 在 `workspaceModel.test.ts` 增加 `buildWorkspaceNextActions()` 测试，输入单据统计和权限，输出明确任务列表。
+- [x] Step 2: 运行 `npm test -- src/app/pages/workspace/workspaceModel.test.ts`，预期 RED。
+- [x] Step 3: 在 `workspaceModel.ts` 实现 `buildWorkspaceNextActions()`。
+- [x] Step 4: 改造 `WorkspacePage.tsx`，将旧的卡片改成“待办 + 快捷入口 + 演示数据提醒”。
+- [x] Step 5: 改造 `AppShell.tsx`，顶部状态栏更清晰，但不增加退出登录功能，因为 Cloudflare Access 负责登录态。
+- [x] Step 6: 运行 `npm test -- src/app/pages/WorkspacePage.test.tsx src/app/App.test.tsx src/app/pages/workspace/workspaceModel.test.ts`。
+- [x] Step 7: 运行 `npx tsc --noEmit` 和 `npm run build`。
+- [x] Step 8: 提交。
 
 ```bash
 git add src/app/layout/AppShell.tsx src/app/layout/PageHeader.tsx src/app/pages/WorkspacePage.tsx src/app/pages/workspace/workspaceModel.ts src/app/pages/workspace/workspaceModel.test.ts src/app/App.test.tsx src/app/styles.css
@@ -212,6 +212,13 @@ git commit -m "feat: improve formal workspace context"
 - 登录后默认看到“下一步该做什么”。
 - 演示数据保留策略能在工作台被理解，不误导为真实业务数据。
 - 页面标题、状态和主要操作位置统一。
+
+**完成记录（2026-04-26）：**
+
+- 新增 `buildWorkspaceNextActions()`，按单据统计和权限生成审核、退回修正、草稿提交、月结检查和常用入口任务。
+- 工作台改为“下一步任务 + 待办明细 + 单据快照 + 常用入口 + 演示数据提醒”。
+- AppShell 顶部状态栏显示 Cloudflare Workers 部署目标、演示数据保留模式、当前演示期间和当前登录身份；侧边栏增加页面上下文说明。
+- 验证：`npm test`、`npx tsc --noEmit`、`npm run build`、`npm audit --audit-level=high`、`git diff --check` 均通过。
 
 ---
 

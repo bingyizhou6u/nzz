@@ -71,4 +71,14 @@ describe("AppShell", () => {
     expect(document.querySelector(".page-header h1")?.textContent).toBe("单据中心");
     expect(document.querySelector(".sidebar-nav-button.active")?.textContent).toContain("业务单据");
   });
+
+  it("shows environment, data mode, current period, and active page context", () => {
+    renderShell("workspace");
+
+    expect(document.querySelector(".top-status-bar")?.textContent).toContain("部署目标：Cloudflare Workers");
+    expect(document.querySelector(".top-status-bar")?.textContent).toContain("数据模式：演示数据保留");
+    expect(document.querySelector(".top-status-bar")?.textContent).toContain("当前期间：2026-04");
+    expect(document.querySelector(".sidebar-nav-button.active")?.textContent).toContain("下一步任务");
+    expect(document.querySelector(".page-header-status")?.textContent).toBe("工作流入口");
+  });
 });

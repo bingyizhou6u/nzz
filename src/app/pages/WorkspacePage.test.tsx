@@ -25,6 +25,30 @@ afterEach(async () => {
 });
 
 describe("WorkspacePage", () => {
+  it("renders formal next actions and the demo data reminder", async () => {
+    vi.stubGlobal("fetch", vi.fn<FetchHandler>().mockResolvedValue(jsonResponse({ data: formalDocuments })));
+
+    const { container } = await renderWorkspacePage([
+      "session.view",
+      "documents.view",
+      "documents.submit",
+      "documents.approve",
+      "periodLocks.view",
+      "reports.view"
+    ]);
+
+    await waitFor(() => {
+      expect(container.textContent).toContain("下一步任务");
+      expect(container.textContent).toContain("审核待处理单据");
+    });
+
+    expect(container.textContent).toContain("修正退回单据");
+    expect(container.textContent).toContain("提交草稿单据");
+    expect(container.textContent).toContain("检查月结异常");
+    expect(container.textContent).toContain("演示数据提醒");
+    expect(container.textContent).toContain("当前环境保留演示数据");
+  });
+
   it("does not request documents or render task buttons without document view access", async () => {
     const fetchMock = vi.fn<FetchHandler>().mockResolvedValue(jsonResponse({ data: documents }));
     vi.stubGlobal("fetch", fetchMock);
@@ -99,7 +123,8 @@ describe("WorkspacePage", () => {
       expect(container.textContent).toContain("无单据查看权限");
     });
 
-    expect(buttonTexts(container)).toEqual(["报表中心"]);
+    expect(quickActionButtonTexts(container)).toEqual(["报表中心"]);
+    expect(container.textContent).toContain("查看管理报表");
     expect(container.textContent).not.toContain("单据中心");
     expect(container.textContent).not.toContain("审核中心");
     expect(container.textContent).not.toContain("基础资料");
@@ -116,6 +141,33 @@ const documents = [
     business_date: "2026-04-25",
     status: "pending",
     summary: "待审核单据"
+  }
+];
+
+const formalDocuments = [
+  {
+    id: "doc_pending",
+    document_no: "D-PENDING",
+    document_type: "project_income",
+    business_date: "2026-04-25",
+    status: "pending",
+    summary: "待审核收入"
+  },
+  {
+    id: "doc_draft",
+    document_no: "D-DRAFT",
+    document_type: "exchange",
+    business_date: "2026-04-24",
+    status: "draft",
+    summary: "草稿换汇"
+  },
+  {
+    id: "doc_rejected",
+    document_no: "D-REJECTED",
+    document_type: "loan_out",
+    business_date: "2026-04-23",
+    status: "rejected",
+    summary: "退回借款"
   }
 ];
 
@@ -200,8 +252,8 @@ function buttonByText(container: HTMLElement, text: string): HTMLButtonElement {
   return button;
 }
 
-function buttonTexts(container: HTMLElement) {
-  return Array.from(container.querySelectorAll("button")).map((button) => button.textContent?.trim() ?? "");
+function quickActionButtonTexts(container: HTMLElement) {
+  return Array.from(container.querySelectorAll(".quick-actions button")).map((button) => button.textContent?.trim() ?? "");
 }
 
 function metricValues(container: HTMLElement) {

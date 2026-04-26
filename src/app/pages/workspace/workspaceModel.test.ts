@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildWorkspaceTasks, summarizeDocumentCounts, type WorkspaceDocument } from "./workspaceModel";
+import {
+  buildWorkspaceNextActions,
+  buildWorkspaceTasks,
+  summarizeDocumentCounts,
+  type WorkspaceDocument
+} from "./workspaceModel";
 
 describe("workspace model", () => {
   const documents: WorkspaceDocument[] = [
@@ -109,6 +114,89 @@ describe("workspace model", () => {
       "doc_8",
       "doc_9",
       "doc_10"
+    ]);
+  });
+
+  it("builds ordered next actions from document counts and permissions", () => {
+    expect(
+      buildWorkspaceNextActions(
+        { draft: 2, pending: 3, rejected: 1, approved: 5 },
+        ["session.view", "documents.view", "documents.submit", "documents.approve", "periodLocks.view"]
+      )
+    ).toEqual([
+      {
+        id: "pending-review",
+        title: "审核待处理单据",
+        description: "3 张单据等待审核，先完成审核再进入报表或月结。",
+        meta: "3 张待审核",
+        page: "review",
+        tone: "warning"
+      },
+      {
+        id: "rejected-documents",
+        title: "修正退回单据",
+        description: "1 张单据被退回，需要修正后重新提交。",
+        meta: "1 张已退回",
+        page: "documents",
+        tone: "danger"
+      },
+      {
+        id: "draft-documents",
+        title: "提交草稿单据",
+        description: "2 张草稿尚未提交，确认字段后提交审核。",
+        meta: "2 张草稿",
+        page: "documents",
+        tone: "muted"
+      },
+      {
+        id: "month-close-checks",
+        title: "检查月结异常",
+        description: "运行月结检查并处理阻断项，确认期间是否可以锁账。",
+        meta: "月结检查",
+        page: "month-close",
+        tone: "default"
+      }
+    ]);
+  });
+
+  it("routes pending documents to the document center when the user cannot approve", () => {
+    expect(
+      buildWorkspaceNextActions({ draft: 0, pending: 2, rejected: 0, approved: 0 }, ["session.view", "documents.view"])
+    ).toEqual([
+      {
+        id: "pending-documents",
+        title: "查看待审核单据",
+        description: "2 张单据已经提交，当前账号可查看但不能审核。",
+        meta: "2 张待审核",
+        page: "documents",
+        tone: "warning"
+      }
+    ]);
+  });
+
+  it("falls back to useful entry actions when there are no document tasks", () => {
+    expect(
+      buildWorkspaceNextActions(
+        { draft: 0, pending: 0, rejected: 0, approved: 4 },
+        ["session.view", "documents.view", "documents.create", "reports.view"]
+      )
+    ).toEqual([
+      {
+        id: "create-document",
+        title: "录入业务单据",
+        description: "从收入、换汇、备用金、借款或冲正业务开始录入。",
+        meta: "常用入口",
+        page: "documents",
+        tone: "default"
+      },
+      {
+        id: "view-reports",
+        title: "查看管理报表",
+        description: "查看资金、项目、费用、备用金、借款和异常报表。",
+        meta: "常用入口",
+        page: "reports",
+        tone: "default"
+      }
     ]);
   });
 });
