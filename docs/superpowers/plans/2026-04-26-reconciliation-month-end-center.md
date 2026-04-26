@@ -557,7 +557,7 @@ git diff --check
 
 ## 14. Task 9：最终验收与部署准备
 
-状态：待做。
+状态：已完成。
 
 必须运行：
 
@@ -577,17 +577,28 @@ npm run db:seed:local
 npm run cf:dev
 ```
 
-人工验收：
+验收记录：
 
-- 打开系统。
-- 进入 `对账月结`。
-- 选择演示期间。
-- 运行检查。
-- 处理 warning。
-- critical 未处理时锁账被阻断。
-- 处理后可锁账。
-- 快照生成。
-- 报表中心可查看快照版本。
+- [x] `npm test`：50 个测试文件、696 个测试通过。
+- [x] `npx tsc --noEmit`：通过。
+- [x] `npm run build`：通过，Vite 生产构建生成 `dist/client`。
+- [x] `npm audit --audit-level=high`：0 个漏洞。
+- [x] `git diff --check`：通过。
+- [x] `npm run db:migrate:local`：8 个本地 D1 migration 应用成功。
+- [x] `npm run db:seed:local`：13 条 seed 命令执行成功。
+- [x] `npm run cf:dev`：本地 Worker 启动于 `http://127.0.0.1:8787`。
+- [x] 打开系统：`GET /` 返回 200，页面标题为 `内部管理会计台账`。
+- [x] 本地登录身份：`/api/me` 返回可登录管理员，具备 `periodLocks.lock`、`periodLocks.unlock`、`reports.view`。
+- [x] 进入 `对账月结` 数据链路：`/api/month-close/periods` 返回演示期间 `2026-04`。
+- [x] 运行检查：演示期间生成检查运行和检查结果。
+- [x] warning 未处理时锁账被阻断：接口返回 `Month close checks are not lockable`。
+- [x] 处理 warning 后可锁账：确认 2 条 warning 后锁账生成 v1 快照。
+- [x] 快照报表可查看：`projectProfitLoss` 快照报表返回 `row_count = 1`。
+- [x] 解锁保留历史快照：解锁后 v1 快照仍可查询。
+- [x] 重新锁账生成新版本：重新锁账生成 v2 快照。
+- [x] critical 未处理时锁账被阻断：本地验收临时制造 `pending_document` critical，未处理锁账返回 `Month close checks are not lockable`。
+- [x] critical resolved 后可锁账：处理 1 条 critical 和 2 条 warning 后重新锁账生成 v3 快照。
+- [x] 报表中心可区分实时与已结账快照：实时项目损益接口可查，快照 `projectProfitLoss` v3 可按 snapshot id 单独读取。
 
 ## 15. 推荐执行顺序
 
