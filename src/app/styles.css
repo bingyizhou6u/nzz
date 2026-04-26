@@ -358,6 +358,14 @@ main {
   display: grid;
   gap: 8px;
   min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.record-list-row,
+.record-list-empty {
+  min-width: 0;
 }
 
 .record-list-item {

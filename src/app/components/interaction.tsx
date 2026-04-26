@@ -1,4 +1,4 @@
-import { useState, type HTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from "react";
 import { EmptyState, classNames } from "./ui";
 
 export type PageActionBarProps = HTMLAttributes<HTMLDivElement> & {
@@ -51,7 +51,7 @@ export type RecordListItem = {
   disabled?: boolean;
 };
 
-export type RecordListProps<TItem extends RecordListItem = RecordListItem> = HTMLAttributes<HTMLDivElement> & {
+export type RecordListProps<TItem extends RecordListItem = RecordListItem> = Omit<HTMLAttributes<HTMLUListElement>, "onSelect"> & {
   items: readonly TItem[];
   selectedId?: string | null;
   onSelect: (id: string, item: TItem) => void;
@@ -73,39 +73,39 @@ export function RecordList<TItem extends RecordListItem>({
 }: RecordListProps<TItem>) {
   if (items.length === 0) {
     return (
-      <div {...props} className={classNames("record-list", className)}>
-        {emptyState ?? <EmptyState title="暂无记录" message="当前没有可显示的记录" />}
-      </div>
+      <ul {...props} className={classNames("record-list", className)} aria-label={ariaLabel}>
+        <li className="record-list-empty">{emptyState ?? <EmptyState title="暂无记录" message="当前没有可显示的记录" />}</li>
+      </ul>
     );
   }
 
   return (
-    <div {...props} className={classNames("record-list", className)} role="listbox" aria-label={ariaLabel}>
+    <ul {...props} className={classNames("record-list", className)} aria-label={ariaLabel}>
       {items.map((item) => {
         const isSelected = item.id === selectedId;
         const meta = renderMeta?.(item);
         const status = renderStatus?.(item);
 
         return (
-          <button
-            key={item.id}
-            type="button"
-            className={classNames("record-list-item", isSelected && "selected")}
-            role="option"
-            aria-selected={isSelected}
-            disabled={item.disabled}
-            onClick={() => onSelect(item.id, item)}
-          >
-            <span className="record-list-copy">
-              <strong>{item.title}</strong>
-              {item.description ? <span>{item.description}</span> : null}
-              {meta ? <small>{meta}</small> : null}
-            </span>
-            {status ? <span className="record-list-status">{status}</span> : null}
-          </button>
+          <li key={item.id} className="record-list-row">
+            <button
+              type="button"
+              className={classNames("record-list-item", isSelected && "selected")}
+              aria-current={isSelected ? "true" : undefined}
+              disabled={item.disabled}
+              onClick={() => onSelect(item.id, item)}
+            >
+              <span className="record-list-copy">
+                <strong>{item.title}</strong>
+                {item.description ? <span>{item.description}</span> : null}
+                {meta ? <small>{meta}</small> : null}
+              </span>
+              {status ? <span className="record-list-status">{status}</span> : null}
+            </button>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 }
 
@@ -199,24 +199,63 @@ export function ConfirmAction({
   ...props
 }: ConfirmActionProps) {
   const [isConfirming, setIsConfirming] = useState(false);
-  const isDisabled = disabled || busy;
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const triggerButtonRef = useRef<HTMLButtonElement | null>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
+  const shouldRestoreTriggerFocusRef = useRef(false);
+  const isBusy = busy || isSubmitting;
+  const isDisabled = disabled || isBusy;
 
-  function handleConfirm() {
-    try {
-      void Promise.resolve(onConfirm()).finally(() => {
-        setIsConfirming(false);
-      });
-    } catch (error) {
-      setIsConfirming(false);
-      throw error;
+  useEffect(() => {
+    if (isConfirming) {
+      confirmButtonRef.current?.focus();
+      return;
     }
+
+    if (shouldRestoreTriggerFocusRef.current) {
+      shouldRestoreTriggerFocusRef.current = false;
+      triggerButtonRef.current?.focus();
+    }
+  }, [isConfirming]);
+
+  async function handleConfirm() {
+    if (isDisabled) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      await onConfirm();
+      shouldRestoreTriggerFocusRef.current = true;
+      setIsConfirming(false);
+    } catch (error) {
+      console.error("ConfirmAction confirmation failed", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  function handleCancel() {
+    if (isDisabled) {
+      return;
+    }
+
+    shouldRestoreTriggerFocusRef.current = true;
+    setIsConfirming(false);
   }
 
   if (!isConfirming) {
     return (
       <div {...props} className={classNames("confirm-action", className)}>
-        <button type="button" className="confirm-action-trigger" disabled={isDisabled} onClick={() => setIsConfirming(true)}>
-          {busy ? busyLabel : label}
+        <button
+          ref={triggerButtonRef}
+          type="button"
+          className="confirm-action-trigger"
+          disabled={isDisabled}
+          onClick={() => setIsConfirming(true)}
+        >
+          {isBusy ? busyLabel : label}
         </button>
       </div>
     );
@@ -226,10 +265,10 @@ export function ConfirmAction({
     <div {...props} className={classNames("confirm-action confirming", className)}>
       {confirmationText ? <span className="confirm-action-message">{confirmationText}</span> : null}
       <div className="confirm-action-buttons">
-        <button type="button" className="confirm-action-confirm" disabled={isDisabled} onClick={handleConfirm}>
-          {busy ? busyLabel : confirmLabel}
+        <button ref={confirmButtonRef} type="button" className="confirm-action-confirm" disabled={isDisabled} onClick={handleConfirm}>
+          {isBusy ? busyLabel : confirmLabel}
         </button>
-        <button type="button" className="secondary-button confirm-action-cancel" disabled={busy} onClick={() => setIsConfirming(false)}>
+        <button type="button" className="secondary-button confirm-action-cancel" disabled={isDisabled} onClick={handleCancel}>
           {cancelLabel}
         </button>
       </div>

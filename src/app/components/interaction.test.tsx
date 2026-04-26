@@ -38,8 +38,18 @@ async function click(element: Element | null | undefined) {
     throw new Error("Expected clickable element to exist");
   }
 
+  if (!(element instanceof HTMLElement)) {
+    throw new Error("Expected clickable element to be an HTMLElement");
+  }
+
   await act(async () => {
-    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    element.click();
+  });
+}
+
+async function flushPromises() {
+  await act(async () => {
+    await Promise.resolve();
   });
 }
 
@@ -81,10 +91,14 @@ describe("formal interaction primitives", () => {
     );
 
     const records = container.querySelectorAll(".record-list-item");
-    const selectedRecord = container.querySelector('[aria-selected="true"]');
+    const selectedRecord = container.querySelector('[aria-current="true"]');
 
     expect(records).toHaveLength(2);
+    expect(container.querySelector('[role="listbox"]')).toBeNull();
+    expect(container.querySelector('[role="option"]')).toBeNull();
+    expect(container.querySelector("ul.record-list")).not.toBeNull();
     expect(selectedRecord?.textContent).toContain("备用金报销");
+    expect(selectedRecord?.classList.contains("selected")).toBe(true);
     expect(selectedRecord?.textContent).toContain("2026-05");
     expect(selectedRecord?.textContent).toContain("待审核");
 
@@ -113,6 +127,93 @@ describe("formal interaction primitives", () => {
     await click(Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "确认删除"));
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("moves focus to confirm and restores focus after cancel", async () => {
+    const onConfirm = vi.fn();
+    const container = await render(
+      createElement(ConfirmAction, {
+        label: "删除单据",
+        confirmLabel: "确认删除",
+        cancelLabel: "取消",
+        onConfirm,
+      })
+    );
+
+    const trigger = container.querySelector("button");
+
+    await click(trigger);
+
+    expect(document.activeElement?.textContent).toBe("确认删除");
+
+    await click(Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "取消"));
+
+    expect(document.activeElement?.textContent).toBe("删除单据");
+  });
+
+  it("prevents duplicate submits while async confirmation is pending", async () => {
+    let resolveConfirm: (() => void) | undefined;
+    const onConfirm = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveConfirm = resolve;
+        })
+    );
+    const container = await render(
+      createElement(ConfirmAction, {
+        label: "删除单据",
+        confirmLabel: "确认删除",
+        cancelLabel: "取消",
+        busyLabel: "删除中",
+        onConfirm,
+      })
+    );
+
+    await click(container.querySelector("button"));
+    const confirmButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "确认删除");
+
+    await click(confirmButton);
+    await click(confirmButton);
+
+    const buttons = Array.from(container.querySelectorAll("button"));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(buttons.map((button) => button.hasAttribute("disabled"))).toEqual([true, true]);
+    expect(buttons[0].textContent).toBe("删除中");
+
+    resolveConfirm?.();
+    await flushPromises();
+
+    expect(container.querySelector("button")?.textContent).toBe("删除单据");
+  });
+
+  it("keeps confirmation available for retry after async rejection", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const onConfirm = vi.fn().mockRejectedValueOnce(new Error("network")).mockResolvedValueOnce(undefined);
+    const container = await render(
+      createElement(ConfirmAction, {
+        label: "删除单据",
+        confirmLabel: "确认删除",
+        cancelLabel: "取消",
+        onConfirm,
+      })
+    );
+
+    await click(container.querySelector("button"));
+    await click(Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "确认删除"));
+    await flushPromises();
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("确认删除");
+    expect(Array.from(container.querySelectorAll("button")).every((button) => !button.hasAttribute("disabled"))).toBe(true);
+
+    await click(Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "确认删除"));
+    await flushPromises();
+
+    expect(onConfirm).toHaveBeenCalledTimes(2);
+    expect(container.querySelector("button")?.textContent).toBe("删除单据");
+    expect(consoleError).toHaveBeenCalled();
+
+    consoleError.mockRestore();
   });
 
   it("supports disabled busy actions with loading copy", async () => {
