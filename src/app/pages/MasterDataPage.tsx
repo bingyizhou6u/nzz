@@ -125,6 +125,11 @@ export function MasterDataPage({ capabilities }: MasterDataPageProps) {
           </div>
         </div>
         {error ? <div className="notice error">{error}</div> : <MasterDataOverview data={data} />}
+        {!error ? (
+          <div className="notice warning master-data-initialization-notice">
+            真实资料必须新建，并与 demo_* 演示资料隔离；正式录入不要复用演示账户、演示项目或演示期间。
+          </div>
+        ) : null}
       </section>
 
       <section className="panel master-data-governance-layout">

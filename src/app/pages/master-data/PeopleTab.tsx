@@ -3,6 +3,7 @@ import { FieldHint, FormActions, MessageLine, ReadOnlyNotice } from "./MasterDat
 import { MasterDataTable } from "./MasterDataTable";
 import {
   buildPersonPayload,
+  isDemoRecord,
   parseRoles,
   personFormWithPermittedIdentity,
   personLoginStatus,
@@ -180,6 +181,9 @@ export function PeopleTab({
       ) : (
         <ReadOnlyNotice />
       )}
+      {canWrite ? (
+        <FieldHint>真实人员请绑定真实登录邮箱；不要复用 demo_* 演示人员作为正式操作人。</FieldHint>
+      ) : null}
       {canWrite && !canManagePeopleRoles ? (
         <FieldHint>{editingRow ? "角色、登录邮箱和状态仅可查看，保存时会保留原值。" : "创建人员需要人员角色管理权限。"}</FieldHint>
       ) : null}
@@ -188,10 +192,15 @@ export function PeopleTab({
         rows={rows}
         getRowKey={(row) => row.id}
         emptyText="暂无人员"
-        getSearchText={(row) => `${row.name} ${row.alias ?? ""} ${parseRoles(row.roles_json).join(" ")}`}
+        getSearchText={(row) =>
+          `${row.name} ${row.alias ?? ""} ${row.login_email ?? ""} ${parseRoles(row.roles_json).join(" ")}`
+        }
         getStatus={(row) => (row.is_enabled ? "enabled" : "disabled")}
         statusLabels={{ enabled: "启用", disabled: "停用" }}
+        searchPlaceholder="搜索姓名、邮箱、角色"
+        statusFilterLabel="启用状态"
         columns={[
+          { key: "kind", header: "资料", render: (row) => <DemoTag row={row} /> },
           { key: "name", header: "姓名", render: (row) => row.name },
           { key: "alias", header: "别名", render: (row) => row.alias || "无" },
           {
@@ -247,5 +256,13 @@ export function PeopleTab({
         ]}
       />
     </div>
+  );
+}
+
+function DemoTag({ row }: { row: PersonRow }) {
+  return isDemoRecord(row) ? (
+    <span className="tag warning master-data-demo-tag">演示</span>
+  ) : (
+    <span className="tag ok">真实</span>
   );
 }

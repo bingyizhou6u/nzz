@@ -14,7 +14,9 @@ import {
   canManagePeopleRoleAssignments,
   canWriteMasterData,
   categoryTypeLabels,
+  isDemoRecord,
   isProtectedFieldDisabled,
+  masterDataReadiness,
   normalizeCode,
   personFormWithPermittedIdentity,
   personFormWithPermittedRoles,
@@ -22,9 +24,11 @@ import {
   parseRoles
 } from "./masterDataModel";
 import { MasterDataPage } from "../MasterDataPage";
+import { AccountsTab } from "./AccountsTab";
+import { MerchantsTab } from "./MerchantsTab";
 import { PeopleTab } from "./PeopleTab";
 import { ProjectsTab } from "./ProjectsTab";
-import type { MasterDataSnapshot, PersonRow, ProjectRow } from "./masterDataTypes";
+import type { AccountRow, CurrencyRow, MasterDataSnapshot, MerchantRow, PersonRow, ProjectRow } from "./masterDataTypes";
 
 const reactActEnvironment = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
 reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
@@ -135,6 +139,50 @@ describe("master data capability gating", () => {
     expect(panel?.getAttribute("role")).toBe("tabpanel");
     expect(panel?.id).toBe("master-data-panel-people");
     expect(panel?.getAttribute("aria-labelledby")).toBe("master-data-tab-people");
+  });
+
+  it("shows demo and real initialization readiness in the overview", async () => {
+    const fetchMock = vi.fn<FetchHandler>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            ...masterDataSnapshot(),
+            people: [personRow({ id: "demo_person_finance" }), personRow({ id: "person_real_finance" })],
+            projects: [projectRow({ id: "demo_project_alpha", code: "P-DEMO-001" })],
+            merchants: [],
+            accounts: [],
+            currencies: [],
+            categories: []
+          }
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        createElement(MasterDataPage, {
+          capabilities: ["masterData.view", "masterData.write", "masterData.managePeopleRoles"]
+        })
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(container.textContent).toContain("真实资料");
+    expect(container.textContent).toContain("演示资料");
+    expect(container.textContent).toContain("初始化进度");
+    expect(container.textContent).toContain("缺少项目、商户、账户、币种、科目");
+    expect(container.textContent).toContain("真实资料必须新建");
   });
 
   it("switches master data tabs with keyboard navigation", async () => {
@@ -311,6 +359,31 @@ describe("master data capability gating", () => {
     expect(container.textContent).toContain("2026-04-25T10:30:00Z");
   });
 
+  it("marks demo people and highlights login identity state", async () => {
+    const container = await renderPeopleTab({
+      canWrite: true,
+      canManagePeopleRoles: true,
+      rows: [personRow({ id: "demo_person_finance", login_email: null, roles_json: "[\"finance_manager\"]" })]
+    });
+
+    expect(container.textContent).toContain("演示");
+    expect(container.textContent).toContain("未绑定邮箱，不可登录");
+    expect(container.textContent).toContain("财务主管");
+  });
+
+  it("marks demo projects merchants and accounts in lists", async () => {
+    const projectContainer = await renderProjectsTab([projectRow({ id: "demo_project_alpha", code: "P-DEMO-001" })]);
+    expect(projectContainer.textContent).toContain("演示");
+
+    const merchantContainer = await renderMerchantsTab([
+      merchantRow({ id: "demo_merchant_alpha", code: "M-DEMO-001", project_id: "demo_project_alpha" })
+    ]);
+    expect(merchantContainer.textContent).toContain("演示");
+
+    const accountContainer = await renderAccountsTab([accountRow({ id: "demo_acct_usdt_main", name: "演示 USDT 主钱包" })]);
+    expect(accountContainer.textContent).toContain("演示");
+  });
+
   it("allows person role changes with manage people roles capability", async () => {
     const fetchMock = vi.fn<FetchHandler>().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
@@ -440,6 +513,41 @@ describe("master data model", () => {
       label: "已停用，不可登录",
       tone: "muted"
     });
+  });
+
+  it("identifies demo records from seeded ids and codes", () => {
+    expect(isDemoRecord({ id: "demo_person_finance", name: "演示财务主管" })).toBe(true);
+    expect(isDemoRecord({ id: "project_1", code: "P-DEMO-001", name: "演示项目 Alpha" })).toBe(true);
+    expect(isDemoRecord({ id: "person_real_finance", name: "真实财务主管" })).toBe(false);
+  });
+
+  it("summarizes demo and real initialization readiness", () => {
+    const readiness = masterDataReadiness({
+      ...masterDataSnapshot(),
+      people: [personRow({ id: "demo_person_finance" }), personRow({ id: "person_real_finance", login_email: "" })],
+      projects: [projectRow({ id: "demo_project_alpha", code: "P-DEMO-001" })],
+      merchants: [],
+      accounts: [],
+      currencies: [],
+      categories: []
+    });
+
+    expect(readiness.demoTotal).toBe(2);
+    expect(readiness.realTotal).toBe(1);
+    expect(readiness.groups.find((group) => group.key === "people")).toMatchObject({
+      label: "人员",
+      demo: 1,
+      real: 1,
+      ready: true
+    });
+    expect(readiness.groups.find((group) => group.key === "merchants")).toMatchObject({
+      label: "商户",
+      demo: 0,
+      real: 0,
+      ready: false
+    });
+    expect(readiness.blockers).toContain("商户");
+    expect(readiness.ready).toBe(false);
   });
 
   it("builds petty cash account payloads with person ownership and negative balance enabled", () => {
@@ -590,7 +698,7 @@ describe("master data accounting tab modules", () => {
 
 type FetchHandler = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-function personRow(): PersonRow {
+function personRow(overrides: Partial<PersonRow> = {}): PersonRow {
   return {
     id: "person_1",
     name: "Alice",
@@ -601,11 +709,12 @@ function personRow(): PersonRow {
     access_subject: null,
     last_login_at: "2026-04-25T10:30:00Z",
     created_at: "2026-04-25T10:00:00Z",
-    referenceCount: 0
+    referenceCount: 0,
+    ...overrides
   };
 }
 
-function projectRow(): ProjectRow {
+function projectRow(overrides: Partial<ProjectRow> = {}): ProjectRow {
   return {
     id: "project_1",
     code: "P1",
@@ -614,7 +723,52 @@ function projectRow(): ProjectRow {
     status: "active",
     note: null,
     created_at: "2026-04-25T10:00:00Z",
-    referenceCount: 0
+    referenceCount: 0,
+    ...overrides
+  };
+}
+
+function merchantRow(overrides: Partial<MerchantRow> = {}): MerchantRow {
+  return {
+    id: "merchant_1",
+    code: "M1",
+    name: "Merchant One",
+    project_id: "project_1",
+    merchant_type: "site",
+    launch_date: "2026-04-01",
+    status: "active",
+    owner_person_id: "person_1",
+    note: null,
+    created_at: "2026-04-25T10:00:00Z",
+    referenceCount: 0,
+    ...overrides
+  };
+}
+
+function accountRow(overrides: Partial<AccountRow> = {}): AccountRow {
+  return {
+    id: "account_1",
+    name: "USDT Main",
+    account_type: "usdt_wallet",
+    currency_code: "USDT",
+    owner_person_id: null,
+    is_company_account: 1,
+    allow_negative: 0,
+    status: "active",
+    created_at: "2026-04-25T10:00:00Z",
+    referenceCount: 0,
+    ...overrides
+  };
+}
+
+function currencyRow(overrides: Partial<CurrencyRow> = {}): CurrencyRow {
+  return {
+    code: "USDT",
+    name: "Tether",
+    minor_units: 2,
+    is_enabled: 1,
+    referenceCount: 0,
+    ...overrides
   };
 }
 
@@ -631,10 +785,12 @@ function masterDataSnapshot(): MasterDataSnapshot {
 
 async function renderPeopleTab({
   canWrite,
-  canManagePeopleRoles
+  canManagePeopleRoles,
+  rows = [personRow()]
 }: {
   canWrite: boolean;
   canManagePeopleRoles: boolean;
+  rows?: PersonRow[];
 }) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -643,9 +799,68 @@ async function renderPeopleTab({
     root = createRoot(container);
     root.render(
       createElement(PeopleTab, {
-        rows: [personRow()],
+        rows,
         canWrite,
         canManagePeopleRoles,
+        onChanged: () => undefined
+      })
+    );
+  });
+
+  return container;
+}
+
+async function renderProjectsTab(rows: ProjectRow[]) {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+
+  await act(async () => {
+    root = createRoot(container);
+    root.render(
+      createElement(ProjectsTab, {
+        rows,
+        people: [personRow({ id: "demo_person_finance" })],
+        canWrite: true,
+        onChanged: () => undefined
+      })
+    );
+  });
+
+  return container;
+}
+
+async function renderMerchantsTab(rows: MerchantRow[]) {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+
+  await act(async () => {
+    root = createRoot(container);
+    root.render(
+      createElement(MerchantsTab, {
+        rows,
+        people: [personRow({ id: "demo_person_finance" })],
+        projects: [projectRow({ id: "demo_project_alpha", code: "P-DEMO-001" })],
+        canWrite: true,
+        onChanged: () => undefined
+      })
+    );
+  });
+
+  return container;
+}
+
+async function renderAccountsTab(rows: AccountRow[]) {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+
+  await act(async () => {
+    root = createRoot(container);
+    root.render(
+      createElement(AccountsTab, {
+        rows,
+        people: [personRow()],
+        currencies: [currencyRow()],
+        canWrite: true,
         onChanged: () => undefined
       })
     );

@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { FieldHint, FormActions, MessageLine, ReadOnlyNotice } from "./MasterDataForm";
 import { MasterDataTable } from "./MasterDataTable";
-import { activeStatusLabels, buildMerchantPayload, isProtectedFieldDisabled } from "./masterDataModel";
+import { activeStatusLabels, buildMerchantPayload, isDemoRecord, isProtectedFieldDisabled } from "./masterDataModel";
 import { writeMasterData } from "./masterDataRequests";
 import type { MerchantForm, MerchantRow, PersonRow, ProjectRow } from "./masterDataTypes";
 
@@ -173,6 +173,7 @@ export function MerchantsTab({
       ) : (
         <ReadOnlyNotice />
       )}
+      {canWrite ? <FieldHint>真实商户必须关联真实项目；不要复用 demo_* 演示商户、演示项目或演示期间。</FieldHint> : null}
       {canWrite && projectDisabled ? <FieldHint>已有引用，受保护字段不能修改。</FieldHint> : null}
       <MessageLine error={error} message={message} />
       <MasterDataTable
@@ -186,7 +187,10 @@ export function MerchantsTab({
         }
         getStatus={(row) => row.status}
         statusLabels={activeStatusLabels}
+        searchPlaceholder="搜索商户编码、名称、项目"
+        statusFilterLabel="启用状态"
         columns={[
+          { key: "kind", header: "资料", render: (row) => <DemoTag row={row} /> },
           { key: "code", header: "商户编码", render: (row) => <span className="mono">{row.code}</span> },
           { key: "name", header: "商户名称", render: (row) => row.name },
           { key: "project", header: "所属项目", render: (row) => labelById(projects, row.project_id) },
@@ -216,5 +220,13 @@ export function MerchantsTab({
         ]}
       />
     </div>
+  );
+}
+
+function DemoTag({ row }: { row: MerchantRow }) {
+  return isDemoRecord(row) ? (
+    <span className="tag warning master-data-demo-tag">演示</span>
+  ) : (
+    <span className="tag ok">真实</span>
   );
 }

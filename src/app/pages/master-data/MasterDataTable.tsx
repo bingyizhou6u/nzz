@@ -14,6 +14,8 @@ interface MasterDataTableProps<Row> {
   getSearchText?: (row: Row) => string;
   getStatus?: (row: Row) => string;
   statusLabels?: Record<string, string>;
+  searchPlaceholder?: string;
+  statusFilterLabel?: string;
 }
 
 export function MasterDataTable<Row>({
@@ -23,7 +25,9 @@ export function MasterDataTable<Row>({
   emptyText,
   getSearchText,
   getStatus,
-  statusLabels = {}
+  statusLabels = {},
+  searchPlaceholder = "输入关键字",
+  statusFilterLabel = "状态"
 }: MasterDataTableProps<Row>) {
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -47,12 +51,16 @@ export function MasterDataTable<Row>({
           {getSearchText ? (
             <label>
               搜索
-              <input value={searchText} onChange={(event) => setSearchText(event.target.value)} />
+              <input
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                placeholder={searchPlaceholder}
+              />
             </label>
           ) : null}
           {getStatus ? (
             <label>
-              状态
+              {statusFilterLabel}
               <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
                 <option value="">全部</option>
                 {statusOptions.map((status) => (

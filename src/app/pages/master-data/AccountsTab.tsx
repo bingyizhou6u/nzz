@@ -1,7 +1,14 @@
 import { type FormEvent, useState } from "react";
 import { FieldHint, FormActions, MessageLine, ReadOnlyNotice } from "./MasterDataForm";
 import { MasterDataTable } from "./MasterDataTable";
-import { accountTypeLabels, accountTypes, activeStatusLabels, buildAccountPayload, isProtectedFieldDisabled } from "./masterDataModel";
+import {
+  accountTypeLabels,
+  accountTypes,
+  activeStatusLabels,
+  buildAccountPayload,
+  isDemoRecord,
+  isProtectedFieldDisabled
+} from "./masterDataModel";
 import { writeMasterData } from "./masterDataRequests";
 import type { AccountForm, AccountRow, CurrencyRow, PersonRow } from "./masterDataTypes";
 
@@ -195,6 +202,7 @@ export function AccountsTab({
       ) : (
         <ReadOnlyNotice />
       )}
+      {canWrite ? <FieldHint>真实账户请新建账户资料，不要把 demo_* 演示账户用于正式换汇、备用金或报销。</FieldHint> : null}
       {canWrite && protectedField ? <FieldHint>已有引用，受保护字段不能修改。</FieldHint> : null}
       <MessageLine error={error} message={message} />
       <MasterDataTable
@@ -206,7 +214,10 @@ export function AccountsTab({
         }
         getStatus={(row) => row.status}
         statusLabels={activeStatusLabels}
+        searchPlaceholder="搜索账户、币种、所属人员"
+        statusFilterLabel="启用状态"
         columns={[
+          { key: "kind", header: "资料", render: (row) => <DemoTag row={row} /> },
           { key: "name", header: "账户", render: (row) => row.name },
           { key: "type", header: "类型", render: (row) => accountTypeLabels[row.account_type] },
           { key: "currency", header: "币种", render: (row) => <span className="mono">{row.currency_code}</span> },
@@ -237,5 +248,13 @@ export function AccountsTab({
         ]}
       />
     </div>
+  );
+}
+
+function DemoTag({ row }: { row: AccountRow }) {
+  return isDemoRecord(row) ? (
+    <span className="tag warning master-data-demo-tag">演示</span>
+  ) : (
+    <span className="tag ok">真实</span>
   );
 }

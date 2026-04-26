@@ -1811,11 +1811,52 @@ textarea {
   font-size: 13px;
 }
 
+.master-data-overview-stack {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.master-data-readiness-band {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.75fr) minmax(150px, 0.75fr) minmax(220px, 1.5fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+.master-data-readiness-band > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid #cfd8dc;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.master-data-readiness-band span,
+.master-data-readiness-band strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.master-data-readiness-band span {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.master-data-readiness-band strong {
+  color: #17202a;
+  font-size: 18px;
+  line-height: 1.3;
+}
+
 .master-data-overview {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
-  padding: 16px;
 }
 
 .master-data-overview > div {
@@ -2028,6 +2069,14 @@ textarea {
   height: 38px;
   padding: 8px 10px;
   font-size: 13px;
+}
+
+.master-data-initialization-notice {
+  margin-bottom: 16px;
+}
+
+.master-data-demo-tag {
+  border: 1px solid #f6d889;
 }
 
 .period-lock-form {
@@ -2868,6 +2917,7 @@ textarea {
   .metric-grid,
   .quick-actions,
   .master-data-form,
+  .master-data-readiness-band,
   .period-lock-form,
   .period-lock-unlock-form,
   .month-close-toolbar .header-actions,

@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { FormActions, MessageLine, ReadOnlyNotice } from "./MasterDataForm";
 import { MasterDataTable } from "./MasterDataTable";
-import { activeStatusLabels, buildProjectPayload } from "./masterDataModel";
+import { activeStatusLabels, buildProjectPayload, isDemoRecord } from "./masterDataModel";
 import { writeMasterData } from "./masterDataRequests";
 import type { PersonRow, ProjectForm, ProjectRow } from "./masterDataTypes";
 
@@ -137,6 +137,7 @@ export function ProjectsTab({
       ) : (
         <ReadOnlyNotice />
       )}
+      {canWrite ? <div className="field-hint">真实项目请新建独立编码，不要复用 demo_* 演示项目或 2026-04 演示期间。</div> : null}
       <MessageLine error={error} message={message} />
       <MasterDataTable
         rows={rows}
@@ -145,7 +146,10 @@ export function ProjectsTab({
         getSearchText={(row) => `${row.code} ${row.name} ${personName(people, row.owner_person_id)} ${row.note ?? ""}`}
         getStatus={(row) => row.status}
         statusLabels={activeStatusLabels}
+        searchPlaceholder="搜索项目编码、名称、负责人"
+        statusFilterLabel="启用状态"
         columns={[
+          { key: "kind", header: "资料", render: (row) => <DemoTag row={row} /> },
           { key: "code", header: "项目编码", render: (row) => <span className="mono">{row.code}</span> },
           { key: "name", header: "项目名称", render: (row) => row.name },
           { key: "owner", header: "负责人", render: (row) => personName(people, row.owner_person_id) },
@@ -174,5 +178,13 @@ export function ProjectsTab({
         ]}
       />
     </div>
+  );
+}
+
+function DemoTag({ row }: { row: ProjectRow }) {
+  return isDemoRecord(row) ? (
+    <span className="tag warning master-data-demo-tag">演示</span>
+  ) : (
+    <span className="tag ok">真实</span>
   );
 }

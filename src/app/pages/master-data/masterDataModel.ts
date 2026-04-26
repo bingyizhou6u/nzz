@@ -6,6 +6,7 @@ import type {
   CategoryForm,
   CategoryType,
   CurrencyForm,
+  MasterDataSnapshot,
   MerchantForm,
   PersonForm,
   PersonRole,
@@ -28,6 +29,33 @@ export function canWriteMasterData(capabilities: readonly Capability[]) {
 
 export function canManagePeopleRoleAssignments(capabilities: readonly Capability[]) {
   return hasCapability(capabilities, "masterData.managePeopleRoles");
+}
+
+export type MasterDataReadinessGroupKey =
+  | "people"
+  | "projects"
+  | "merchants"
+  | "accounts"
+  | "currencies"
+  | "categories";
+
+export interface MasterDataReadinessGroup {
+  key: MasterDataReadinessGroupKey;
+  label: string;
+  demo: number;
+  real: number;
+  total: number;
+  required: boolean;
+  ready: boolean;
+}
+
+export interface MasterDataReadiness {
+  groups: MasterDataReadinessGroup[];
+  demoTotal: number;
+  realTotal: number;
+  total: number;
+  ready: boolean;
+  blockers: string[];
 }
 
 export const personRoleLabels: Record<PersonRole, string> = {
@@ -83,6 +111,56 @@ export const activeStatusLabels: Record<"active" | "archived", string> = {
 
 export function normalizeCode(value: string) {
   return value.trim().toUpperCase();
+}
+
+export function isDemoRecord(row: { id?: string | null; code?: string | null; name?: string | null }): boolean {
+  const id = row.id?.trim().toLowerCase() ?? "";
+  const code = row.code?.trim().toUpperCase() ?? "";
+  const name = row.name?.trim() ?? "";
+  return id.startsWith("demo_") || code.includes("-DEMO-") || name.startsWith("演示");
+}
+
+export function masterDataReadiness(data: MasterDataSnapshot): MasterDataReadiness {
+  const groups: MasterDataReadinessGroup[] = [
+    buildReadinessGroup("people", "人员", data.people, true),
+    buildReadinessGroup("projects", "项目", data.projects, true),
+    buildReadinessGroup("merchants", "商户", data.merchants, true),
+    buildReadinessGroup("accounts", "账户", data.accounts, true),
+    buildReadinessGroup("currencies", "币种", data.currencies, true),
+    buildReadinessGroup("categories", "科目", data.categories, true)
+  ];
+  const demoTotal = groups.reduce((sum, group) => sum + group.demo, 0);
+  const realTotal = groups.reduce((sum, group) => sum + group.real, 0);
+  const blockers = groups.filter((group) => group.required && !group.ready).map((group) => group.label);
+
+  return {
+    groups,
+    demoTotal,
+    realTotal,
+    total: demoTotal + realTotal,
+    ready: blockers.length === 0,
+    blockers
+  };
+}
+
+function buildReadinessGroup(
+  key: MasterDataReadinessGroupKey,
+  label: string,
+  rows: Array<{ id?: string | null; code?: string | null; name?: string | null }>,
+  required: boolean
+): MasterDataReadinessGroup {
+  const demo = rows.filter(isDemoRecord).length;
+  const real = rows.length - demo;
+
+  return {
+    key,
+    label,
+    demo,
+    real,
+    total: rows.length,
+    required,
+    ready: !required || real > 0
+  };
 }
 
 export function parseRoles(rolesJson: string): PersonRole[] {
