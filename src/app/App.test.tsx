@@ -18,6 +18,19 @@ const authenticatedMeResponse = {
   }
 };
 
+const monthCloseMeResponse = {
+  data: {
+    person: {
+      id: "person_finance",
+      name: "Finance Manager",
+      alias: "fm",
+      loginEmail: "finance@example.com",
+      roles: ["finance_manager"]
+    },
+    capabilities: ["session.view", "periodLocks.view", "periodLocks.lock", "masterData.view"]
+  }
+};
+
 const noNavigationMeResponse = {
   data: {
     person: {
@@ -172,6 +185,26 @@ describe("App", () => {
       expect(document.querySelector(".sidebar-nav-button.active")?.getAttribute("aria-current")).toBe("page");
       expect(document.querySelector(".page-header h1")?.textContent).toBe("单据中心");
       expect(document.querySelector("main")?.textContent).toContain("单据列表");
+    });
+  });
+
+  it("renders the month close center from navigation", async () => {
+    stubApiMe(monthCloseMeResponse);
+
+    await renderApp();
+
+    await waitFor(() => {
+      expect(document.querySelector(".app-sidebar")?.textContent).toContain("对账月结");
+    });
+
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>(".app-sidebar button[data-page-key='month-close']")?.click();
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector(".page-header h1")?.textContent).toBe("对账月结");
+      expect(document.querySelector("main")?.textContent).toContain("月结期间");
+      expect(document.querySelector("main")?.textContent).toContain("运行检查");
     });
   });
 });

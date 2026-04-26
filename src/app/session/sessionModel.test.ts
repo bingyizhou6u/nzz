@@ -38,6 +38,18 @@ describe("session model", () => {
     ).toEqual(["workspace", "documents", "reports"]);
   });
 
+  it("shows month close navigation for period lock viewers", () => {
+    expect(
+      visibleNavigationItems({
+        ...authenticatedSession,
+        capabilities: ["session.view", "periodLocks.view"]
+      }).map((item) => [item.key, item.label])
+    ).toEqual([
+      ["workspace", "工作台"],
+      ["month-close", "对账月结"]
+    ]);
+  });
+
   it("shows workspace first only for authenticated sessions with session visibility", () => {
     expect(
       visibleNavigationItems({
