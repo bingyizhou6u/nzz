@@ -257,13 +257,16 @@ git diff --check
 
 ## 9. Task 4：月结检查 API
 
-状态：待做。
+状态：已完成。
 
 文件：
 
-- [ ] `src/api/monthClose.ts`
-- [ ] `src/worker/router.ts`
-- [ ] `tests/api/monthClose.test.ts`
+- [x] `src/api/monthClose.ts`
+- [x] `src/worker/router.ts`
+- [x] `tests/api/monthClose.test.ts`
+- [x] `src/repositories/reportRepository.ts`：补齐五类月结源数据查询。
+- [x] `src/repositories/monthCloseRepository.ts`：补齐期间列表查询。
+- [x] `tests/api/reportRepository.test.ts`：补齐五类月结源查询 SQLite 执行测试。
 
 API：
 
@@ -277,10 +280,10 @@ API：
 
 TDD 步骤：
 
-- [ ] RED：写路由和 handler 测试。
-- [ ] GREEN：实现 handlers 和 router。
-- [ ] 审查：确认权限先于写操作，错误响应不泄漏内部 SQL。
-- [ ] 提交。
+- [x] RED：写路由和 handler 测试。提交：`c87d634 test: cover month close API`。
+- [x] GREEN：实现 handlers、router、五类源查询。提交：`08249fa feat: add month close check API`。
+- [x] 审查：确认权限先于写操作，错误响应不泄漏内部 SQL；已用测试覆盖无权限写入、invalid period、PATCH 审计和泛化错误响应。
+- [x] 提交。
 
 必须覆盖：
 
@@ -294,6 +297,16 @@ TDD 步骤：
 ```bash
 npm test -- tests/api/monthClose.test.ts tests/api/periodLocks.test.ts
 npx tsc --noEmit
+```
+
+已执行补充验收：
+
+```bash
+npm test -- tests/api/monthClose.test.ts tests/api/periodLocks.test.ts tests/api/reportRepository.test.ts
+npm test
+npm run build
+npm audit --audit-level=high
+git diff --check
 ```
 
 ## 10. Task 5：月结中心前端 MVP
