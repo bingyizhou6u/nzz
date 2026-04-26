@@ -15,6 +15,12 @@ export interface ReportSummaryCard {
   detail: string;
 }
 
+export interface ReportDataContext {
+  source: "live" | "snapshot";
+  period?: string;
+  version?: number;
+}
+
 export interface ReportFilterOptions {
   projects: Array<{ id: string; code: string; name: string }>;
   merchants: Array<{ id: string; code: string; name: string; project_id: string }>;
@@ -48,6 +54,24 @@ export function reportGroupPanelId(key: ReportGroupKey) {
 
 export function reportGroupLabel(key: ReportGroupKey) {
   return reportGroupNavItems.find((item) => item.key === key)?.label ?? "报表";
+}
+
+export function reportDataContextLabel(context: ReportDataContext) {
+  if (context.source === "snapshot" && context.period && context.version) {
+    return `已结账快照 / ${context.period} v${context.version}`;
+  }
+
+  if (context.source === "snapshot") return "已结账快照 / 请选择版本";
+  return "实时数据 / 当前筛选";
+}
+
+export function reportExportContextLabel(
+  group: ReportGroupKey,
+  context: ReportDataContext,
+  format: "csv" | "xlsx" = "csv"
+) {
+  const reportLabel = context.source === "snapshot" && format === "xlsx" ? "月结包" : `${reportGroupLabel(group)}报表`;
+  return `${reportLabel} / ${reportDataContextLabel(context)}`;
 }
 
 export function summaryCardsForGroup(key: ReportGroupKey, reports: ReportsState): ReportSummaryCard[] {

@@ -8,6 +8,8 @@ import {
   reportGroupNavItems,
   reportGroupPanelId,
   reportGroupTabId,
+  reportDataContextLabel,
+  reportExportContextLabel,
   summaryCardsForGroup,
   type ReportFilterOptions,
   type ReportGroupKey
@@ -208,16 +210,23 @@ export function ReportsPage() {
   }, [dataMode, query, reloadKey, selectedSnapshotId]);
 
   const rowLabel = isLoading ? "读取中" : error ? "读取失败" : dataMode === "snapshot" && !selectedSnapshotId ? "请选择快照版本" : "暂无数据";
-  const exportContext = selectedSnapshot
+  const dataContext = selectedSnapshot
     ? { source: dataMode, period: selectedSnapshot.period, version: selectedSnapshot.version }
     : { source: dataMode };
+  const exportContext = dataContext;
+  const dataContextLabel = reportDataContextLabel(dataContext);
+  const csvExportContextLabel = reportExportContextLabel(activeReportGroup, dataContext, "csv");
+  const xlsxExportContextLabel = reportExportContextLabel(activeReportGroup, dataContext, "xlsx");
   const filtersDisabled = dataMode === "snapshot";
 
   return (
     <div className="page-stack">
-      <section className="panel">
+      <section className="panel report-control-panel">
         <div className="panel-header">
-          <h2>报表读取</h2>
+          <div>
+            <h2>报表分析工作台</h2>
+            <p className="panel-subtitle report-source-context">{dataContextLabel}</p>
+          </div>
           <div className="header-actions">
             <div className="status-slot" role="status" aria-live="polite">
               {isLoading
@@ -234,10 +243,6 @@ export function ReportsPage() {
           </div>
         </div>
 
-        {error ? <div className="notice error">{error}</div> : null}
-      </section>
-
-      <section className="panel">
         <div className="report-version-bar" aria-label="报表版本">
           <div className="report-version-toggle" role="group" aria-label="数据来源">
             <button
@@ -274,6 +279,11 @@ export function ReportsPage() {
             </select>
           </label>
         </div>
+        {dataMode === "snapshot" ? (
+          <div className="report-snapshot-note" role="status" aria-live="polite">
+            快照模式使用锁账时保存的报表数据，项目、商户、人员、币种和异常天数筛选已暂停。
+          </div>
+        ) : null}
         <div className="report-filter-grid">
           <label>
             期间
@@ -364,6 +374,7 @@ export function ReportsPage() {
             </select>
           </label>
         </div>
+        {error ? <div className="notice error">{error}</div> : null}
         {filterOptionsError ? <div className="notice error">{filterOptionsError}</div> : null}
         {snapshotOptionsError ? <div className="notice error">{snapshotOptionsError}</div> : null}
       </section>
@@ -405,9 +416,11 @@ export function ReportsPage() {
               ))}
             </div>
             <div className="report-export-actions">
+              <span className="report-export-context">{csvExportContextLabel}</span>
               <button
                 type="button"
                 className="secondary-button"
+                title={csvExportContextLabel}
                 onClick={() => downloadReportExport(activeReportGroup, reports, "csv", exportContext)}
               >
                 导出CSV
@@ -415,6 +428,7 @@ export function ReportsPage() {
               <button
                 type="button"
                 className="secondary-button"
+                title={xlsxExportContextLabel}
                 onClick={() => downloadReportExport(activeReportGroup, reports, "xlsx", exportContext)}
               >
                 导出XLSX

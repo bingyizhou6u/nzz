@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { classNames } from "../../components/ui";
 
 export interface ReportColumn<T> {
   key: string;
@@ -9,21 +10,28 @@ export interface ReportColumn<T> {
 
 export function ReportTable<T>({
   title,
+  description,
   rows,
   rowKey,
   columns,
-  emptyLabel
+  emptyLabel,
+  className
 }: {
   title: string;
+  description?: string;
   rows: T[];
   rowKey: (row: T) => string;
   columns: ReportColumn<T>[];
   emptyLabel: string;
+  className?: string;
 }) {
   return (
-    <section className="panel report-panel">
+    <section className={classNames("panel report-panel", className)}>
       <div className="report-table-header">
-        <h2>{title}</h2>
+        <div>
+          <h2>{title}</h2>
+          {description ? <p>{description}</p> : null}
+        </div>
         <span>{rows.length} 行</span>
       </div>
       <div className="table-wrap">
@@ -51,13 +59,17 @@ export function ReportTable<T>({
             ) : (
               <tr>
                 <td colSpan={columns.length} className="empty-cell">
-                  {emptyLabel}
+                  <div className="report-table-empty">
+                    <strong>{emptyLabel}</strong>
+                    <span>当前表格暂无记录</span>
+                  </div>
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+      <div className="report-table-scroll-hint">列较多时可横向滚动查看完整字段</div>
     </section>
   );
 }

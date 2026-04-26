@@ -115,6 +115,51 @@ describe("ReportsPage", () => {
     expect(container.querySelector(".report-summary-grid")?.textContent).toContain("换汇批次");
   });
 
+  it("shows the active data source and export context in the workspace toolbar", async () => {
+    vi.stubGlobal("fetch", reportFetch());
+
+    const container = await renderReportsPage();
+
+    await waitFor(() => {
+      expect(container.querySelector(".report-source-context")?.textContent).toContain("实时数据 / 当前筛选");
+    });
+
+    expect(container.querySelector(".report-export-context")?.textContent).toContain("资金报表 / 实时数据 / 当前筛选");
+  });
+
+  it("keeps secondary report tables behind explicit collapsed sections", async () => {
+    vi.stubGlobal("fetch", reportFetch());
+
+    const container = await renderReportsPage();
+
+    await waitFor(() => {
+      expect(container.querySelector(".status-slot")?.textContent).toContain("已更新");
+    });
+
+    expect(container.querySelector(".report-primary-table")?.textContent).toContain("账户余额表");
+    const secondarySections = Array.from(container.querySelectorAll("details.report-secondary-section"));
+    expect(secondarySections).toHaveLength(2);
+    expect(secondarySections[0]?.querySelector("summary")?.textContent).toContain("换汇批次表");
+    expect(secondarySections[1]?.querySelector("summary")?.textContent).toContain("FIFO 消耗明细");
+  });
+
+  it("adds row counts, empty states, and horizontal scroll hints to report tables", async () => {
+    vi.stubGlobal("fetch", reportFetch());
+
+    const container = await renderReportsPage();
+
+    await waitFor(() => {
+      expect(container.querySelector(".report-table-scroll-hint")?.textContent).toContain("横向滚动");
+    });
+
+    await act(async () => {
+      buttonByText(container, "费用2 张表").click();
+    });
+
+    expect(reportDetailRegion(container).textContent).toContain("1 行");
+    expect(reportDetailRegion(container).textContent).toContain("当前表格暂无记录");
+  });
+
   it("drills from project profit rows into related income and expense details", async () => {
     vi.stubGlobal("fetch", reportFetch());
 
@@ -219,6 +264,8 @@ describe("ReportsPage", () => {
     expect(requestedAfterSnapshotMode).toContain("/api/month-close/snapshots/snapshot_1/reports/accountBalances");
     expect(requestedAfterSnapshotMode.some((url) => url.startsWith("/api/reports/account-balances"))).toBe(false);
     expect(container.querySelector(".status-slot")?.textContent).toContain("快照 v1");
+    expect(container.querySelector(".report-source-context")?.textContent).toContain("已结账快照 / 2026-04 v1");
+    expect(selectByLabel(container, "项目").disabled).toBe(true);
   });
 
   it("uses month close snapshot filenames when exporting snapshot reports", async () => {

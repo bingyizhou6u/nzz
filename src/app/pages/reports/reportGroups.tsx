@@ -172,26 +172,64 @@ const loanWriteoffColumns: ReportColumn<LoanWriteoff>[] = [
 
 export const reportGroupLabels = ["资金", "项目经营", "费用", "备用金", "借款", "异常"] as const;
 
+function SecondaryReportSection<T>({
+  title,
+  description,
+  rows,
+  rowKey,
+  emptyLabel,
+  columns
+}: {
+  title: string;
+  description: string;
+  rows: T[];
+  rowKey: (row: T) => string;
+  emptyLabel: string;
+  columns: ReportColumn<T>[];
+}) {
+  return (
+    <details className="report-secondary-section">
+      <summary>
+        <span>{title}</span>
+        <small>{rows.length} 行</small>
+      </summary>
+      <ReportTable
+        className="report-secondary-table"
+        title={title}
+        description={description}
+        rows={rows}
+        rowKey={rowKey}
+        emptyLabel={emptyLabel}
+        columns={columns}
+      />
+    </details>
+  );
+}
+
 export function FundingReports({ reports, emptyLabel }: { reports: ReportsState; emptyLabel: string }) {
   return (
     <div className="report-group">
       <h2 className="report-group-title">资金</h2>
       <ReportTable
+        className="report-primary-table"
         title="账户余额表"
+        description="公司账户按币种汇总的当前余额，是资金分类的主表。"
         rows={reports.accountBalances}
         rowKey={(row) => `${row.account_id}-${row.currency_code}`}
         emptyLabel={emptyLabel}
         columns={accountBalanceColumns}
       />
-      <ReportTable
+      <SecondaryReportSection
         title="换汇批次表"
+        description="查看 USDT 换汇后形成的 FIFO 批次余额。"
         rows={reports.lotBalances}
         rowKey={(row) => row.id}
         emptyLabel={emptyLabel}
         columns={lotBalanceColumns}
       />
-      <ReportTable
+      <SecondaryReportSection
         title="FIFO 消耗明细"
+        description="查看备用金、报销和划转消耗批次的明细流水。"
         rows={reports.lotMovements}
         rowKey={(row) => row.id}
         emptyLabel={emptyLabel}
@@ -236,7 +274,9 @@ export function ProjectReports({
     <div className="report-group">
       <h2 className="report-group-title">项目经营</h2>
       <ReportTable
+        className="report-primary-table"
         title="项目收支表"
+        description="按项目展示收入、费用、待匹配成本和项目净额。"
         rows={reports.projectProfitLoss}
         rowKey={(row) => `${row.period}-${row.project_id ?? "none"}`}
         emptyLabel={emptyLabel}
@@ -255,6 +295,7 @@ export function ProjectReports({
           </div>
           <ReportTable
             title="项目收入表"
+            description="当前钻取项目的收入明细。"
             rows={drilldownIncome}
             rowKey={(row) =>
               `${row.period}-${row.project_id ?? "none"}-${row.merchant_id ?? "none"}-${row.category_id ?? "none"}-${row.currency_code}`
@@ -264,6 +305,7 @@ export function ProjectReports({
           />
           <ReportTable
             title="商户收入表"
+            description="当前钻取项目下的商户收入汇总。"
             rows={drilldownMerchantIncome}
             rowKey={(row) => `${row.period}-${row.project_id ?? "none"}-${row.merchant_id ?? "none"}-${row.currency_code}`}
             emptyLabel={emptyLabel}
@@ -271,6 +313,7 @@ export function ProjectReports({
           />
           <ReportTable
             title="费用明细表"
+            description="当前钻取项目下已经进入费用口径的单据明细。"
             rows={drilldownExpenses}
             rowKey={(row) => row.document_id}
             emptyLabel={emptyLabel}
@@ -278,8 +321,9 @@ export function ProjectReports({
           />
         </div>
       ) : null}
-      <ReportTable
+      <SecondaryReportSection
         title="项目收入表"
+        description="项目收入按项目、商户、分类、币种展开。"
         rows={reports.projectIncome}
         rowKey={(row) =>
           `${row.period}-${row.project_id ?? "none"}-${row.merchant_id ?? "none"}-${row.category_id ?? "none"}-${row.currency_code}`
@@ -287,15 +331,17 @@ export function ProjectReports({
         emptyLabel={emptyLabel}
         columns={projectIncomeColumns}
       />
-      <ReportTable
+      <SecondaryReportSection
         title="商户收入表"
+        description="商户维度收入汇总，用于和项目收入交叉核对。"
         rows={reports.merchantIncome}
         rowKey={(row) => `${row.period}-${row.project_id ?? "none"}-${row.merchant_id ?? "none"}-${row.currency_code}`}
         emptyLabel={emptyLabel}
         columns={merchantIncomeColumns}
       />
-      <ReportTable
+      <SecondaryReportSection
         title="月度经营总表"
+        description="期间整体经营汇总，用于查看月度收入、成本和净额。"
         rows={reports.monthlyOperatingSummary}
         rowKey={(row) => row.period}
         emptyLabel={emptyLabel}
@@ -310,14 +356,17 @@ export function ExpenseReports({ reports, emptyLabel }: { reports: ReportsState;
     <div className="report-group">
       <h2 className="report-group-title">费用</h2>
       <ReportTable
+        className="report-primary-table"
         title="费用明细表"
+        description="费用单据按项目、人员、分类、币种展开，是费用分类的主表。"
         rows={reports.expenseDetails}
         rowKey={(row) => row.document_id}
         emptyLabel={emptyLabel}
         columns={expenseDetailColumns}
       />
-      <ReportTable
+      <SecondaryReportSection
         title="费用汇总表"
+        description="费用按期间、项目、分类、人员、币种汇总。"
         rows={reports.expenseSummary}
         rowKey={(row) =>
           `${row.period}-${row.project_id ?? "none"}-${row.category_id ?? "none"}-${row.person_id ?? "none"}-${row.currency_code}`
@@ -334,14 +383,17 @@ export function PettyCashReports({ reports, emptyLabel }: { reports: ReportsStat
     <div className="report-group">
       <h2 className="report-group-title">备用金</h2>
       <ReportTable
+        className="report-primary-table"
         title="备用金余额表"
+        description="后勤人员和账户维度的备用金余额。"
         rows={reports.pettyCashPending}
         rowKey={(row) => `${row.person_id}-${row.account_id}-${row.currency_code}`}
         emptyLabel={emptyLabel}
         columns={pettyCashPendingColumns}
       />
-      <ReportTable
+      <SecondaryReportSection
         title="待匹配成本表"
+        description="备用金花费后尚未匹配到 FIFO 批次的成本记录。"
         rows={reports.pendingCosts}
         rowKey={(row) => row.id}
         emptyLabel={emptyLabel}
@@ -356,28 +408,33 @@ export function LoanReports({ reports, emptyLabel }: { reports: ReportsState; em
     <div className="report-group">
       <h2 className="report-group-title">借款</h2>
       <ReportTable
+        className="report-primary-table"
         title="借款余额表"
+        description="按借款人和币种汇总当前未结清借款。"
         rows={reports.loanBalances}
         rowKey={(row) => `${row.borrower_person_id}-${row.currency_code}`}
         emptyLabel={emptyLabel}
         columns={loanBalanceColumns}
       />
-      <ReportTable
+      <SecondaryReportSection
         title="借款账龄表"
+        description="未结清借款项的账龄和剩余成本。"
         rows={reports.loanAging}
         rowKey={(row) => row.loan_item_id}
         emptyLabel={emptyLabel}
         columns={loanAgingColumns}
       />
-      <ReportTable
+      <SecondaryReportSection
         title="借款明细表"
+        description="借款还款、核销和分配流水。"
         rows={reports.loanAllocations}
         rowKey={(row) => row.allocation_id}
         emptyLabel={emptyLabel}
         columns={loanAllocationColumns}
       />
-      <ReportTable
+      <SecondaryReportSection
         title="借款核销表"
+        description="借款核销进入项目或费用口径的明细。"
         rows={reports.loanWriteoffs}
         rowKey={(row) => `${row.document_id}-${row.borrower_person_id}-${row.currency_code}-${row.allocation_date}`}
         emptyLabel={emptyLabel}

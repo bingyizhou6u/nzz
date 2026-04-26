@@ -422,6 +422,7 @@ git commit -m "feat: redesign review center interaction"
 - Modify: `src/app/pages/ReportsPage.tsx`
 - Modify: `src/app/pages/ReportsPage.test.tsx`
 - Modify: `src/app/pages/reports/reportExperience.ts`
+- Create: `src/app/pages/reports/reportExperience.test.ts`
 - Modify: `src/app/pages/reports/reportGroups.tsx`
 - Modify: `src/app/pages/reports/ReportTable.tsx`
 - Modify: `src/app/pages/reports/reportExport.ts`
@@ -438,12 +439,12 @@ git commit -m "feat: redesign review center interaction"
 
 **Steps:**
 
-- [ ] Step 1: 扩展 `reportExperience.ts` 测试，覆盖 `summaryCardsForGroup()`、快照上下文标签、导出命名上下文。
-- [ ] Step 2: 运行 `npm test -- src/app/pages/reports/reportFilters.test.ts src/app/pages/ReportsPage.test.tsx`，确认现有基线。
-- [ ] Step 3: 改造 `ReportsPage.tsx` 的顶部筛选条和报表分类布局，保留现有 API 读取方式。
-- [ ] Step 4: 改造 `ReportTable.tsx`，增加空状态、行数、横向滚动提示和紧凑表格样式。
-- [ ] Step 5: 改造 `reportGroups.tsx`，每组只暴露最重要主表，次级表使用折叠区或明确标题。
-- [ ] Step 6: 运行：
+- [x] Step 1: 扩展 `reportExperience.ts` 测试，覆盖 `summaryCardsForGroup()`、快照上下文标签、导出命名上下文。
+- [x] Step 2: 运行 `npm test -- src/app/pages/reports/reportFilters.test.ts src/app/pages/ReportsPage.test.tsx`，确认现有基线。
+- [x] Step 3: 改造 `ReportsPage.tsx` 的顶部筛选条和报表分类布局，保留现有 API 读取方式。
+- [x] Step 4: 改造 `ReportTable.tsx`，增加空状态、行数、横向滚动提示和紧凑表格样式。
+- [x] Step 5: 改造 `reportGroups.tsx`，每组只暴露最重要主表，次级表使用折叠区或明确标题。
+- [x] Step 6: 运行：
 
 ```bash
 npm test -- src/app/pages/ReportsPage.test.tsx src/app/pages/reports/reportFilters.test.ts
@@ -451,16 +452,16 @@ npx tsc --noEmit
 npm run build
 ```
 
-- [ ] Step 7: 本地手工验收：
+- [x] Step 7: 本地手工验收：
   - 实时数据读取。
   - 切换报表分类。
   - 项目利润钻取。
   - 选择已结账快照。
   - 导出 CSV/XLSX。
-- [ ] Step 8: 提交。
+- [x] Step 8: 提交。
 
 ```bash
-git add src/app/pages/ReportsPage.tsx src/app/pages/ReportsPage.test.tsx src/app/pages/reports/reportExperience.ts src/app/pages/reports/reportGroups.tsx src/app/pages/reports/ReportTable.tsx src/app/pages/reports/reportExport.ts src/app/styles.css
+git add src/app/pages/ReportsPage.tsx src/app/pages/ReportsPage.test.tsx src/app/pages/reports/reportExperience.ts src/app/pages/reports/reportExperience.test.ts src/app/pages/reports/reportGroups.tsx src/app/pages/reports/ReportTable.tsx src/app/pages/reports/reportExport.ts src/app/styles.css
 git commit -m "feat: redesign report analysis workspace"
 ```
 
@@ -469,6 +470,16 @@ git commit -m "feat: redesign report analysis workspace"
 - 报表不再全部堆叠。
 - 用户能清楚知道当前是实时数据还是快照数据。
 - 导出结果和当前选择一致。
+
+**完成记录（2026-04-26）：**
+
+- 报表中心顶部改为 `report-control-panel`：同屏展示数据源、快照版本、筛选条件、读取状态和快照筛选禁用说明。
+- 新增 `reportExperience.test.ts`，覆盖摘要卡、实时/快照上下文标签、导出上下文标签。
+- 工作台导出区显示当前导出上下文；CSV 导出当前分类，快照 XLSX 仍导出月结包。
+- `ReportTable` 增加描述、行数、空状态说明和横向滚动提示。
+- 各分类改成主表优先，次级表进入 `details.report-secondary-section` 折叠区；项目钻取仍在当前分类内展开。
+- 页面行为测试覆盖实时读取、分类切换、项目利润钻取、快照读取、CSV/XLSX 导出。
+- 验证：`npm test -- src/app/pages/ReportsPage.test.tsx src/app/pages/reports/reportFilters.test.ts src/app/pages/reports/reportExperience.test.ts`、`npm test`、`npx tsc --noEmit`、`npm run build`、`npm audit --audit-level=high`、`git diff --check` 均通过。
 
 ---
 
