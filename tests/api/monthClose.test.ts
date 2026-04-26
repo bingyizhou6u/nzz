@@ -4,7 +4,9 @@ import {
   getMonthCloseReconciliation,
   listMonthCloseChecks,
   listMonthClosePeriods,
+  lockMonthClosePeriod,
   runMonthCloseChecks,
+  unlockMonthClosePeriod,
   updateMonthCloseCheckResult
 } from "../../src/api/monthClose";
 import type { AuthenticatedActor } from "../../src/auth/types";
@@ -243,6 +245,120 @@ describe("month close API", () => {
 
     expect(response.status).toBe(403);
     expect(preparedSql.some((sql) => sql.toLowerCase().includes("reconciliation_rows"))).toBe(false);
+  });
+
+  it("locks month close periods and writes period lock, snapshots, report snapshots, and audit in one batch", async () => {
+    const batches: CapturedStatement[][] = [];
+    const response = await lockMonthClosePeriod({
+      request: new Request("https://ledger.test/api/month-close/2026-04/lock", {
+        method: "POST",
+        body: JSON.stringify({ note: "  close April after review  " })
+      }),
+      env: env({
+        firstRows: [
+          runRow({ can_lock: 1, critical_count: 1, warning_count: 1, info_count: 0 }),
+          null,
+          { version: 1 }
+        ],
+        rowsBySql: (sql) => {
+          if (sql.includes("from month_close_check_results")) {
+            return [
+              checkResultRow({ severity: "critical", status: "resolved" }),
+              checkResultRow({ id: "check_warning", severity: "warning", status: "waived" })
+            ];
+          }
+          if (sql.includes("from documents d") && sql.includes("project_income_rows")) {
+            return [{ period: "2026-04", project_id: "project_alpha", income_usdt_minor: 50000 }];
+          }
+          return [];
+        },
+        onBatch: (statements) => batches.push(statements)
+      }),
+      params: { period: "2026-04" },
+      actor: manager
+    });
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        period: "2026-04",
+        status: "locked",
+        snapshot: { period: "2026-04", version: 1, run_id: "run_1", note: "close April after review" }
+      }
+    });
+    expect(batches).toHaveLength(1);
+
+    const sqls = batches[0].map((statement) => statement.sql.replace(/\s+/g, " ").toLowerCase());
+    expect(sqls.some((sql) => sql.includes("insert into period_locks"))).toBe(true);
+    expect(sqls.some((sql) => sql.includes("insert into month_close_snapshots"))).toBe(true);
+    expect(sqls.filter((sql) => sql.includes("insert into month_close_report_snapshots"))).toHaveLength(16);
+    expect(sqls.some((sql) => sql.includes("insert into audit_logs"))).toBe(true);
+
+    const projectIncomeSnapshot = batches[0].find(
+      (statement) =>
+        statement.sql.toLowerCase().includes("insert into month_close_report_snapshots") &&
+        statement.bindings.includes("projectIncome")
+    );
+    expect(projectIncomeSnapshot?.bindings.at(-2)).toContain("project_alpha");
+  });
+
+  it("requires a lock note before month close period lock queries run", async () => {
+    const preparedSql: string[] = [];
+    const response = await lockMonthClosePeriod({
+      request: new Request("https://ledger.test/api/month-close/2026-04/lock", {
+        method: "POST",
+        body: JSON.stringify({})
+      }),
+      env: env({ onPrepare: (sql) => preparedSql.push(sql) }),
+      params: { period: "2026-04" },
+      actor: manager
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "note is required" });
+    expect(preparedSql).toHaveLength(0);
+  });
+
+  it("routes month close lock requests through the lock capability gate", async () => {
+    const batches: CapturedStatement[][] = [];
+    const response = await route(
+      new Request("https://ledger.test/api/month-close/2026-04/lock", {
+        method: "POST",
+        body: JSON.stringify({ note: "close" })
+      }),
+      env({
+        firstRow: actorRow("readonly"),
+        onBatch: (statements) => batches.push(statements)
+      })
+    );
+
+    expect(response.status).toBe(403);
+    expect(batches).toHaveLength(0);
+  });
+
+  it("unlocks month close periods through the unlock capability and preserves snapshot history", async () => {
+    const batches: CapturedStatement[][] = [];
+    const response = await unlockMonthClosePeriod({
+      request: new Request("https://ledger.test/api/month-close/2026-04/unlock", {
+        method: "POST",
+        body: JSON.stringify({ reason: "reopen for correction document" })
+      }),
+      env: env({
+        firstRow: periodLockRow(),
+        onBatch: (statements) => batches.push(statements)
+      }),
+      params: { period: "2026-04" },
+      actor: admin
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: { period: "2026-04", status: "unlocked" } });
+    expect(batches).toHaveLength(1);
+
+    const sqls = batches[0].map((statement) => statement.sql.replace(/\s+/g, " ").toLowerCase());
+    expect(sqls.some((sql) => sql.includes("insert into audit_logs"))).toBe(true);
+    expect(sqls.some((sql) => sql.includes("delete from period_locks where period = ?"))).toBe(true);
+    expect(sqls.some((sql) => sql.includes("delete from month_close_snapshots"))).toBe(false);
   });
 
   it("requires a handling note when acknowledging or waiving a check result", async () => {

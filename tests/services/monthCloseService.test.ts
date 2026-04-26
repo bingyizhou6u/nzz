@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   InsertCheckResultInput,
   MonthCloseCheckResultRow,
+  MonthCloseSnapshotRow,
   MonthCloseRunRow
 } from "../../src/repositories/monthCloseRepository";
+import type { PeriodLockRow } from "../../src/repositories/periodLockRepository";
 import { MonthCloseService } from "../../src/services/monthCloseService";
 import type { MonthCloseCheckOptions } from "../../src/services/monthCloseChecks";
 
@@ -12,6 +14,12 @@ type MonthCloseRepoMock = ConstructorParameters<typeof MonthCloseService>[0] & {
   completeRun: ReturnType<typeof vi.fn>;
   failRun: ReturnType<typeof vi.fn>;
   insertCheckResults: ReturnType<typeof vi.fn>;
+  latestRun: ReturnType<typeof vi.fn>;
+  listCheckResults: ReturnType<typeof vi.fn>;
+  getPeriodLock: ReturnType<typeof vi.fn>;
+  nextSnapshotVersion: ReturnType<typeof vi.fn>;
+  lockWithSnapshotAndAudit: ReturnType<typeof vi.fn>;
+  unlockPeriodWithAudit: ReturnType<typeof vi.fn>;
 };
 
 type MonthCloseSourceMock = ConstructorParameters<typeof MonthCloseService>[1] & {
@@ -24,6 +32,20 @@ type MonthCloseSourceMock = ConstructorParameters<typeof MonthCloseService>[1] &
   monthClosePettyCashReconciliation: ReturnType<typeof vi.fn>;
   monthCloseLoanReconciliation: ReturnType<typeof vi.fn>;
   monthCloseProjectReconciliation: ReturnType<typeof vi.fn>;
+  accountBalances: ReturnType<typeof vi.fn>;
+  lotBalances: ReturnType<typeof vi.fn>;
+  lotMovements: ReturnType<typeof vi.fn>;
+  pettyCashPendingMatches: ReturnType<typeof vi.fn>;
+  pendingCostMatches: ReturnType<typeof vi.fn>;
+  loanBalances: ReturnType<typeof vi.fn>;
+  loanAging: ReturnType<typeof vi.fn>;
+  projectProfitLoss: ReturnType<typeof vi.fn>;
+  projectIncome: ReturnType<typeof vi.fn>;
+  merchantIncome: ReturnType<typeof vi.fn>;
+  expenseDetails: ReturnType<typeof vi.fn>;
+  expenseSummary: ReturnType<typeof vi.fn>;
+  monthlyOperatingSummary: ReturnType<typeof vi.fn>;
+  exceptionChecks: ReturnType<typeof vi.fn>;
 };
 
 const checkOptions: MonthCloseCheckOptions = {
@@ -288,6 +310,132 @@ describe("MonthCloseService", () => {
     expect(sources.monthCloseLoanReconciliation).toHaveBeenCalledWith(period);
     expect(sources.monthCloseProjectReconciliation).toHaveBeenCalledWith(period);
   });
+
+  it("locks a period after latest checks are handled and snapshots formal reports", async () => {
+    const auditStatement = fakeAuditStatement();
+    const handledChecks = [
+      insertedCheckRow({ id: "check_critical", severity: "critical", status: "resolved" }),
+      insertedCheckRow({ id: "check_warning", severity: "warning", status: "acknowledged" }),
+      insertedCheckRow({ id: "check_info", severity: "info", status: "open" })
+    ];
+    const snapshot = snapshotRow();
+    const { monthCloses, sources, service } = createMocks({
+      monthCloses: {
+        latestRun: vi.fn(async () =>
+          runRow({
+            status: "completed",
+            can_lock: 1,
+            critical_count: 1,
+            warning_count: 1,
+            info_count: 1,
+            finished_at: finishedAt
+          })
+        ),
+        listCheckResults: vi.fn(async () => handledChecks),
+        nextSnapshotVersion: vi.fn(async () => 1),
+        lockWithSnapshotAndAudit: vi.fn(async () => snapshot)
+      },
+      sources: {
+        accountBalances: vi.fn(async () => [{ account_id: "acct_usdt", currency_code: "USDT", balance_minor: 10000 }]),
+        projectIncome: vi.fn(async () => [{ period, project_id: "project_alpha", income_usdt_minor: 50000 }]),
+        exceptionChecks: vi.fn(async () => [{ exception_type: "info_only", severity: "info" }]),
+        monthCloseFundingReconciliation: vi.fn(async () => [
+          reconciliationFundingRow({ accountId: "acct_usdt", closingBalanceMinor: 10000 })
+        ])
+      }
+    });
+
+    const result = await service.lockPeriod(period, actor, {
+      note: "  close April  ",
+      lockedAt: finishedAt,
+      auditStatement
+    });
+
+    expect(monthCloses.latestRun).toHaveBeenCalledWith(period);
+    expect(monthCloses.listCheckResults).toHaveBeenCalledWith(period, "run_1");
+    expect(monthCloses.getPeriodLock).toHaveBeenCalledWith(period);
+    expect(monthCloses.nextSnapshotVersion).toHaveBeenCalledWith(period);
+    expect(sources.projectIncome).toHaveBeenCalledWith({ period });
+    expect(sources.monthCloseFundingReconciliation).toHaveBeenCalledWith(period);
+
+    const [snapshotInput, auditInput] = monthCloses.lockWithSnapshotAndAudit.mock.calls[0];
+    expect(auditInput).toBe(auditStatement);
+    expect(snapshotInput).toMatchObject({
+      period,
+      version: 1,
+      runId: "run_1",
+      lockedBy: actor.personId,
+      lockedAt: finishedAt,
+      note: "close April",
+      summary: { criticalCount: 1, warningCount: 1, infoCount: 1 }
+    });
+    expect(snapshotInput.reports.map((report: { reportKey: string }) => report.reportKey)).toEqual([
+      "accountBalances",
+      "lotBalances",
+      "lotMovements",
+      "pettyCashPending",
+      "pendingCosts",
+      "loanBalances",
+      "loanAging",
+      "projectProfitLoss",
+      "projectIncome",
+      "merchantIncome",
+      "expenseDetails",
+      "expenseSummary",
+      "monthlyOperatingSummary",
+      "exceptionChecks",
+      "monthCloseChecks",
+      "monthCloseReconciliation"
+    ]);
+    expect(snapshotInput.reports.find((report: { reportKey: string }) => report.reportKey === "monthCloseChecks")?.rows).toEqual(
+      handledChecks
+    );
+    expect(
+      snapshotInput.reports.find((report: { reportKey: string }) => report.reportKey === "monthCloseReconciliation")?.rows
+    ).toEqual([
+      {
+        funding: [expect.objectContaining({ accountId: "acct_usdt" })],
+        pettyCash: [],
+        loans: [],
+        projects: []
+      }
+    ]);
+    expect(result).toEqual({ period, status: "locked", snapshot });
+  });
+
+  it("rejects locking when latest checks still contain unhandled blockers", async () => {
+    const auditStatement = fakeAuditStatement();
+    const { monthCloses, service } = createMocks({
+      monthCloses: {
+        latestRun: vi.fn(async () => runRow({ status: "completed", finished_at: finishedAt })),
+        listCheckResults: vi.fn(async () => [insertedCheckRow({ severity: "critical", status: "open" })])
+      }
+    });
+
+    await expect(service.lockPeriod(period, actor, { note: "close April", auditStatement })).rejects.toThrow(
+      "Month close checks are not lockable"
+    );
+
+    expect(monthCloses.lockWithSnapshotAndAudit).not.toHaveBeenCalled();
+  });
+
+  it("unlocks a period through the month-close lock repository without deleting snapshots", async () => {
+    const auditStatement = fakeAuditStatement();
+    const lock = periodLockRow();
+    const { monthCloses, service } = createMocks({
+      monthCloses: {
+        getPeriodLock: vi.fn(async () => lock)
+      }
+    });
+
+    await expect(service.unlockPeriod(period, { auditStatement })).resolves.toEqual({
+      period,
+      status: "unlocked"
+    });
+
+    expect(monthCloses.getPeriodLock).toHaveBeenCalledWith(period);
+    expect(monthCloses.unlockPeriodWithAudit).toHaveBeenCalledWith(lock, auditStatement);
+  });
 });
 
 function createMocks(input: {
@@ -303,6 +451,12 @@ function createMocks(input: {
     ),
     completeRun: vi.fn(async () => undefined),
     failRun: vi.fn(async () => undefined),
+    latestRun: vi.fn(async () => runRow({ status: "completed", finished_at: finishedAt })),
+    listCheckResults: vi.fn(async () => []),
+    getPeriodLock: vi.fn(async () => null),
+    nextSnapshotVersion: vi.fn(async () => 1),
+    lockWithSnapshotAndAudit: vi.fn(async () => snapshotRow()),
+    unlockPeriodWithAudit: vi.fn(async () => undefined),
     ...input.monthCloses
   } satisfies MonthCloseRepoMock;
   const sources = {
@@ -315,6 +469,20 @@ function createMocks(input: {
     monthClosePettyCashReconciliation: vi.fn(async () => []),
     monthCloseLoanReconciliation: vi.fn(async () => []),
     monthCloseProjectReconciliation: vi.fn(async () => []),
+    accountBalances: vi.fn(async () => []),
+    lotBalances: vi.fn(async () => []),
+    lotMovements: vi.fn(async () => []),
+    pettyCashPendingMatches: vi.fn(async () => []),
+    pendingCostMatches: vi.fn(async () => []),
+    loanBalances: vi.fn(async () => []),
+    loanAging: vi.fn(async () => []),
+    projectProfitLoss: vi.fn(async () => []),
+    projectIncome: vi.fn(async () => []),
+    merchantIncome: vi.fn(async () => []),
+    expenseDetails: vi.fn(async () => []),
+    expenseSummary: vi.fn(async () => []),
+    monthlyOperatingSummary: vi.fn(async () => []),
+    exceptionChecks: vi.fn(async () => []),
     ...input.sources
   } satisfies MonthCloseSourceMock;
 
@@ -325,7 +493,7 @@ function createMocks(input: {
   };
 }
 
-function runRow(): MonthCloseRunRow {
+function runRow(overrides: Partial<MonthCloseRunRow> = {}): MonthCloseRunRow {
   return {
     id: "run_1",
     period,
@@ -337,7 +505,8 @@ function runRow(): MonthCloseRunRow {
     started_by: actor.personId,
     started_at: startedAt,
     finished_at: null,
-    error_message: null
+    error_message: null,
+    ...overrides
   };
 }
 
@@ -445,4 +614,32 @@ function reconciliationProjectRow(overrides: Record<string, unknown> = {}) {
     pendingAmountMinor: 0,
     ...overrides
   };
+}
+
+function snapshotRow(overrides: Partial<MonthCloseSnapshotRow> = {}): MonthCloseSnapshotRow {
+  return {
+    id: "snapshot_1",
+    period,
+    version: 1,
+    run_id: "run_1",
+    locked_by: actor.personId,
+    locked_at: finishedAt,
+    note: "close April",
+    summary_json: JSON.stringify({ criticalCount: 1, warningCount: 1, infoCount: 1 }),
+    ...overrides
+  };
+}
+
+function periodLockRow(overrides: Partial<PeriodLockRow> = {}): PeriodLockRow {
+  return {
+    period,
+    locked_by: actor.personId,
+    locked_at: finishedAt,
+    note: "close April",
+    ...overrides
+  };
+}
+
+function fakeAuditStatement(): D1PreparedStatement {
+  return {} as D1PreparedStatement;
 }
