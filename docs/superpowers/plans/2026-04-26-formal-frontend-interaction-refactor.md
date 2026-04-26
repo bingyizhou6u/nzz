@@ -293,6 +293,7 @@ git commit -m "feat: add document workflow interaction model"
 - Modify: `src/app/pages/documents/DocumentTypeFields.tsx`
 - Modify: `src/app/pages/documents/DocumentEntrySelectors.tsx`
 - Modify: `src/app/styles.css`
+- Create: `src/app/pages/documents/documentPageModel.ts`
 
 **交互改造：**
 
@@ -309,13 +310,13 @@ git commit -m "feat: add document workflow interaction model"
 
 **Steps:**
 
-- [ ] Step 1: 在 `DocumentsPage.test.ts` 增加页面行为测试：选择记录后右侧出现详情；点击新建后进入向导；筛选状态只影响左侧列表。
-- [ ] Step 2: 运行 `npm test -- src/app/pages/DocumentsPage.test.ts`，预期 RED。
-- [ ] Step 3: 改造 `DocumentsPage.tsx` 使用 `SplitWorkspace`，维护 `selectedDocumentId` 和 `rightPanelMode`。
-- [ ] Step 4: 将原 `form` 区域改成步骤化向导，复用 `DocumentTypeFields`。
-- [ ] Step 5: 改造 workflow action，提交/通过/退回都在右侧详情区完成；退回原因使用输入框。
-- [ ] Step 6: 添加移动端样式，列表和详情上下排列，操作按钮固定在详情区底部。
-- [ ] Step 7: 运行：
+- [x] Step 1: 在 `DocumentsPage.test.ts` 增加页面行为测试：选择记录后右侧出现详情；点击新建后进入向导；筛选状态只影响左侧列表。
+- [x] Step 2: 运行 `npm test -- src/app/pages/DocumentsPage.test.ts`，预期 RED。
+- [x] Step 3: 改造 `DocumentsPage.tsx` 使用 `SplitWorkspace`，维护 `selectedDocumentId` 和 `rightPanelMode`。
+- [x] Step 4: 将原 `form` 区域改成步骤化向导，复用 `DocumentTypeFields`。
+- [x] Step 5: 改造 workflow action，提交/通过/退回都在右侧详情区完成；退回原因使用输入框。
+- [x] Step 6: 添加移动端样式，列表和详情上下排列，操作按钮固定在详情区底部。
+- [x] Step 7: 运行：
 
 ```bash
 npm test -- src/app/pages/DocumentsPage.test.ts src/app/pages/documents/documentEntryModel.test.ts src/app/pages/documents/documentWorkflowModel.test.ts
@@ -323,12 +324,12 @@ npx tsc --noEmit
 npm run build
 ```
 
-- [ ] Step 8: 用本地 `npm run cf:dev` 打开系统，手工验证演示数据下：
+- [x] Step 8: 用本地 `npm run cf:dev` 打开系统，手工验证演示数据下：
   - 创建项目收入草稿。
   - 创建换汇草稿。
   - 创建备用金报销草稿。
   - 筛选草稿和待审核。
-- [ ] Step 9: 提交。
+- [x] Step 9: 提交。
 
 ```bash
 git add src/app/pages/DocumentsPage.tsx src/app/pages/DocumentsPage.test.ts src/app/pages/documents/DocumentTypeFields.tsx src/app/pages/documents/DocumentEntrySelectors.tsx src/app/styles.css
@@ -340,6 +341,16 @@ git commit -m "feat: redesign document center workflow"
 - 用户不用理解所有底层字段也能开始录入。
 - 表格最后一列不再承担主要操作压力。
 - 右侧详情区能解释当前记录、当前状态和可执行动作。
+
+**完成记录（2026-04-26）：**
+
+- 单据中心改为 `SplitWorkspace`：左侧 `RecordList` 负责筛选和选择，右侧 `DetailPanel` 负责详情、审批动作或新建向导。
+- 左侧新增状态、类型、搜索筛选；筛选只影响列表，不清空右侧已选单据详情。
+- 新建单据改为场景卡片 + `WorkflowStepper` + `DocumentTypeFields` + 预览保存；复用 Task 3 的 workflow model。
+- 提交、通过、退回从表格操作列移到右侧详情区；退回必须填写原因后才可提交。
+- 本地 Worker dev 使用 demo 数据验证：项目收入草稿、换汇草稿、备用金报销草稿均可创建；草稿筛选可读。
+- 浏览器桥接工具当前超时，无法截图式手工验证；已用页面行为测试、生产 build、Worker API 和 demo 数据流验证兜底。
+- 验证：`npm test`、`npx tsc --noEmit`、`npm run build`、`npm audit --audit-level=high`、`git diff --check` 均通过。
 
 ---
 

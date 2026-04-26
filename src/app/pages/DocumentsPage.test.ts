@@ -3,6 +3,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { DocumentType } from "../../domain/types";
 import type { Capability } from "../session/sessionTypes";
 import {
   buildDocumentPayload,
@@ -44,20 +45,55 @@ afterEach(async () => {
 });
 
 describe("document page capability gating", () => {
-  it("renders the list and entry panels inside the documents workspace", async () => {
+  it("renders the list and selected detail inside the split workspace", async () => {
     const container = await renderDocumentsPage(["documents.view", "documents.create"], [
       draftDocument("doc_1", "DOC-001", "draft")
     ]);
 
     await waitFor(() => {
-      const workspace = container.querySelector(".documents-workspace");
+      const workspace = container.querySelector(".documents-workspace.split-workspace");
       const listPanel = workspace?.querySelector(".document-list-panel");
-      const entryPanel = workspace?.querySelector(".document-entry-panel");
+      const detailPanel = workspace?.querySelector(".document-detail-panel");
 
       expect(workspace).not.toBeNull();
       expect(listPanel?.textContent).toContain("单据列表");
-      expect(entryPanel?.textContent).toContain("创建草稿单据");
+      expect(detailPanel?.textContent).toContain("DOC-001");
+      expect(detailPanel?.textContent).toContain("DOC-001 summary");
     });
+  });
+
+  it("updates the right detail panel when a record is selected", async () => {
+    const container = await renderDocumentsPage(["documents.view"], [
+      draftDocument("doc_1", "DOC-001", "draft"),
+      draftDocument("doc_2", "DOC-002", "approved")
+    ]);
+
+    await waitFor(() => {
+      expect(documentDetailText(container)).toContain("DOC-001");
+    });
+
+    await clickButtonByText(container, "DOC-002");
+
+    expect(documentDetailText(container)).toContain("DOC-002");
+    expect(documentDetailText(container)).toContain("DOC-002 summary");
+  });
+
+  it("opens the document creation wizard from the right panel action", async () => {
+    const container = await renderDocumentsPage(["documents.view", "documents.create"], [
+      draftDocument("doc_1", "DOC-001", "draft")
+    ]);
+
+    await waitFor(() => {
+      expect(buttonTexts(container)).toContain("新建单据");
+    });
+
+    await clickButtonByText(container, "新建单据");
+
+    expect(documentDetailText(container)).toContain("新建单据");
+    expect(documentDetailText(container)).toContain("选择业务场景");
+    expect(documentDetailText(container)).toContain("业务字段");
+    expect(documentDetailText(container)).toContain("预览保存");
+    expect(documentDetailText(container)).toContain("项目收入");
   });
 
   it("filters visible documents by selected status", async () => {
@@ -84,6 +120,63 @@ describe("document page capability gating", () => {
     expect(documentNumbers(container)).toEqual(["DOC-DRAFT"]);
     expect(documentTableBodyText(container)).not.toContain("DOC-APPROVED");
     expect(documentTableBodyText(container)).not.toContain("DOC-PENDING");
+  });
+
+  it("keeps the selected detail visible when status filtering changes the left list", async () => {
+    const container = await renderDocumentsPage(["documents.view"], [
+      draftDocument("doc_draft", "DOC-DRAFT", "draft"),
+      draftDocument("doc_pending", "DOC-PENDING", "pending")
+    ]);
+
+    await waitFor(() => {
+      expect(documentNumbers(container)).toEqual(["DOC-DRAFT", "DOC-PENDING"]);
+    });
+
+    await clickButtonByText(container, "DOC-PENDING");
+
+    const statusSelect = container.querySelector('select[aria-label="单据状态"]') as HTMLSelectElement | null;
+    expect(statusSelect).not.toBeNull();
+
+    await act(async () => {
+      statusSelect!.value = "draft";
+      statusSelect!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(documentNumbers(container)).toEqual(["DOC-DRAFT"]);
+    expect(documentDetailText(container)).toContain("DOC-PENDING");
+    expect(documentDetailText(container)).toContain("DOC-PENDING summary");
+  });
+
+  it("filters the left document list by type and search text", async () => {
+    const container = await renderDocumentsPage(["documents.view"], [
+      draftDocument("doc_income", "DOC-INCOME", "draft", "project_income"),
+      draftDocument("doc_exchange", "DOC-EXCHANGE", "draft", "exchange"),
+      draftDocument("doc_loan", "DOC-LOAN", "draft", "loan_out")
+    ]);
+
+    await waitFor(() => {
+      expect(documentNumbers(container)).toEqual(["DOC-INCOME", "DOC-EXCHANGE", "DOC-LOAN"]);
+    });
+
+    const typeSelect = container.querySelector('select[aria-label="单据类型"]') as HTMLSelectElement | null;
+    const searchInput = container.querySelector('input[aria-label="搜索单据"]') as HTMLInputElement | null;
+    expect(typeSelect).not.toBeNull();
+    expect(searchInput).not.toBeNull();
+
+    await act(async () => {
+      typeSelect!.value = "exchange";
+      typeSelect!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(documentNumbers(container)).toEqual(["DOC-EXCHANGE"]);
+
+    await act(async () => {
+      searchInput!.value = "loan";
+      searchInput!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(documentNumbers(container)).toEqual([]);
+    expect(documentEmptyCellText(container)).toBe("当前筛选下暂无单据");
   });
 
   it("shows filtered counts and empty state when no documents match the selected status", async () => {
@@ -184,6 +277,38 @@ describe("document page capability gating", () => {
     await waitFor(() => {
       expect(buttonTexts(rejectOnly)).not.toContain("通过");
       expect(buttonTexts(rejectOnly)).toContain("退回");
+    });
+  });
+
+  it("requires a typed reject reason before posting a rejection", async () => {
+    const postedBodies: unknown[] = [];
+    const container = await renderDocumentsPage(
+      ["documents.view", "documents.reject"],
+      [draftDocument("doc_1", "DOC-001", "pending")],
+      documentsFetch([draftDocument("doc_1", "DOC-001", "pending")], (_url, body) => postedBodies.push(body))
+    );
+
+    await waitFor(() => {
+      expect(buttonTexts(container)).toContain("退回");
+    });
+
+    const rejectButton = buttonByText(container, "退回");
+    expect(rejectButton.disabled).toBe(true);
+
+    const reasonInput = container.querySelector('textarea[aria-label="退回原因"]') as HTMLTextAreaElement | null;
+    expect(reasonInput).not.toBeNull();
+
+    await act(async () => {
+      reasonInput!.value = "附件金额和摘要不一致";
+      reasonInput!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(rejectButton.disabled).toBe(false);
+
+    await clickButtonByText(container, "退回");
+
+    await waitFor(() => {
+      expect(postedBodies).toEqual([{ reason: "附件金额和摘要不一致" }]);
     });
   });
 });
@@ -454,13 +579,16 @@ describe("document date defaults", () => {
   it("uses selected people ids for workflow actions when supplied", () => {
     expect(workflowActionBody("submit", "person_finance")).toEqual({ actor: "person_finance" });
     expect(workflowActionBody("approve", "person_manager")).toEqual({ reviewer: "person_manager" });
-    expect(workflowActionBody("reject", "person_manager")).toEqual({ actor: "person_manager", reason: "退回修改" });
+    expect(workflowActionBody("reject", "person_manager", "资料不完整")).toEqual({
+      actor: "person_manager",
+      reason: "资料不完整"
+    });
   });
 
   it("omits workflow actor fields when no actor is supplied", () => {
     expect(workflowActionBody("submit", "")).toEqual({});
     expect(workflowActionBody("approve", "")).toEqual({});
-    expect(workflowActionBody("reject", "")).toEqual({ reason: "退回修改" });
+    expect(workflowActionBody("reject", "", "资料不完整")).toEqual({ reason: "资料不完整" });
   });
 
   it("does not require a current actor to validate document drafts", () => {
@@ -527,11 +655,11 @@ describe("document date defaults", () => {
 
 type FetchHandler = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-function draftDocument(id: string, documentNo: string, status: string) {
+function draftDocument(id: string, documentNo: string, status: string, documentType: DocumentType = "project_income") {
   return {
     id,
     document_no: documentNo,
-    document_type: "project_income" as const,
+    document_type: documentType,
     business_date: "2026-04-25",
     status,
     summary: `${documentNo} summary`
@@ -556,18 +684,16 @@ async function renderDocumentsPage(
   return container;
 }
 
-function documentsFetch(documents: ReturnType<typeof draftDocument>[]) {
-  return vi.fn<FetchHandler>().mockImplementation((input) => {
+function documentsFetch(documents: ReturnType<typeof draftDocument>[], onPost?: (url: string, body: unknown) => void) {
+  return vi.fn<FetchHandler>().mockImplementation(async (input, init) => {
     const url = String(input);
-    if (url === "/api/documents") {
-      return Promise.resolve(jsonResponse({ data: documents }));
-    }
+    if (url === "/api/documents") return Promise.resolve(jsonResponse({ data: documents }));
     if (url === "/api/document-entry/options") {
-      return Promise.resolve(
-        jsonResponse({
-          data: { people: [], projects: [], merchants: [], accounts: [], currencies: [], categories: [] }
-        })
-      );
+      return Promise.resolve(jsonResponse({ data: { people: [], projects: [], merchants: [], accounts: [], currencies: [], categories: [] } }));
+    }
+    if (url === "/api/documents/doc_1/reject") {
+      onPost?.(url, init?.body ? JSON.parse(String(init.body)) : undefined);
+      return Promise.resolve(jsonResponse({ data: { id: "doc_1", status: "rejected" } }));
     }
     throw new Error(`Unexpected request: ${url}`);
   });
@@ -577,16 +703,10 @@ function documentsFetchFailure(message: string) {
   return vi.fn<FetchHandler>().mockImplementation((input) => {
     const url = String(input);
     if (url === "/api/documents") {
-      return Promise.resolve(
-        jsonResponse({ error: message }, { status: 503, statusText: "Service Unavailable" })
-      );
+      return Promise.resolve(jsonResponse({ error: message }, { status: 503, statusText: "Service Unavailable" }));
     }
     if (url === "/api/document-entry/options") {
-      return Promise.resolve(
-        jsonResponse({
-          data: { people: [], projects: [], merchants: [], accounts: [], currencies: [], categories: [] }
-        })
-      );
+      return Promise.resolve(jsonResponse({ data: { people: [], projects: [], merchants: [], accounts: [], currencies: [], categories: [] } }));
     }
     throw new Error(`Unexpected request: ${url}`);
   });
@@ -595,10 +715,7 @@ function documentsFetchFailure(message: string) {
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
     ...init,
-    headers: {
-      "content-type": "application/json",
-      ...init?.headers
-    }
+    headers: { "content-type": "application/json", ...init?.headers }
   });
 }
 
@@ -633,28 +750,45 @@ function buttonTexts(container: HTMLElement) {
   return Array.from(container.querySelectorAll("button")).map((button) => button.textContent?.trim() ?? "");
 }
 
+function buttonByText(container: HTMLElement, text: string) {
+  const button = Array.from(container.querySelectorAll("button")).find((candidate) => candidate.textContent?.includes(text));
+  expect(button).not.toBeUndefined();
+  return button as HTMLButtonElement;
+}
+
+async function clickButtonByText(container: HTMLElement, text: string) {
+  const button = buttonByText(container, text);
+  await act(async () => {
+    button.click();
+  });
+}
+
 function documentListPanel(container: HTMLElement) {
   const panel = container.querySelector(".document-list-panel");
   expect(panel).not.toBeNull();
   return panel as HTMLElement;
 }
 
+function documentDetailPanel(container: HTMLElement) {
+  const panel = container.querySelector(".document-detail-panel");
+  expect(panel).not.toBeNull();
+  return panel as HTMLElement;
+}
+
+function documentDetailText(container: HTMLElement) {
+  return documentDetailPanel(container).textContent ?? "";
+}
+
 function documentListStatusText(container: HTMLElement) {
   return documentListPanel(container).querySelector(".status-slot")?.textContent?.trim();
 }
 
-function documentTableRows(container: HTMLElement) {
-  return Array.from(documentListPanel(container).querySelectorAll("tbody tr"));
-}
-
 function documentNumbers(container: HTMLElement) {
-  return documentTableRows(container)
-    .filter((row) => !row.querySelector(".empty-cell"))
-    .map((row) => row.querySelector("td")?.textContent?.trim() ?? "");
+  return Array.from(documentListPanel(container).querySelectorAll(".record-list-item strong")).map((title) => title.textContent?.trim() ?? "");
 }
 
 function documentEmptyCellText(container: HTMLElement) {
-  return documentListPanel(container).querySelector(".empty-cell")?.textContent?.trim();
+  return documentListPanel(container).querySelector(".record-list-empty strong")?.textContent?.trim();
 }
 
 function documentListNoticeText(container: HTMLElement) {
@@ -662,5 +796,5 @@ function documentListNoticeText(container: HTMLElement) {
 }
 
 function documentTableBodyText(container: HTMLElement) {
-  return documentListPanel(container).querySelector("tbody")?.textContent ?? "";
+  return documentListPanel(container).querySelector(".record-list")?.textContent ?? "";
 }
