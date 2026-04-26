@@ -70,7 +70,7 @@ export class MonthCloseService {
     private readonly sources: MonthCloseSourceRepository,
     options: MonthCloseServiceOptions = {}
   ) {
-    this.checkOptions = { ...defaultMonthCloseCheckOptions, ...options.checkOptions };
+    this.checkOptions = mergeCheckOptions(options.checkOptions);
   }
 
   async runChecks(
@@ -102,21 +102,40 @@ export class MonthCloseService {
       const checks = await this.monthCloses.insertCheckResults(run.id, period, checkInputs);
       const summary = summarizeCheckResults(checks);
       const canLock = canLockFromCheckResults(checks.map(checkResultRowToHandledCheckResult));
+      const finishedAt = options.finishedAt ?? new Date().toISOString();
 
       await this.monthCloses.completeRun({
         runId: run.id,
         canLock,
         ...summary,
-        finishedAt: options.finishedAt
+        finishedAt
       });
 
-      return { run, checks, summary, canLock };
+      return {
+        run: {
+          ...run,
+          status: "completed",
+          can_lock: canLock ? 1 : 0,
+          critical_count: summary.criticalCount,
+          warning_count: summary.warningCount,
+          info_count: summary.infoCount,
+          finished_at: finishedAt,
+          error_message: null
+        },
+        checks,
+        summary,
+        canLock
+      };
     } catch (error) {
-      await this.monthCloses.failRun({
-        runId: run.id,
-        errorMessage: errorMessage(error),
-        finishedAt: options.finishedAt
-      });
+      try {
+        await this.monthCloses.failRun({
+          runId: run.id,
+          errorMessage: errorMessage(error),
+          finishedAt: options.finishedAt
+        });
+      } catch {
+        // Preserve the operational error that caused the failed run.
+      }
       throw error;
     }
   }
@@ -141,4 +160,16 @@ function checkResultRowToHandledCheckResult(row: MonthCloseCheckResultRow): Mont
 function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   return String(error);
+}
+
+function mergeCheckOptions(input: Partial<MonthCloseCheckOptions> | undefined): MonthCloseCheckOptions {
+  return {
+    staleDays: input?.staleDays ?? defaultMonthCloseCheckOptions.staleDays,
+    stalePendingCostDays: input?.stalePendingCostDays ?? defaultMonthCloseCheckOptions.stalePendingCostDays,
+    staleLoanDays: input?.staleLoanDays ?? defaultMonthCloseCheckOptions.staleLoanDays,
+    pettyCashNegativeCriticalDays:
+      input?.pettyCashNegativeCriticalDays ?? defaultMonthCloseCheckOptions.pettyCashNegativeCriticalDays,
+    pettyCashNegativeCriticalAmountMinor:
+      input?.pettyCashNegativeCriticalAmountMinor ?? defaultMonthCloseCheckOptions.pettyCashNegativeCriticalAmountMinor
+  };
 }

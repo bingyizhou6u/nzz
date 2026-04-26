@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { MonthCloseCheckResultRow, MonthCloseRunRow } from "../../src/repositories/monthCloseRepository";
+import type {
+  InsertCheckResultInput,
+  MonthCloseCheckResultRow,
+  MonthCloseRunRow
+} from "../../src/repositories/monthCloseRepository";
 import { MonthCloseService } from "../../src/services/monthCloseService";
 import type { MonthCloseCheckOptions } from "../../src/services/monthCloseChecks";
 
@@ -79,6 +83,14 @@ describe("MonthCloseService", () => {
     });
     expect(monthCloses.failRun).not.toHaveBeenCalled();
     expect(result).toMatchObject({
+      run: {
+        status: "completed",
+        can_lock: 0,
+        critical_count: 1,
+        warning_count: 0,
+        info_count: 0,
+        finished_at: finishedAt
+      },
       canLock: false,
       summary: { criticalCount: 1, warningCount: 0, infoCount: 0 }
     });
@@ -112,6 +124,17 @@ describe("MonthCloseService", () => {
         infoCount: 0
       })
     );
+    expect(monthCloses.insertCheckResults).toHaveBeenCalledWith(
+      "run_1",
+      period,
+      expect.arrayContaining([
+        expect.objectContaining({
+          checkType: "negative_petty_cash",
+          severity: "warning",
+          entityId: "acct_petty"
+        })
+      ])
+    );
     expect(result.canLock).toBe(false);
   });
 
@@ -141,6 +164,17 @@ describe("MonthCloseService", () => {
         warningCount: 0,
         infoCount: 1
       })
+    );
+    expect(monthCloses.insertCheckResults).toHaveBeenCalledWith(
+      "run_1",
+      period,
+      expect.arrayContaining([
+        expect.objectContaining({
+          checkType: "draft_document",
+          severity: "info",
+          entityId: "doc_draft"
+        })
+      ])
     );
     expect(result.canLock).toBe(true);
   });
@@ -195,6 +229,23 @@ describe("MonthCloseService", () => {
       finishedAt
     });
   });
+
+  it("preserves the original error if marking the run as failed also fails", async () => {
+    const { service } = createMocks({
+      sources: {
+        documentWorkflowRows: vi.fn(async () => {
+          throw new Error("source unavailable");
+        })
+      },
+      monthCloses: {
+        failRun: vi.fn(async () => {
+          throw new Error("failRun unavailable");
+        })
+      }
+    });
+
+    await expect(service.runChecks(period, actor, { startedAt, finishedAt })).rejects.toThrow("source unavailable");
+  });
 });
 
 function createMocks(input: {
@@ -205,7 +256,9 @@ function createMocks(input: {
   const insertedRows = input.insertedRows ?? [];
   const monthCloses = {
     createRun: vi.fn(async () => runRow()),
-    insertCheckResults: vi.fn(async () => insertedRows),
+    insertCheckResults: vi.fn(async (runId: string, closePeriod: string, rows: InsertCheckResultInput[]) =>
+      input.insertedRows ? insertedRows : rows.map((row, index) => insertedCheckRowFromInput(runId, closePeriod, row, index))
+    ),
     completeRun: vi.fn(async () => undefined),
     failRun: vi.fn(async () => undefined),
     ...input.monthCloses
@@ -264,5 +317,34 @@ function insertedCheckRow(overrides: Partial<MonthCloseCheckResultRow> = {}): Mo
     resolution_note: null,
     created_at: startedAt,
     ...overrides
+  };
+}
+
+function insertedCheckRowFromInput(
+  runId: string,
+  closePeriod: string,
+  row: InsertCheckResultInput,
+  index: number
+): MonthCloseCheckResultRow {
+  return {
+    id: `check_${index + 1}`,
+    run_id: runId,
+    period: closePeriod,
+    check_type: row.checkType,
+    severity: row.severity,
+    entity_type: row.entityType,
+    entity_id: row.entityId,
+    business_date: row.businessDate,
+    currency_code: row.currencyCode,
+    amount_minor: row.amountMinor,
+    usdt_cost_minor: row.usdtCostMinor,
+    message: row.message,
+    suggested_action: row.suggestedAction,
+    status: "open",
+    assignee_person_id: null,
+    resolved_by: null,
+    resolved_at: null,
+    resolution_note: null,
+    created_at: row.createdAt ?? startedAt
   };
 }
