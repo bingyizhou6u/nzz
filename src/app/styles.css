@@ -289,6 +289,287 @@ main {
   min-width: 0;
 }
 
+.page-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid #d9dde3;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.page-action-bar-primary,
+.page-action-bar-secondary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.page-action-bar-secondary {
+  justify-content: flex-end;
+}
+
+.filter-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  min-width: 0;
+  border: 1px solid #d9dde3;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.filter-strip-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.filter-strip-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.split-workspace {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.35fr);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.split-workspace-list,
+.split-workspace-detail {
+  min-width: 0;
+}
+
+.record-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.record-list-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 68px;
+  border-color: #d9dde3;
+  background: #ffffff;
+  color: #344054;
+  padding: 12px;
+  text-align: left;
+  white-space: normal;
+}
+
+.record-list-item:hover:not(:disabled) {
+  border-color: #9bc8c3;
+  background: #f4faf9;
+}
+
+.record-list-item.selected {
+  border-color: #1f5e5a;
+  background: #eef8f6;
+  color: #17202a;
+  box-shadow: inset 3px 0 0 #1f5e5a;
+}
+
+.record-list-item:focus-visible {
+  outline: 3px solid #8ecac4;
+  outline-offset: 2px;
+}
+
+.record-list-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.record-list-copy strong,
+.record-list-copy span,
+.record-list-copy small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.record-list-copy span,
+.record-list-copy small {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.record-list-status {
+  display: inline-flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.detail-panel {
+  display: grid;
+  min-width: 0;
+  border: 1px solid #d9dde3;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.detail-panel-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.detail-panel-title {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.detail-panel-title p {
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.detail-panel-status,
+.detail-panel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.detail-panel-body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.workflow-stepper {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workflow-stepper-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  flex: 1 1 0;
+  min-width: 0;
+  border: 1px solid #d9dde3;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.workflow-stepper-step[data-state="complete"] {
+  border-color: #b8dfd1;
+  background: #eef8f4;
+}
+
+.workflow-stepper-step[data-state="current"] {
+  border-color: #1f5e5a;
+  box-shadow: inset 0 -3px 0 #1f5e5a;
+}
+
+.workflow-stepper-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #eef0f3;
+  color: #596272;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workflow-stepper-step[data-state="complete"] .workflow-stepper-marker,
+.workflow-stepper-step[data-state="current"] .workflow-stepper-marker {
+  background: #1f5e5a;
+  color: #ffffff;
+}
+
+.workflow-stepper-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.workflow-stepper-copy strong,
+.workflow-stepper-copy span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.workflow-stepper-copy span {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.confirm-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.confirm-action.confirming {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.confirm-action-trigger,
+.confirm-action-confirm {
+  border-color: #b42318;
+  background: #b42318;
+  color: #ffffff;
+}
+
+.confirm-action-trigger:hover:not(:disabled),
+.confirm-action-confirm:hover:not(:disabled) {
+  background: #8f1d14;
+}
+
+.confirm-action-message {
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.confirm-action-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .documents-workspace {
   display: grid;
   grid-template-columns: minmax(420px, 0.95fr) minmax(520px, 1.05fr);
@@ -1871,6 +2152,45 @@ textarea {
 
   .report-export-actions {
     justify-content: flex-start;
+  }
+
+  .page-action-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .page-action-bar-secondary,
+  .filter-strip-actions {
+    justify-content: flex-start;
+  }
+
+  .filter-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .split-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .record-list-item {
+    grid-template-columns: 1fr;
+  }
+
+  .record-list-status {
+    justify-content: flex-start;
+  }
+
+  .detail-panel-header {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-panel-status,
+  .detail-panel-actions {
+    justify-content: flex-start;
+  }
+
+  .workflow-stepper {
+    flex-direction: column;
   }
 
   .report-category-nav {

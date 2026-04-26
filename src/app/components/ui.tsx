@@ -2,8 +2,21 @@ import type { HTMLAttributes, ReactNode } from "react";
 
 export type Tone = "default" | "ok" | "warning" | "danger" | "muted";
 
-export function StatusTag({ tone = "default", children }: { tone?: Tone; children: ReactNode }) {
-  return <span className={`status-tag ${tone}`}>{children}</span>;
+export function classNames(...values: Array<string | false | null | undefined>) {
+  return values.filter(Boolean).join(" ");
+}
+
+type StatusTagProps = HTMLAttributes<HTMLSpanElement> & {
+  tone?: Tone;
+  children: ReactNode;
+};
+
+export function StatusTag({ tone = "default", className, children, ...props }: StatusTagProps) {
+  return (
+    <span {...props} className={classNames("status-tag", tone, className)}>
+      {children}
+    </span>
+  );
 }
 
 export function AmountCell({ value, currency }: { value: string | number; currency?: string | null }) {
@@ -40,7 +53,7 @@ export function Notice({
   const isDanger = tone === "danger";
   const noticeRole = role ?? (isDanger ? "alert" : "status");
   const noticeAriaLive = ariaLive ?? (isDanger ? "assertive" : "polite");
-  const noticeClassName = ["notice", tone, className].filter(Boolean).join(" ");
+  const noticeClassName = classNames("notice", tone, className);
 
   return (
     <div {...props} className={noticeClassName} role={noticeRole} aria-live={noticeAriaLive}>

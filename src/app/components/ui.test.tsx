@@ -3,7 +3,7 @@
 import { act, createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AmountCell, EmptyState, Notice, SectionTitle, StatusTag } from "./ui";
+import { AmountCell, EmptyState, Notice, SectionTitle, StatusTag, classNames } from "./ui";
 
 let root: Root | null = null;
 
@@ -38,6 +38,13 @@ describe("formal ui primitives", () => {
     const container = await render(createElement(StatusTag, { tone: "warning", children: "待处理" }));
 
     expect(container.querySelector(".status-tag.warning")?.textContent).toBe("待处理");
+  });
+
+  it("builds stable class names for reusable primitives", async () => {
+    const container = await render(createElement(StatusTag, { tone: "ok", className: "inline-status", children: "已完成" }));
+
+    expect(classNames("base", false, undefined, "active")).toBe("base active");
+    expect(container.querySelector(".status-tag")?.classList.contains("inline-status")).toBe(true);
   });
 
   it("formats amount cells as right-aligned mono text", async () => {
