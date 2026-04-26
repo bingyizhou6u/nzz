@@ -81,6 +81,7 @@ describe("month close model", () => {
       resolutionNote: "差异已确认"
     });
     expect(buildCheckActionPatch(check, "assign", { assigneePersonId: "person_ops" })).toEqual({
+      status: "assigned",
       assigneePersonId: "person_ops"
     });
   });

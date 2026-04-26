@@ -1317,6 +1317,177 @@ textarea {
   min-width: 0;
 }
 
+.month-close-workspace {
+  gap: 14px;
+}
+
+.month-close-toolbar .panel-header {
+  align-items: flex-start;
+}
+
+.month-close-toolbar input {
+  min-width: 142px;
+}
+
+.month-close-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  min-width: 0;
+}
+
+.month-close-main {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.month-close-period-panel,
+.month-close-checks-panel {
+  min-width: 0;
+}
+
+.month-close-period-list {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.month-close-period-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 72px;
+  border-color: #d9dde3;
+  background: #ffffff;
+  color: #344054;
+  padding: 10px;
+  text-align: left;
+  white-space: normal;
+}
+
+.month-close-period-item:hover:not(:disabled) {
+  border-color: #8ecac4;
+  background: #f2f8f7;
+  color: #17202a;
+}
+
+.month-close-period-item-active,
+.month-close-period-item-active:hover:not(:disabled) {
+  border-color: #1f5e5a;
+  background: #eef7f6;
+  color: #17202a;
+}
+
+.month-close-period-item small {
+  grid-column: 1 / -1;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.month-close-status-bar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.month-close-status-card {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid #d9dde3;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.month-close-status-card span,
+.month-close-status-card small,
+.month-close-muted-line {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.month-close-status-card strong {
+  color: #17202a;
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.month-close-check-table {
+  min-width: 1120px;
+}
+
+.month-close-check-table th:nth-child(1),
+.month-close-check-table td:nth-child(1),
+.month-close-check-table th:nth-child(6),
+.month-close-check-table td:nth-child(6) {
+  width: 88px;
+}
+
+.month-close-check-table th:nth-child(2),
+.month-close-check-table td:nth-child(2),
+.month-close-check-table th:nth-child(3),
+.month-close-check-table td:nth-child(3),
+.month-close-check-table th:nth-child(4),
+.month-close-check-table td:nth-child(4) {
+  width: 140px;
+}
+
+.month-close-check-table th:nth-child(7),
+.month-close-check-table td:nth-child(7) {
+  width: 310px;
+}
+
+.month-close-muted-line {
+  display: block;
+  margin-top: 4px;
+}
+
+.month-close-message {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: #344054;
+  line-height: 1.45;
+}
+
+.month-close-message small {
+  color: #667085;
+}
+
+.month-close-check-actions {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.month-close-check-actions select,
+.month-close-check-actions input {
+  width: 100%;
+  min-width: 0;
+}
+
+.month-close-check-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.month-close-check-action-buttons button {
+  min-height: 32px;
+  padding-inline: 10px;
+  font-size: 12px;
+}
+
 .review-workspace {
   display: grid;
   grid-template-columns: minmax(360px, 0.85fr) minmax(560px, 1.15fr);
@@ -1613,6 +1784,11 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .month-close-grid,
+  .month-close-status-bar {
+    grid-template-columns: 1fr;
+  }
+
   .report-workspace-toolbar {
     grid-template-columns: 1fr;
   }
@@ -1671,6 +1847,7 @@ textarea {
   .master-data-form,
   .period-lock-form,
   .period-lock-unlock-form,
+  .month-close-toolbar .header-actions,
   .master-data-table-tools,
   .review-workspace,
   .review-detail-grid,

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "./layout/AppShell";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { MasterDataPage } from "./pages/MasterDataPage";
-import { PeriodLocksPage } from "./pages/PeriodLocksPage";
+import { MonthClosePage } from "./pages/MonthClosePage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { ReviewCenterPage } from "./pages/ReviewCenterPage";
 import { WorkspacePage } from "./pages/WorkspacePage";
@@ -72,8 +72,8 @@ export function App() {
       {session.status === "authenticated" && activePageKey === "master-data" ? (
         <MasterDataPage capabilities={session.capabilities} />
       ) : null}
-      {session.status === "authenticated" && activePageKey === "period-locks" ? (
-        <PeriodLocksPage capabilities={session.capabilities} />
+      {session.status === "authenticated" && activePageKey === "month-close" ? (
+        <MonthClosePage capabilities={session.capabilities} />
       ) : null}
     </AppShell>
   );

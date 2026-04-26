@@ -37,9 +37,9 @@ const pageHeaderMetadata: Record<PageKey, PageHeaderMetadata> = {
     title: "基础资料治理",
     description: "维护人员、项目、商户、账户、币种和管理科目。"
   },
-  "period-locks": {
-    title: "期间锁账",
-    description: "锁定已完成期间，防止历史期间继续产生过账变化。"
+  "month-close": {
+    title: "对账月结",
+    description: "运行月结检查，处理异常项，并确认期间进入锁账前状态。"
   }
 };
 

@@ -15,7 +15,7 @@ const navigationItems: NavigationItem[] = [
   { key: "review", label: "审核中心", capability: "documents.approve" },
   { key: "reports", label: "报表中心", capability: "reports.view" },
   { key: "master-data", label: "基础资料", capability: "masterData.view" },
-  { key: "period-locks", label: "锁账月结", capability: "periodLocks.view" }
+  { key: "month-close", label: "对账月结", capability: "periodLocks.view" }
 ];
 
 export function canUse(session: SessionState, capability: Capability): boolean {

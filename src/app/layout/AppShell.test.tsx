@@ -22,7 +22,7 @@ const pages: NavigationItem[] = [
   { key: "workspace", label: "工作台", capability: "session.view" },
   { key: "documents", label: "业务单据", capability: "documents.view" },
   { key: "master-data", label: "基础资料", capability: "masterData.view" },
-  { key: "period-locks", label: "锁账月结", capability: "periodLocks.view" }
+  { key: "month-close", label: "对账月结", capability: "periodLocks.view" }
 ];
 
 describe("AppShell", () => {
@@ -57,7 +57,7 @@ describe("AppShell", () => {
   it.each([
     ["documents", "单据中心", "创建、提交、查看和跟踪业务单据。"],
     ["master-data", "基础资料治理", "维护人员、项目、商户、账户、币种和管理科目。"],
-    ["period-locks", "期间锁账", "锁定已完成期间，防止历史期间继续产生过账变化。"]
+    ["month-close", "对账月结", "运行月结检查，处理异常项，并确认期间进入锁账前状态。"]
   ] satisfies Array<[PageKey, string, string]>)("renders formal page header metadata for %s", (activePage, title, description) => {
     renderShell(activePage);
 
