@@ -36,11 +36,16 @@
   - Commit：`0747b47 test: cover month close check rules`
 - [x] Task 2 GREEN：月结检查规则纯函数已实现。
   - Commit：本次提交 `feat: add month close check rules`
+- [x] Task 3：月结服务编排已完成。
+- [x] Task 4：月结检查 API 已完成。
+- [x] Task 5：月结中心前端 MVP 已完成。
+  - RED Commit：`a7db339 test: cover month close frontend MVP`
+  - GREEN Commit：`b6d0aeb feat: add month close frontend MVP`
 
 当前注意事项：
 
 - Task 1 无需重做。
-- Task 2 已进入 GREEN 验证，下一步是提交后进入 Task 3 服务编排。
+- Task 5 已完成，下一步进入 Task 6：对账汇总 Tabs。
 
 ## 3. 源文档
 
@@ -311,22 +316,22 @@ git diff --check
 
 ## 10. Task 5：月结中心前端 MVP
 
-状态：待做。
+状态：已完成。
 
 文件：
 
-- [ ] `src/app/pages/MonthClosePage.tsx`
-- [ ] `src/app/pages/month-close/monthCloseTypes.ts`
-- [ ] `src/app/pages/month-close/monthCloseModel.ts`
-- [ ] `src/app/pages/month-close/monthCloseModel.test.ts`
-- [ ] `src/app/pages/month-close/MonthClosePeriodList.tsx`
-- [ ] `src/app/pages/month-close/MonthCloseStatusBar.tsx`
-- [ ] `src/app/pages/month-close/MonthCloseChecksTab.tsx`
-- [ ] `src/app/session/sessionTypes.ts`
-- [ ] `src/app/session/sessionModel.ts`
-- [ ] `src/app/session/sessionModel.test.ts`
-- [ ] `src/app/App.tsx`
-- [ ] `src/app/styles.css`
+- [x] `src/app/pages/MonthClosePage.tsx`
+- [x] `src/app/pages/month-close/monthCloseTypes.ts`
+- [x] `src/app/pages/month-close/monthCloseModel.ts`
+- [x] `src/app/pages/month-close/monthCloseModel.test.ts`
+- [x] `src/app/pages/month-close/MonthClosePeriodList.tsx`
+- [x] `src/app/pages/month-close/MonthCloseStatusBar.tsx`
+- [x] `src/app/pages/month-close/MonthCloseChecksTab.tsx`
+- [x] `src/app/session/sessionTypes.ts`
+- [x] `src/app/session/sessionModel.ts`
+- [x] `src/app/session/sessionModel.test.ts`
+- [x] `src/app/App.tsx`
+- [x] `src/app/styles.css`
 
 范围：
 
@@ -346,12 +351,26 @@ git diff --check
 - 不做锁账按钮。
 - 不做快照归档。
 
+TDD 步骤：
+
+- [x] RED：补 `monthCloseModel`、导航和 App 入口失败测试。提交：`a7db339 test: cover month close frontend MVP`。
+- [x] GREEN：实现月结中心页面、期间列表、状态条、检查清单、运行检查和检查项处理动作。提交：`b6d0aeb feat: add month close frontend MVP`。
+- [x] 审查：确认一级导航为 `对账月结`，处理动作通过 API PATCH，分配责任人会进入 `assigned` 状态；前端不暴露锁账按钮和快照归档。
+- [x] 提交。
+
 验收命令：
 
 ```bash
 npm test -- src/app/pages/month-close/monthCloseModel.test.ts src/app/session/sessionModel.test.ts src/app/App.test.tsx
 npx tsc --noEmit
 npm run build
+```
+
+已执行补充验收：
+
+```bash
+npm test -- src/app/layout/AppShell.test.tsx
+npm test
 ```
 
 ## 11. Task 6：对账汇总 Tabs
