@@ -60,6 +60,20 @@ export interface MonthCloseReportSnapshotRow {
   created_at: string;
 }
 
+export interface MonthClosePeriodRow {
+  period: string;
+  latest_run_id: string | null;
+  latest_run_status: MonthCloseRunStatus | null;
+  can_lock: number;
+  critical_count: number;
+  warning_count: number;
+  info_count: number;
+  locked_at: string | null;
+  locked_by: string | null;
+  snapshot_count: number;
+  latest_snapshot_version: number | null;
+}
+
 export interface CreateRunInput {
   period: string;
   startedBy: string;
@@ -232,6 +246,53 @@ export class MonthCloseRepository {
           ORDER BY started_at DESC, id DESC
         `)
         .bind(period)
+    );
+  }
+
+  listPeriods(): Promise<MonthClosePeriodRow[]> {
+    return all<MonthClosePeriodRow>(
+      this.db.prepare(`
+        WITH periods AS (
+          SELECT period FROM documents
+          UNION
+          SELECT period FROM month_close_runs
+          UNION
+          SELECT period FROM period_locks
+          UNION
+          SELECT period FROM month_close_snapshots
+        ),
+        ranked_runs AS (
+          SELECT
+            id, period, status, can_lock, critical_count, warning_count, info_count,
+            ROW_NUMBER() OVER (PARTITION BY period ORDER BY started_at DESC, id DESC) AS run_rank
+          FROM month_close_runs
+        ),
+        snapshot_counts AS (
+          SELECT
+            period,
+            COUNT(*) AS snapshot_count,
+            MAX(version) AS latest_snapshot_version
+          FROM month_close_snapshots
+          GROUP BY period
+        )
+        SELECT
+          p.period AS period,
+          r.id AS latest_run_id,
+          r.status AS latest_run_status,
+          COALESCE(r.can_lock, 0) AS can_lock,
+          COALESCE(r.critical_count, 0) AS critical_count,
+          COALESCE(r.warning_count, 0) AS warning_count,
+          COALESCE(r.info_count, 0) AS info_count,
+          pl.locked_at AS locked_at,
+          pl.locked_by AS locked_by,
+          COALESCE(sc.snapshot_count, 0) AS snapshot_count,
+          sc.latest_snapshot_version AS latest_snapshot_version
+        FROM periods p
+        LEFT JOIN ranked_runs r ON r.period = p.period AND r.run_rank = 1
+        LEFT JOIN period_locks pl ON pl.period = p.period
+        LEFT JOIN snapshot_counts sc ON sc.period = p.period
+        ORDER BY p.period DESC
+      `)
     );
   }
 

@@ -146,6 +146,15 @@ async function createSqliteReportDb(): Promise<{ db: D1Database; exec: (sql: str
       status TEXT NOT NULL DEFAULT 'active',
       created_at TEXT NOT NULL DEFAULT '2026-04-25T00:00:00Z'
     );
+
+    CREATE TABLE merchants (
+      id TEXT PRIMARY KEY,
+      code TEXT NOT NULL DEFAULT '',
+      name TEXT NOT NULL DEFAULT '',
+      project_id TEXT NOT NULL,
+      merchant_type TEXT,
+      status TEXT NOT NULL DEFAULT 'active'
+    );
   `);
 
   return {
@@ -862,6 +871,126 @@ describe("ReportRepository", () => {
           amount_minor: null,
           usdt_cost_minor: null,
           message: "Document has stayed pending beyond the stale threshold"
+        }
+      ]);
+    } finally {
+      sqliteDb.close();
+    }
+  });
+
+  it("executes month close source queries with rule input shapes", async () => {
+    const sqliteDb = await createSqliteReportDb();
+    try {
+      sqliteDb.exec(`
+        INSERT INTO accounts (
+          id, name, account_type, currency_code, owner_person_id, is_company_account, allow_negative
+        ) VALUES
+          ('acct_company', 'Company AED', 'currency_reserve', 'AED', NULL, 1, 0),
+          ('acct_petty', 'Petty Cash', 'petty_cash', 'AED', 'person_ops', 0, 1);
+
+        INSERT INTO merchants (id, code, name, project_id) VALUES
+          ('merchant_1', 'M1', 'Merchant 1', 'proj_1'),
+          ('merchant_2', 'M2', 'Merchant 2', 'proj_2');
+
+        INSERT INTO documents (
+          id, document_type, action_type, business_date, period, operator_person_id,
+          project_id, merchant_id, category_id, status, original_document_id, created_at, submitted_at
+        ) VALUES
+          ('doc_pending', 'project_income', 'normal', '2026-04-02', '2026-04', 'person_ops', 'proj_1', NULL, NULL, 'pending', NULL, '2026-04-02T00:00:00Z', '2026-04-02T01:00:00Z'),
+          ('doc_approved_balance', 'account_transfer', 'normal', '2026-04-03', '2026-04', 'person_ops', 'proj_1', NULL, NULL, 'approved', NULL, '2026-04-03T00:00:00Z', NULL),
+          ('doc_pending_cost', 'petty_cash_reimbursement', 'normal', '2026-04-04', '2026-04', 'person_ops', 'proj_1', NULL, 'cat_expense', 'approved', NULL, '2026-04-04T00:00:00Z', NULL),
+          ('doc_loan', 'loan_out', 'normal', '2026-04-05', '2026-04', 'person_ops', 'proj_1', NULL, NULL, 'approved', NULL, '2026-04-05T00:00:00Z', NULL),
+          ('doc_income_missing_merchant', 'project_income', 'normal', '2026-04-06', '2026-04', 'person_ops', 'proj_1', NULL, NULL, 'approved', NULL, '2026-04-06T00:00:00Z', NULL),
+          ('doc_income_mismatch', 'project_income', 'normal', '2026-04-07', '2026-04', 'person_ops', 'proj_1', 'merchant_2', NULL, 'approved', NULL, '2026-04-07T00:00:00Z', NULL);
+
+        INSERT INTO account_entries (id, document_id, account_id, currency_code, amount_minor, entry_date) VALUES
+          ('entry_company', 'doc_approved_balance', 'acct_company', 'AED', -3000, '2026-04-03'),
+          ('entry_petty', 'doc_pending_cost', 'acct_petty', 'AED', -500, '2026-04-04');
+
+        INSERT INTO pending_cost_matches (
+          id, document_id, person_id, account_id, currency_code, amount_minor,
+          remaining_amount_minor, expense_date, status, created_at
+        ) VALUES
+          ('pending_1', 'doc_pending_cost', 'person_ops', 'acct_petty', 'AED', 2000, 1500, '2026-04-04', 'open', '2026-04-04T00:00:00Z');
+
+        INSERT INTO loan_items (
+          id, source_document_id, borrower_person_id, currency_code,
+          remaining_amount_minor, remaining_usdt_cost_minor, loan_date, status, created_at
+        ) VALUES
+          ('loan_1', 'doc_loan', 'person_borrower', 'USDT', 9000, 9000, '2026-04-05', 'open', '2026-04-05T00:00:00Z');
+      `);
+
+      const repo = new ReportRepository(sqliteDb.db);
+
+      await expect(repo.documentWorkflowRows("2026-04")).resolves.toEqual([
+        {
+          id: "doc_pending",
+          status: "pending",
+          period: "2026-04",
+          businessDate: "2026-04-02",
+          createdAt: "2026-04-02T00:00:00Z",
+          submittedAt: "2026-04-02T01:00:00Z"
+        }
+      ]);
+      await expect(repo.accountBalanceRowsForMonthClose("2026-04")).resolves.toEqual([
+        {
+          accountId: "acct_company",
+          accountType: "currency_reserve",
+          ownerPersonId: null,
+          isCompanyAccount: true,
+          allowNegative: false,
+          currencyCode: "AED",
+          balanceMinor: -3000
+        },
+        {
+          accountId: "acct_petty",
+          accountType: "petty_cash",
+          ownerPersonId: "person_ops",
+          isCompanyAccount: false,
+          allowNegative: true,
+          currencyCode: "AED",
+          balanceMinor: -500
+        }
+      ]);
+      await expect(repo.pendingCostRowsForMonthClose("2026-04")).resolves.toEqual([
+        expect.objectContaining({
+          id: "pending_1",
+          documentId: "doc_pending_cost",
+          personId: "person_ops",
+          accountId: "acct_petty",
+          currencyCode: "AED",
+          remainingAmountMinor: 1500,
+          expenseDate: "2026-04-04",
+          ageDays: expect.any(Number)
+        })
+      ]);
+      await expect(repo.loanAgingRowsForMonthClose("2026-04")).resolves.toEqual([
+        expect.objectContaining({
+          loanItemId: "loan_1",
+          borrowerPersonId: "person_borrower",
+          currencyCode: "USDT",
+          remainingAmountMinor: 9000,
+          remainingUsdtCostMinor: 9000,
+          loanDate: "2026-04-05",
+          ageDays: expect.any(Number)
+        })
+      ]);
+      await expect(repo.projectIntegrityRows("2026-04")).resolves.toEqual([
+        {
+          documentId: "doc_income_missing_merchant",
+          documentType: "project_income",
+          businessDate: "2026-04-06",
+          projectId: "proj_1",
+          merchantId: null,
+          merchantProjectId: null
+        },
+        {
+          documentId: "doc_income_mismatch",
+          documentType: "project_income",
+          businessDate: "2026-04-07",
+          projectId: "proj_1",
+          merchantId: "merchant_2",
+          merchantProjectId: "proj_2"
         }
       ]);
     } finally {

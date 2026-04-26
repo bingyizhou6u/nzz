@@ -222,7 +222,16 @@ describe("month close API", () => {
         })
       }),
       env: env({
-        firstRows: [checkResultRow(), checkResultRow({ status: "waived", resolution_note: "Known timing issue; keep visible for next month." })],
+        firstRows: [
+          checkResultRow({ severity: "warning", check_type: "negative_petty_cash", entity_type: "petty_cash_account" }),
+          checkResultRow({
+            severity: "warning",
+            check_type: "negative_petty_cash",
+            entity_type: "petty_cash_account",
+            status: "waived",
+            resolution_note: "Known timing issue; keep visible for next month."
+          })
+        ],
         onBind: (values, sql) => calls.push({ sql, values })
       }),
       params: { id: "check_1" },

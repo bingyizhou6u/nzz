@@ -9,6 +9,13 @@ import {
 import { listDocumentEntryOptions, listOriginalDocuments } from "../api/documentEntryOptions";
 import { listCurrencies } from "../api/masterData";
 import { getMe } from "../api/me";
+import {
+  getMonthCloseOverview,
+  listMonthCloseChecks,
+  listMonthClosePeriods,
+  runMonthCloseChecks,
+  updateMonthCloseCheckResult
+} from "../api/monthClose";
 import { createPeriodLock, deletePeriodLock, listPeriodLocks } from "../api/periodLocks";
 import {
   approveReviewDocument,
@@ -123,6 +130,11 @@ const routes: Route[] = [
   defineRoute("GET", "/api/period-locks", listPeriodLocks, "periodLocks.view"),
   defineRoute("POST", "/api/period-locks", createPeriodLock, "periodLocks.lock"),
   defineRoute("DELETE", "/api/period-locks/:period", deletePeriodLock, "periodLocks.unlock"),
+  defineRoute("GET", "/api/month-close/periods", listMonthClosePeriods, "periodLocks.view"),
+  defineRoute("GET", "/api/month-close/:period", getMonthCloseOverview, "periodLocks.view"),
+  defineRoute("POST", "/api/month-close/:period/checks/run", runMonthCloseChecks, "periodLocks.lock"),
+  defineRoute("GET", "/api/month-close/:period/checks", listMonthCloseChecks, "periodLocks.view"),
+  defineRoute("PATCH", "/api/month-close/check-results/:id", updateMonthCloseCheckResult, "periodLocks.lock"),
   defineRoute("GET", "/api/master-data", listMasterDataSnapshot, "masterData.view"),
   defineRoute("GET", "/api/master-data/reference-summary", masterDataReferenceSummary, "masterData.view"),
   defineRoute("GET", "/api/master-data/people", listMasterDataPeople, "masterData.view"),

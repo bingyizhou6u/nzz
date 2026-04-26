@@ -1,4 +1,11 @@
 import { all } from "./db";
+import type {
+  AccountBalanceCheckRow,
+  DocumentWorkflowCheckRow,
+  LoanAgingCheckRow,
+  PendingCostCheckRow,
+  ProjectIntegrityCheckRow
+} from "../services/monthCloseChecks";
 
 export interface AccountBalanceRow {
   account_id: string;
@@ -716,6 +723,138 @@ export class ReportRepository {
           ...staleLoanFilter.bindings,
           staleDays
         )
+    );
+  }
+
+  documentWorkflowRows(period: string): Promise<DocumentWorkflowCheckRow[]> {
+    return all<DocumentWorkflowCheckRow>(
+      this.db
+        .prepare(`
+          SELECT
+            d.id AS id,
+            d.status AS status,
+            d.period AS period,
+            d.business_date AS businessDate,
+            d.created_at AS createdAt,
+            d.submitted_at AS submittedAt
+          FROM documents d
+          WHERE d.period = ?
+            AND d.status IN ('draft', 'pending', 'rejected')
+          ORDER BY d.business_date, d.created_at, d.id
+        `)
+        .bind(period)
+    );
+  }
+
+  async accountBalanceRowsForMonthClose(period: string): Promise<AccountBalanceCheckRow[]> {
+    const rows = await all<
+      Omit<AccountBalanceCheckRow, "isCompanyAccount" | "allowNegative"> & {
+        isCompanyAccount: number;
+        allowNegative: number;
+      }
+    >(
+      this.db
+        .prepare(`
+          SELECT
+            a.id AS accountId,
+            a.account_type AS accountType,
+            a.owner_person_id AS ownerPersonId,
+            a.is_company_account AS isCompanyAccount,
+            a.allow_negative AS allowNegative,
+            ae.currency_code AS currencyCode,
+            COALESCE(SUM(ae.amount_minor), 0) AS balanceMinor
+          FROM account_entries ae
+          JOIN documents d ON d.id = ae.document_id
+          JOIN accounts a ON a.id = ae.account_id
+          WHERE d.status = 'approved'
+            AND d.period <= ?
+          GROUP BY
+            a.id,
+            a.account_type,
+            a.owner_person_id,
+            a.is_company_account,
+            a.allow_negative,
+            ae.currency_code
+          ORDER BY a.id, ae.currency_code
+        `)
+        .bind(period)
+    );
+
+    return rows.map((row) => ({
+      ...row,
+      isCompanyAccount: row.isCompanyAccount === 1,
+      allowNegative: row.allowNegative === 1
+    }));
+  }
+
+  pendingCostRowsForMonthClose(period: string): Promise<PendingCostCheckRow[]> {
+    return all<PendingCostCheckRow>(
+      this.db
+        .prepare(`
+          SELECT
+            pcm.id AS id,
+            pcm.document_id AS documentId,
+            pcm.person_id AS personId,
+            pcm.account_id AS accountId,
+            pcm.currency_code AS currencyCode,
+            pcm.remaining_amount_minor AS remainingAmountMinor,
+            pcm.expense_date AS expenseDate,
+            CAST(julianday('now') - julianday(pcm.expense_date) AS INTEGER) AS ageDays
+          FROM pending_cost_matches pcm
+          JOIN documents d ON d.id = pcm.document_id
+          WHERE d.status = 'approved'
+            AND d.period <= ?
+            AND pcm.status IN ('open', 'partial')
+            AND pcm.remaining_amount_minor > 0
+          ORDER BY pcm.expense_date, pcm.created_at, pcm.id
+        `)
+        .bind(period)
+    );
+  }
+
+  loanAgingRowsForMonthClose(period: string): Promise<LoanAgingCheckRow[]> {
+    return all<LoanAgingCheckRow>(
+      this.db
+        .prepare(`
+          SELECT
+            li.id AS loanItemId,
+            li.borrower_person_id AS borrowerPersonId,
+            li.currency_code AS currencyCode,
+            li.remaining_amount_minor AS remainingAmountMinor,
+            li.remaining_usdt_cost_minor AS remainingUsdtCostMinor,
+            li.loan_date AS loanDate,
+            CAST(julianday('now') - julianday(li.loan_date) AS INTEGER) AS ageDays
+          FROM loan_items li
+          JOIN documents d ON d.id = li.source_document_id
+          WHERE d.status = 'approved'
+            AND d.period <= ?
+            AND li.status IN ('open', 'partial')
+            AND li.remaining_amount_minor > 0
+          ORDER BY li.loan_date, li.created_at, li.id
+        `)
+        .bind(period)
+    );
+  }
+
+  projectIntegrityRows(period: string): Promise<ProjectIntegrityCheckRow[]> {
+    return all<ProjectIntegrityCheckRow>(
+      this.db
+        .prepare(`
+          SELECT
+            d.id AS documentId,
+            d.document_type AS documentType,
+            d.business_date AS businessDate,
+            d.project_id AS projectId,
+            d.merchant_id AS merchantId,
+            m.project_id AS merchantProjectId
+          FROM documents d
+          LEFT JOIN merchants m ON m.id = d.merchant_id
+          WHERE d.status = 'approved'
+            AND d.period = ?
+            AND d.document_type = 'project_income'
+          ORDER BY d.business_date, d.id
+        `)
+        .bind(period)
     );
   }
 
