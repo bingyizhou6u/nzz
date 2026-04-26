@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  getMonthCloseReportSnapshot,
   getMonthCloseOverview,
   getMonthCloseReconciliation,
   listMonthCloseChecks,
   listMonthClosePeriods,
+  listMonthCloseSnapshots,
   lockMonthClosePeriod,
   runMonthCloseChecks,
   unlockMonthClosePeriod,
@@ -111,6 +113,84 @@ describe("month close API", () => {
         snapshots: [expect.objectContaining({ id: "snapshot_1" })]
       }
     });
+  });
+
+  it("lists month close snapshots for an authorized period viewer", async () => {
+    const response = await listMonthCloseSnapshots({
+      request: new Request("https://ledger.test/api/month-close/2026-04/snapshots"),
+      env: env({
+        rows: [
+          snapshotRow({ id: "snapshot_2", version: 2, locked_at: "2026-05-01T12:00:00.000Z" }),
+          snapshotRow({ id: "snapshot_1", version: 1 })
+        ]
+      }),
+      params: { period: "2026-04" },
+      actor: manager
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        expect.objectContaining({ id: "snapshot_2", period: "2026-04", version: 2 }),
+        expect.objectContaining({ id: "snapshot_1", period: "2026-04", version: 1 })
+      ]
+    });
+  });
+
+  it("routes month close snapshot lists through the period viewer gate", async () => {
+    const preparedSql: string[] = [];
+    const response = await route(
+      new Request("https://ledger.test/api/month-close/2026-04/snapshots"),
+      env({
+        firstRow: actorRow("readonly"),
+        onPrepare: (sql) => preparedSql.push(sql)
+      })
+    );
+
+    expect(response.status).toBe(403);
+    expect(preparedSql.some((sql) => sql.toLowerCase().includes("month_close_snapshots"))).toBe(false);
+  });
+
+  it("returns parsed rows for a month close report snapshot", async () => {
+    const response = await getMonthCloseReportSnapshot({
+      request: new Request("https://ledger.test/api/month-close/snapshots/snapshot_1/reports/projectIncome"),
+      env: env({
+        firstRows: [
+          snapshotRow(),
+          reportSnapshotRow({
+            report_key: "projectIncome",
+            row_count: 1,
+            data_json: JSON.stringify([{ period: "2026-04", project_id: "project_alpha", income_usdt_minor: 50000 }])
+          })
+        ]
+      }),
+      params: { id: "snapshot_1", reportKey: "projectIncome" },
+      actor: readonly
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        snapshot: expect.objectContaining({ id: "snapshot_1", version: 1 }),
+        report: expect.objectContaining({
+          report_key: "projectIncome",
+          row_count: 1,
+          rows: [expect.objectContaining({ project_id: "project_alpha", income_usdt_minor: 50000 })]
+        })
+      }
+    });
+  });
+
+  it("returns 404 when a report snapshot is missing", async () => {
+    const response = await getMonthCloseReportSnapshot({
+      request: new Request("https://ledger.test/api/month-close/snapshots/snapshot_1/reports/projectIncome"),
+      env: env({ firstRows: [snapshotRow(), null] }),
+      params: { id: "snapshot_1", reportKey: "projectIncome" },
+      actor: readonly
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: "Month close report snapshot not found" });
   });
 
   it("runs checks for finance managers and persists generated results", async () => {
@@ -557,5 +637,31 @@ function periodLockRow() {
     locked_by: "manager_1",
     locked_at: "2026-04-30T11:00:00.000Z",
     note: "closed"
+  };
+}
+
+function snapshotRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "snapshot_1",
+    period: "2026-04",
+    version: 1,
+    run_id: "run_1",
+    locked_by: "manager_1",
+    locked_at: "2026-04-30T11:00:00.000Z",
+    note: "closed",
+    summary_json: JSON.stringify({ criticalCount: 0, warningCount: 0, infoCount: 0 }),
+    ...overrides
+  };
+}
+
+function reportSnapshotRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "report_snapshot_1",
+    snapshot_id: "snapshot_1",
+    report_key: "projectIncome",
+    row_count: 0,
+    data_json: "[]",
+    created_at: "2026-04-30T11:00:00.000Z",
+    ...overrides
   };
 }

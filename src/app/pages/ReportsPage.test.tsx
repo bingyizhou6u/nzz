@@ -185,6 +185,93 @@ describe("ReportsPage", () => {
     expect(anchorClick).toHaveBeenCalledTimes(2);
     expect(revokeObjectUrl).toHaveBeenCalledTimes(2);
   });
+
+  it("switches report data from realtime queries to a locked month close snapshot", async () => {
+    const fetchMock = reportFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = await renderReportsPage();
+
+    await waitFor(() => {
+      expect(container.querySelector(".status-slot")?.textContent).toContain("已更新");
+    });
+
+    await act(async () => {
+      setInputValue(inputByLabel(container, "期间"), "2026-04");
+    });
+
+    await waitFor(() => {
+      const requestedUrls = fetchMock.mock.calls.map(([input]) => String(input));
+      expect(requestedUrls).toContain("/api/month-close/2026-04/snapshots");
+    });
+
+    const callsBeforeSnapshotMode = fetchMock.mock.calls.length;
+
+    await act(async () => {
+      buttonByText(container, "已结账快照").click();
+    });
+
+    await waitFor(() => {
+      expect(reportDetailRegion(container).textContent).toContain("acct_snapshot");
+    });
+
+    const requestedAfterSnapshotMode = fetchMock.mock.calls.slice(callsBeforeSnapshotMode).map(([input]) => String(input));
+    expect(requestedAfterSnapshotMode).toContain("/api/month-close/snapshots/snapshot_1/reports/accountBalances");
+    expect(requestedAfterSnapshotMode.some((url) => url.startsWith("/api/reports/account-balances"))).toBe(false);
+    expect(container.querySelector(".status-slot")?.textContent).toContain("快照 v1");
+  });
+
+  it("uses month close snapshot filenames when exporting snapshot reports", async () => {
+    const downloads: string[] = [];
+    const createObjectUrl = vi.fn(() => "blob:report");
+    const revokeObjectUrl = vi.fn();
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push(this.download);
+    });
+    Object.defineProperty(globalThis.URL, "createObjectURL", { configurable: true, value: createObjectUrl });
+    Object.defineProperty(globalThis.URL, "revokeObjectURL", { configurable: true, value: revokeObjectUrl });
+    vi.stubGlobal("fetch", reportFetch());
+
+    const container = await renderReportsPage();
+
+    await waitFor(() => {
+      expect(container.querySelector(".status-slot")?.textContent).toContain("已更新");
+    });
+
+    await act(async () => {
+      setInputValue(inputByLabel(container, "期间"), "2026-04");
+    });
+
+    await waitFor(() => {
+      expect(selectByLabel(container, "快照版本").textContent).toContain("2026-04 v1");
+    });
+
+    await act(async () => {
+      buttonByText(container, "已结账快照").click();
+    });
+
+    await waitFor(() => {
+      expect(reportDetailRegion(container).textContent).toContain("acct_snapshot");
+    });
+
+    await act(async () => {
+      buttonByText(container, "项目经营4 张表").click();
+    });
+
+    await act(async () => {
+      buttonByText(container, "导出CSV").click();
+    });
+
+    await act(async () => {
+      buttonByText(container, "导出XLSX").click();
+    });
+
+    expect(downloads).toContain("项目经营报表-2026-04-v1.csv");
+    expect(downloads).toContain("月结包-2026-04-v1.xlsx");
+    expect(createObjectUrl).toHaveBeenCalledTimes(2);
+    expect(anchorClick).toHaveBeenCalledTimes(2);
+    expect(revokeObjectUrl).toHaveBeenCalledTimes(2);
+  });
 });
 
 type FetchHandler = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -193,6 +280,23 @@ function reportFetch() {
   return vi.fn<FetchHandler>().mockImplementation(async (input) => {
     const path = String(input);
     if (path === "/api/reports/filter-options") return jsonResponse({ data: filterOptions });
+    if (path === "/api/month-close/2026-04/snapshots") return jsonResponse({ data: snapshotOptions });
+    if (path.startsWith("/api/month-close/snapshots/snapshot_1/reports/")) {
+      const reportKey = path.split("/").at(-1) ?? "";
+      return jsonResponse({
+        data: {
+          snapshot: snapshotOptions[0],
+          report: {
+            id: `snapshot_report_${reportKey}`,
+            snapshot_id: "snapshot_1",
+            report_key: reportKey,
+            row_count: snapshotReportRows[reportKey]?.length ?? 0,
+            rows: snapshotReportRows[reportKey] ?? [],
+            created_at: "2026-04-30T11:00:00.000Z"
+          }
+        }
+      });
+    }
     if (path.startsWith("/api/reports/account-balances")) return jsonResponse({ data: reportRows.accountBalances });
     if (path.startsWith("/api/reports/lots")) return jsonResponse({ data: reportRows.lotBalances });
     if (path.startsWith("/api/reports/lot-movements")) return jsonResponse({ data: reportRows.lotMovements });
@@ -306,6 +410,56 @@ const reportRows = {
   ]
 };
 
+const snapshotOptions = [
+  {
+    id: "snapshot_1",
+    period: "2026-04",
+    version: 1,
+    run_id: "run_1",
+    locked_by: "manager_1",
+    locked_at: "2026-04-30T11:00:00.000Z",
+    note: "closed",
+    summary_json: JSON.stringify({ criticalCount: 0, warningCount: 0, infoCount: 0 })
+  }
+];
+
+const snapshotReportRows: Record<string, object[]> = {
+  accountBalances: [{ account_id: "acct_snapshot", currency_code: "USDT", balance_minor: 9900 }],
+  lotBalances: [],
+  lotMovements: [],
+  pettyCashPending: [],
+  pendingCosts: [],
+  loanBalances: [],
+  loanAging: [],
+  projectProfitLoss: [
+    {
+      period: "2026-04",
+      project_id: "project_snapshot",
+      income_usdt_minor: 7000,
+      expense_usdt_minor: 1200,
+      pending_expense_minor: 0,
+      net_usdt_minor: 5800,
+      cost_status: "complete"
+    }
+  ],
+  projectIncome: [
+    {
+      period: "2026-04",
+      project_id: "project_snapshot",
+      merchant_id: "merchant_snapshot",
+      category_id: "cat_income",
+      currency_code: "USDT",
+      income_amount_minor: 7000,
+      income_usdt_minor: 7000
+    }
+  ],
+  merchantIncome: [],
+  expenseDetails: [],
+  expenseSummary: [],
+  monthlyOperatingSummary: [],
+  exceptionChecks: []
+};
+
 async function renderReportsPage() {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -379,4 +533,19 @@ function selectByLabel(container: HTMLElement, label: string): HTMLSelectElement
 function setSelectValue(select: HTMLSelectElement, value: string) {
   select.value = value;
   select.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function inputByLabel(container: HTMLElement, label: string): HTMLInputElement {
+  const labels = Array.from(container.querySelectorAll("label"));
+  const labelElement = labels.find((candidate) => candidate.textContent?.replace(/\s+/g, " ").trim().startsWith(label));
+  const input = labelElement?.querySelector("input");
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error(`Input not found: ${label}`);
+  }
+  return input;
+}
+
+function setInputValue(input: HTMLInputElement, value: string) {
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
 }
