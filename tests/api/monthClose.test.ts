@@ -267,7 +267,11 @@ describe("month close API", () => {
               checkResultRow({ id: "check_warning", severity: "warning", status: "waived" })
             ];
           }
-          if (sql.includes("from documents d") && sql.includes("project_income_rows")) {
+          if (
+            sql.includes("from account_entries ae") &&
+            sql.includes("d.document_type = 'project_income'") &&
+            sql.includes("d.category_id as category_id")
+          ) {
             return [{ period: "2026-04", project_id: "project_alpha", income_usdt_minor: 50000 }];
           }
           return [];

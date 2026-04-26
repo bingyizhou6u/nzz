@@ -42,6 +42,30 @@ async function createSqliteMonthCloseDb(): Promise<{ db: D1Database; close: () =
     INSERT INTO people (id, name) VALUES
       ('person_finance', 'Finance'),
       ('person_manager', 'Manager');
+
+    CREATE TABLE period_locks (
+      period TEXT PRIMARY KEY,
+      locked_by TEXT NOT NULL,
+      locked_at TEXT NOT NULL,
+      note TEXT
+    );
+
+    CREATE TABLE audit_logs (
+      id TEXT PRIMARY KEY,
+      actor TEXT NOT NULL,
+      action TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      before_json TEXT,
+      after_json TEXT,
+      reason TEXT,
+      actor_person_id TEXT,
+      actor_email TEXT,
+      request_id TEXT,
+      ip_address TEXT,
+      user_agent TEXT,
+      created_at TEXT NOT NULL
+    );
   `);
   sqlite.exec(migration);
 
@@ -246,6 +270,77 @@ describe("MonthCloseRepository", () => {
         row_count: 1,
         data_json: JSON.stringify([{ project_id: "proj_1", net_usdt_minor: 5000 }])
       });
+    } finally {
+      sqliteDb.close();
+    }
+  });
+
+  it("locks periods with snapshot reports and audit in one repository batch", async () => {
+    const sqliteDb = await createSqliteMonthCloseDb();
+    try {
+      const repo = new MonthCloseRepository(sqliteDb.db);
+      const run = await repo.createRun({
+        period: "2026-04",
+        startedBy: "person_finance",
+        startedAt: "2026-04-30T10:00:00.000Z"
+      });
+
+      const snapshot = await repo.lockWithSnapshotAndAudit(
+        {
+          period: "2026-04",
+          version: 1,
+          runId: run.id,
+          lockedBy: "person_manager",
+          lockedAt: "2026-04-30T11:00:00.000Z",
+          note: "April close",
+          summary: { criticalCount: 0, warningCount: 0, infoCount: 0 },
+          reports: [
+            { reportKey: "monthCloseChecks", rows: [] },
+            { reportKey: "projectIncome", rows: [{ project_id: "project_alpha", income_usdt_minor: 50000 }] }
+          ],
+          createdAt: "2026-04-30T11:00:01.000Z"
+        },
+        sqliteDb.db
+          .prepare(
+            `INSERT INTO audit_logs (
+              id, actor, action, entity_type, entity_id, before_json, after_json, reason, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .bind(
+            "audit_1",
+            "person_manager",
+            "month_close.period.lock",
+            "month_close_period",
+            "2026-04",
+            null,
+            JSON.stringify({ period: "2026-04" }),
+            "April close",
+            "2026-04-30T11:00:01.000Z"
+          )
+      );
+
+      await expect(repo.getPeriodLock("2026-04")).resolves.toMatchObject({
+        period: "2026-04",
+        locked_by: "person_manager",
+        locked_at: "2026-04-30T11:00:00.000Z",
+        note: "April close"
+      });
+
+      await expect(repo.getReportSnapshot(snapshot.id, "projectIncome")).resolves.toMatchObject({
+        snapshot_id: snapshot.id,
+        report_key: "projectIncome",
+        row_count: 1,
+        data_json: JSON.stringify([{ project_id: "project_alpha", income_usdt_minor: 50000 }])
+      });
+
+      const auditRows = await sqliteDb.db.prepare("SELECT action, entity_type, entity_id FROM audit_logs").all();
+      expect(auditRows.results).toEqual([
+        {
+          action: "month_close.period.lock",
+          entity_type: "month_close_period",
+          entity_id: "2026-04"
+        }
+      ]);
     } finally {
       sqliteDb.close();
     }

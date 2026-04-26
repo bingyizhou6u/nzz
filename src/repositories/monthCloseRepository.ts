@@ -1,4 +1,5 @@
 import { all, first, newId, nowIso, run } from "./db";
+import { PeriodLockNotFoundError, type PeriodLockRow } from "./periodLockRepository";
 
 export type MonthCloseRunStatus = "running" | "completed" | "failed";
 export type MonthCloseSeverity = "critical" | "warning" | "info";
@@ -133,6 +134,8 @@ export interface CreateSnapshotInput {
   reports: CreateSnapshotReportInput[];
   createdAt?: string;
 }
+
+export interface LockWithSnapshotInput extends CreateSnapshotInput {}
 
 export class MonthCloseRepository {
   constructor(private readonly db: D1Database) {}
@@ -415,56 +418,56 @@ export class MonthCloseRepository {
     return row?.version ?? 1;
   }
 
-  async createSnapshotWithReports(input: CreateSnapshotInput): Promise<MonthCloseSnapshotRow> {
-    const snapshot: MonthCloseSnapshotRow = {
-      id: newId("month_close_snapshot"),
-      period: input.period,
-      version: input.version,
-      run_id: input.runId,
-      locked_by: input.lockedBy,
-      locked_at: input.lockedAt ?? nowIso(),
-      note: input.note,
-      summary_json: JSON.stringify(input.summary)
-    };
-    const createdAt = input.createdAt ?? nowIso();
-    const reportRows = input.reports.map((report) => ({
-      id: newId("month_close_report_snapshot"),
-      snapshot_id: snapshot.id,
-      report_key: report.reportKey,
-      row_count: report.rows.length,
-      data_json: JSON.stringify(report.rows),
-      created_at: createdAt
-    }));
+  getPeriodLock(period: string): Promise<PeriodLockRow | null> {
+    return first<PeriodLockRow>(
+      this.db.prepare("SELECT period, locked_by, locked_at, note FROM period_locks WHERE period = ?").bind(period)
+    );
+  }
 
-    await this.runBatch([
-      this.db
-        .prepare(`
-          INSERT INTO month_close_snapshots (
-            id, period, version, run_id, locked_by, locked_at, note, summary_json
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `)
-        .bind(
-          snapshot.id,
-          snapshot.period,
-          snapshot.version,
-          snapshot.run_id,
-          snapshot.locked_by,
-          snapshot.locked_at,
-          snapshot.note,
-          snapshot.summary_json
-        ),
-      ...reportRows.map((row) =>
-        this.db
-          .prepare(`
-            INSERT INTO month_close_report_snapshots (
-              id, snapshot_id, report_key, row_count, data_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
-          `)
-          .bind(row.id, row.snapshot_id, row.report_key, row.row_count, row.data_json, row.created_at)
-      )
-    ]);
+  async createSnapshotWithReports(input: CreateSnapshotInput): Promise<MonthCloseSnapshotRow> {
+    const { snapshot, reportRows } = this.snapshotRows(input);
+    await this.runBatch(this.snapshotStatements(snapshot, reportRows));
 
     return snapshot;
+  }
+
+  async lockWithSnapshotAndAudit(
+    input: LockWithSnapshotInput,
+    auditStatement: D1PreparedStatement
+  ): Promise<MonthCloseSnapshotRow> {
+    const lockedAt = input.lockedAt ?? nowIso();
+    const { snapshot, reportRows } = this.snapshotRows({ ...input, lockedAt, createdAt: input.createdAt ?? lockedAt });
+    const lockStatement = this.db
+      .prepare("INSERT INTO period_locks (period, locked_by, locked_at, note) VALUES (?, ?, ?, ?)")
+      .bind(input.period, input.lockedBy, lockedAt, input.note);
+
+    const results = await this.runBatch([
+      lockStatement,
+      ...this.snapshotStatements(snapshot, reportRows),
+      auditStatement
+    ]);
+
+    if (results[0]?.meta?.changes === 0) {
+      throw new Error("Period lock was not created");
+    }
+
+    return snapshot;
+  }
+
+  async unlockPeriodWithAudit(
+    lock: Pick<PeriodLockRow, "period" | "locked_by" | "locked_at">,
+    auditStatement: D1PreparedStatement
+  ): Promise<void> {
+    const results = await this.runBatch([
+      auditStatement,
+      this.db
+        .prepare("DELETE FROM period_locks WHERE period = ? AND locked_by = ? AND locked_at = ?")
+        .bind(lock.period, lock.locked_by, lock.locked_at)
+    ]);
+
+    if (results[0]?.meta?.changes === 0 || results[1]?.meta?.changes === 0) {
+      throw new PeriodLockNotFoundError();
+    }
   }
 
   listSnapshots(period: string): Promise<MonthCloseSnapshotRow[]> {
@@ -531,6 +534,66 @@ export class MonthCloseRepository {
       resolution_note: null,
       created_at: row.createdAt ?? nowIso()
     };
+  }
+
+  private snapshotRows(input: CreateSnapshotInput): {
+    snapshot: MonthCloseSnapshotRow;
+    reportRows: MonthCloseReportSnapshotRow[];
+  } {
+    const snapshot: MonthCloseSnapshotRow = {
+      id: newId("month_close_snapshot"),
+      period: input.period,
+      version: input.version,
+      run_id: input.runId,
+      locked_by: input.lockedBy,
+      locked_at: input.lockedAt ?? nowIso(),
+      note: input.note,
+      summary_json: JSON.stringify(input.summary)
+    };
+    const createdAt = input.createdAt ?? nowIso();
+    const reportRows = input.reports.map((report) => ({
+      id: newId("month_close_report_snapshot"),
+      snapshot_id: snapshot.id,
+      report_key: report.reportKey,
+      row_count: report.rows.length,
+      data_json: JSON.stringify(report.rows),
+      created_at: createdAt
+    }));
+
+    return { snapshot, reportRows };
+  }
+
+  private snapshotStatements(
+    snapshot: MonthCloseSnapshotRow,
+    reportRows: MonthCloseReportSnapshotRow[]
+  ): D1PreparedStatement[] {
+    return [
+      this.db
+        .prepare(`
+          INSERT INTO month_close_snapshots (
+            id, period, version, run_id, locked_by, locked_at, note, summary_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `)
+        .bind(
+          snapshot.id,
+          snapshot.period,
+          snapshot.version,
+          snapshot.run_id,
+          snapshot.locked_by,
+          snapshot.locked_at,
+          snapshot.note,
+          snapshot.summary_json
+        ),
+      ...reportRows.map((row) =>
+        this.db
+          .prepare(`
+            INSERT INTO month_close_report_snapshots (
+              id, snapshot_id, report_key, row_count, data_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+          `)
+          .bind(row.id, row.snapshot_id, row.report_key, row.row_count, row.data_json, row.created_at)
+      )
+    ];
   }
 
   private async runBatch(statements: D1PreparedStatement[]): Promise<D1Result[]> {

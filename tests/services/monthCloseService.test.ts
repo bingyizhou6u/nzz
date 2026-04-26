@@ -358,7 +358,24 @@ describe("MonthCloseService", () => {
     expect(sources.projectIncome).toHaveBeenCalledWith({ period });
     expect(sources.monthCloseFundingReconciliation).toHaveBeenCalledWith(period);
 
-    const [snapshotInput, auditInput] = monthCloses.lockWithSnapshotAndAudit.mock.calls[0];
+    const firstLockCall = monthCloses.lockWithSnapshotAndAudit.mock.calls[0] as unknown as
+      | [
+          {
+            reports: Array<{ reportKey: string; rows: unknown[] }>;
+            period: string;
+            version: number;
+            runId: string;
+            lockedBy: string;
+            lockedAt: string;
+            note: string;
+            summary: { criticalCount: number; warningCount: number; infoCount: number };
+          },
+          D1PreparedStatement
+        ]
+      | undefined;
+    expect(firstLockCall).toBeDefined();
+    if (!firstLockCall) throw new Error("lockWithSnapshotAndAudit was not called");
+    const [snapshotInput, auditInput] = firstLockCall;
     expect(auditInput).toBe(auditStatement);
     expect(snapshotInput).toMatchObject({
       period,

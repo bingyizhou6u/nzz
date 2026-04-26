@@ -1,8 +1,11 @@
 import type {
+  CreateSnapshotReportInput,
   MonthCloseCheckResultRow,
   MonthCloseRepository,
+  MonthCloseSnapshotRow,
   MonthCloseRunRow
 } from "../repositories/monthCloseRepository";
+import { PeriodLockNotFoundError, type PeriodLockRow } from "../repositories/periodLockRepository";
 import {
   accountBalanceChecks,
   canLockFromCheckResults,
@@ -23,8 +26,21 @@ import {
 
 export type MonthCloseRunRepository = Pick<
   MonthCloseRepository,
-  "createRun" | "completeRun" | "failRun" | "insertCheckResults"
+  | "createRun"
+  | "completeRun"
+  | "failRun"
+  | "insertCheckResults"
+  | "latestRun"
+  | "listCheckResults"
+  | "getPeriodLock"
+  | "nextSnapshotVersion"
+  | "lockWithSnapshotAndAudit"
+  | "unlockPeriodWithAudit"
 >;
+
+interface PeriodReportFilter {
+  period: string;
+}
 
 export interface MonthCloseSourceRepository {
   documentWorkflowRows(period: string): Promise<DocumentWorkflowCheckRow[]>;
@@ -36,6 +52,20 @@ export interface MonthCloseSourceRepository {
   monthClosePettyCashReconciliation(period: string): Promise<MonthClosePettyCashReconciliationRow[]>;
   monthCloseLoanReconciliation(period: string): Promise<MonthCloseLoanReconciliationRow[]>;
   monthCloseProjectReconciliation(period: string): Promise<MonthCloseProjectReconciliationRow[]>;
+  accountBalances(): Promise<object[]>;
+  lotBalances(): Promise<object[]>;
+  lotMovements(): Promise<object[]>;
+  pettyCashPendingMatches(): Promise<object[]>;
+  pendingCostMatches(): Promise<object[]>;
+  loanBalances(): Promise<object[]>;
+  loanAging(): Promise<object[]>;
+  projectProfitLoss(filters: PeriodReportFilter): Promise<object[]>;
+  projectIncome(filters: PeriodReportFilter): Promise<object[]>;
+  merchantIncome(filters: PeriodReportFilter): Promise<object[]>;
+  expenseDetails(filters: PeriodReportFilter): Promise<object[]>;
+  expenseSummary(filters: PeriodReportFilter): Promise<object[]>;
+  monthlyOperatingSummary(filters: PeriodReportFilter): Promise<object[]>;
+  exceptionChecks(filters: PeriodReportFilter): Promise<object[]>;
 }
 
 export interface MonthCloseActor {
@@ -56,6 +86,28 @@ export interface RunMonthCloseChecksResult {
   checks: MonthCloseCheckResultRow[];
   summary: MonthCloseSummary;
   canLock: boolean;
+}
+
+export interface LockMonthClosePeriodOptions {
+  note: string;
+  auditStatement: D1PreparedStatement;
+  lockedAt?: string;
+}
+
+export interface LockMonthClosePeriodResult {
+  period: string;
+  status: "locked";
+  snapshot: MonthCloseSnapshotRow;
+}
+
+export interface UnlockMonthClosePeriodOptions {
+  auditStatement?: D1PreparedStatement;
+  auditForLock?: (lock: PeriodLockRow) => D1PreparedStatement;
+}
+
+export interface UnlockMonthClosePeriodResult {
+  period: string;
+  status: "unlocked";
 }
 
 export interface MonthCloseFundingReconciliationRow {
@@ -200,6 +252,137 @@ export class MonthCloseService {
     ]);
 
     return { funding, pettyCash, loans, projects };
+  }
+
+  async lockPeriod(
+    period: string,
+    actor: MonthCloseActor,
+    options: LockMonthClosePeriodOptions
+  ): Promise<LockMonthClosePeriodResult> {
+    const note = options.note.trim();
+    if (!note) throw new MonthCloseLockError("note is required");
+
+    const run = await this.monthCloses.latestRun(period);
+    if (!run || run.status !== "completed") {
+      throw new MonthCloseLockError("Month close checks must be completed before locking");
+    }
+
+    const checks = await this.monthCloses.listCheckResults(period, run.id);
+    if (!canLockFromCheckResults(checks.map(checkResultRowToHandledCheckResult))) {
+      throw new MonthCloseLockError("Month close checks are not lockable");
+    }
+
+    const existingLock = await this.monthCloses.getPeriodLock(period);
+    if (existingLock) throw new MonthCloseLockError("Period is already locked");
+
+    const [version, reports] = await Promise.all([
+      this.monthCloses.nextSnapshotVersion(period),
+      this.snapshotReports(period, checks)
+    ]);
+    const summary = summarizeCheckResults(checks);
+    const snapshot = await this.monthCloses.lockWithSnapshotAndAudit(
+      {
+        period,
+        version,
+        runId: run.id,
+        lockedBy: actor.personId,
+        lockedAt: options.lockedAt,
+        note,
+        summary,
+        reports
+      },
+      options.auditStatement
+    );
+
+    return { period, status: "locked", snapshot };
+  }
+
+  async unlockPeriod(period: string, options: UnlockMonthClosePeriodOptions): Promise<UnlockMonthClosePeriodResult> {
+    const lock = await this.monthCloses.getPeriodLock(period);
+    if (!lock) throw new MonthCloseLockNotFoundError();
+
+    const auditStatement = options.auditStatement ?? options.auditForLock?.(lock);
+    if (!auditStatement) throw new MonthCloseLockError("auditStatement is required");
+
+    try {
+      await this.monthCloses.unlockPeriodWithAudit(lock, auditStatement);
+    } catch (error) {
+      if (error instanceof PeriodLockNotFoundError) throw new MonthCloseLockNotFoundError();
+      throw error;
+    }
+
+    return { period, status: "unlocked" };
+  }
+
+  private async snapshotReports(
+    period: string,
+    checks: MonthCloseCheckResultRow[]
+  ): Promise<CreateSnapshotReportInput[]> {
+    const filters = { period };
+    const [
+      accountBalances,
+      lotBalances,
+      lotMovements,
+      pettyCashPending,
+      pendingCosts,
+      loanBalances,
+      loanAging,
+      projectProfitLoss,
+      projectIncome,
+      merchantIncome,
+      expenseDetails,
+      expenseSummary,
+      monthlyOperatingSummary,
+      exceptionChecks,
+      reconciliation
+    ] = await Promise.all([
+      this.sources.accountBalances(),
+      this.sources.lotBalances(),
+      this.sources.lotMovements(),
+      this.sources.pettyCashPendingMatches(),
+      this.sources.pendingCostMatches(),
+      this.sources.loanBalances(),
+      this.sources.loanAging(),
+      this.sources.projectProfitLoss(filters),
+      this.sources.projectIncome(filters),
+      this.sources.merchantIncome(filters),
+      this.sources.expenseDetails(filters),
+      this.sources.expenseSummary(filters),
+      this.sources.monthlyOperatingSummary(filters),
+      this.sources.exceptionChecks(filters),
+      this.reconciliation(period)
+    ]);
+
+    return [
+      { reportKey: "accountBalances", rows: accountBalances },
+      { reportKey: "lotBalances", rows: lotBalances },
+      { reportKey: "lotMovements", rows: lotMovements },
+      { reportKey: "pettyCashPending", rows: pettyCashPending },
+      { reportKey: "pendingCosts", rows: pendingCosts },
+      { reportKey: "loanBalances", rows: loanBalances },
+      { reportKey: "loanAging", rows: loanAging },
+      { reportKey: "projectProfitLoss", rows: projectProfitLoss },
+      { reportKey: "projectIncome", rows: projectIncome },
+      { reportKey: "merchantIncome", rows: merchantIncome },
+      { reportKey: "expenseDetails", rows: expenseDetails },
+      { reportKey: "expenseSummary", rows: expenseSummary },
+      { reportKey: "monthlyOperatingSummary", rows: monthlyOperatingSummary },
+      { reportKey: "exceptionChecks", rows: exceptionChecks },
+      { reportKey: "monthCloseChecks", rows: checks },
+      { reportKey: "monthCloseReconciliation", rows: [reconciliation] }
+    ];
+  }
+}
+
+export class MonthCloseLockError extends Error {
+  readonly status = 400;
+}
+
+export class MonthCloseLockNotFoundError extends Error {
+  readonly status = 404;
+
+  constructor() {
+    super("Period lock not found");
   }
 }
 

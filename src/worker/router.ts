@@ -14,7 +14,9 @@ import {
   getMonthCloseReconciliation,
   listMonthCloseChecks,
   listMonthClosePeriods,
+  lockMonthClosePeriod,
   runMonthCloseChecks,
+  unlockMonthClosePeriod,
   updateMonthCloseCheckResult
 } from "../api/monthClose";
 import { createPeriodLock, deletePeriodLock, listPeriodLocks } from "../api/periodLocks";
@@ -135,6 +137,8 @@ const routes: Route[] = [
   defineRoute("GET", "/api/month-close/:period", getMonthCloseOverview, "periodLocks.view"),
   defineRoute("GET", "/api/month-close/:period/reconciliation", getMonthCloseReconciliation, "periodLocks.view"),
   defineRoute("POST", "/api/month-close/:period/checks/run", runMonthCloseChecks, "periodLocks.lock"),
+  defineRoute("POST", "/api/month-close/:period/lock", lockMonthClosePeriod, "periodLocks.lock"),
+  defineRoute("POST", "/api/month-close/:period/unlock", unlockMonthClosePeriod, "periodLocks.unlock"),
   defineRoute("GET", "/api/month-close/:period/checks", listMonthCloseChecks, "periodLocks.view"),
   defineRoute("PATCH", "/api/month-close/check-results/:id", updateMonthCloseCheckResult, "periodLocks.lock"),
   defineRoute("GET", "/api/master-data", listMasterDataSnapshot, "masterData.view"),

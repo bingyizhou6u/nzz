@@ -4,7 +4,7 @@ import { auditFieldsForRequest, AuditLogRepository } from "../repositories/audit
 import { MonthCloseRepository, type MonthCloseCheckResultStatus } from "../repositories/monthCloseRepository";
 import { PeriodLockRepository } from "../repositories/periodLockRepository";
 import { ReportRepository } from "../repositories/reportRepository";
-import { MonthCloseService } from "../services/monthCloseService";
+import { MonthCloseLockError, MonthCloseLockNotFoundError, MonthCloseService } from "../services/monthCloseService";
 import type { Handler } from "../worker/env";
 
 const resultStatuses = new Set<MonthCloseCheckResultStatus>([
@@ -95,6 +95,64 @@ export const getMonthCloseReconciliation: Handler = async ({ env, params, actor:
     const period = periodValue(params.period);
     const service = new MonthCloseService(new MonthCloseRepository(env.DB), new ReportRepository(env.DB));
     return Response.json({ data: await service.reconciliation(period) });
+  } catch (error) {
+    return errorResponse(error);
+  }
+};
+
+export const lockMonthClosePeriod: Handler = async ({ request, env, params, actor: contextActor }) => {
+  try {
+    const actor = requireActorWithCapability(contextActor, "periodLocks.lock");
+    const body = await readBody(request);
+    const note = requiredText(body.note, "note");
+    const period = periodValue(params.period);
+    const monthCloses = new MonthCloseRepository(env.DB);
+    const auditLogs = new AuditLogRepository(env.DB);
+    const auditStatement = auditLogs.prepareRecord({
+      ...auditFieldsForRequest(actor, request),
+      action: "month_close.period.lock",
+      entityType: "month_close_period",
+      entityId: period,
+      after: { period, lockedBy: actor.personId, note },
+      reason: note
+    });
+    const service = new MonthCloseService(monthCloses, new ReportRepository(env.DB));
+    const result = await service.lockPeriod(period, { personId: actor.personId }, { note, auditStatement });
+
+    return Response.json({ data: result }, { status: 201 });
+  } catch (error) {
+    return errorResponse(error);
+  }
+};
+
+export const unlockMonthClosePeriod: Handler = async ({ request, env, params, actor: contextActor }) => {
+  try {
+    const actor = requireActorWithCapability(contextActor, "periodLocks.unlock");
+    const body = await readBody(request);
+    const reason = requiredText(body.reason, "reason");
+    const period = periodValue(params.period);
+    const auditLogs = new AuditLogRepository(env.DB);
+    const service = new MonthCloseService(new MonthCloseRepository(env.DB), new ReportRepository(env.DB));
+    const result = await service.unlockPeriod(period, {
+      auditForLock: (lock) =>
+        auditLogs.prepareRecordWhen(
+          {
+            ...auditFieldsForRequest(actor, request),
+            action: "month_close.period.unlock",
+            entityType: "month_close_period",
+            entityId: period,
+            before: lock,
+            after: { period, status: "unlocked" },
+            reason
+          },
+          {
+            sql: "EXISTS (SELECT 1 FROM period_locks WHERE period = ? AND locked_by = ? AND locked_at = ?)",
+            bindings: [lock.period, lock.locked_by, lock.locked_at]
+          }
+        )
+    });
+
+    return Response.json({ data: result });
   } catch (error) {
     return errorResponse(error);
   }
@@ -214,7 +272,12 @@ class NotFoundError extends Error {
 
 function errorResponse(error: unknown) {
   if (error instanceof AuthError) return Response.json({ error: error.message }, { status: error.status });
-  if (error instanceof ValidationError || error instanceof NotFoundError) {
+  if (
+    error instanceof ValidationError ||
+    error instanceof NotFoundError ||
+    error instanceof MonthCloseLockError ||
+    error instanceof MonthCloseLockNotFoundError
+  ) {
     return Response.json({ error: error.message }, { status: error.status });
   }
   return Response.json({ error: "Month close request failed" }, { status: 500 });
