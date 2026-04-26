@@ -41,11 +41,14 @@
 - [x] Task 5：月结中心前端 MVP 已完成。
   - RED Commit：`a7db339 test: cover month close frontend MVP`
   - GREEN Commit：`b6d0aeb feat: add month close frontend MVP`
+- [x] Task 6：对账汇总 Tabs 已完成。
+  - RED Commit：`e4009eb test: cover month close reconciliation tabs`
+  - GREEN Commit：`b79837c feat: add month close reconciliation tabs`
 
 当前注意事项：
 
 - Task 1 无需重做。
-- Task 5 已完成，下一步进入 Task 6：对账汇总 Tabs。
+- Task 6 已完成，下一步进入 Task 7：锁账、解锁与快照。
 
 ## 3. 源文档
 
@@ -375,15 +378,18 @@ npm test
 
 ## 11. Task 6：对账汇总 Tabs
 
-状态：待做。
+状态：已完成。
 
 文件：
 
-- [ ] `src/services/monthCloseService.ts`
-- [ ] `src/api/monthClose.ts`
-- [ ] `src/app/pages/month-close/MonthCloseReconciliationTabs.tsx`
-- [ ] `tests/services/monthCloseService.test.ts`
-- [ ] `tests/api/monthClose.test.ts`
+- [x] `src/services/monthCloseService.ts`
+- [x] `src/api/monthClose.ts`
+- [x] `src/app/pages/month-close/MonthCloseReconciliationTabs.tsx`
+- [x] `src/app/pages/month-close/MonthCloseReconciliationTabs.test.tsx`
+- [x] `src/repositories/reportRepository.ts`：补齐四类月结对账查询。
+- [x] `tests/services/monthCloseService.test.ts`
+- [x] `tests/api/monthClose.test.ts`
+- [x] `tests/api/reportRepository.test.ts`
 
 接口：
 
@@ -416,6 +422,22 @@ GET /api/month-close/:period/reconciliation
 - 只渲染当前激活 tab 的明细表。
 - 多币种按原币分组，不混币种汇总。
 - 期初余额第一版可按期间前累计分录计算。
+
+TDD 步骤：
+
+- [x] RED：补服务、API、仓储和前端 tab 测试。提交：`e4009eb test: cover month close reconciliation tabs`。
+- [x] GREEN：实现 `GET /api/month-close/:period/reconciliation`、四类仓储查询和前端分组 tab。提交：`b79837c feat: add month close reconciliation tabs`。
+- [x] 审查：确认接口只读，按 `period` 计算期初/本期/期末，资金、备用金、借款和项目经营均按原币 `currencyCode` 分组；前端只渲染当前激活 tab 的表格。
+- [x] 提交。
+
+验收命令：
+
+```bash
+npm test -- tests/services/monthCloseService.test.ts tests/api/monthClose.test.ts tests/api/reportRepository.test.ts src/app/pages/month-close/MonthCloseReconciliationTabs.test.tsx
+npm test
+npx tsc --noEmit
+npm run build
+```
 
 ## 12. Task 7：锁账、解锁与快照
 
