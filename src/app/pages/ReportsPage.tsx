@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { getJson, type ApiEnvelope } from "../api";
 import { defaultReportFilters, buildReportQuery } from "./reports/reportFilters";
 import {
@@ -29,13 +30,75 @@ import type {
   ProjectProfitLoss
 } from "./reports/reportTypes";
 
+type ReportGroupKey = "funding" | "project" | "expense" | "pettyCash" | "loan" | "exception";
+
+interface ReportGroupNavItem {
+  key: ReportGroupKey;
+  label: string;
+  tableCount: number;
+}
+
+const reportGroupNavItems: ReportGroupNavItem[] = [
+  { key: "funding", label: "资金", tableCount: 3 },
+  { key: "project", label: "项目经营", tableCount: 4 },
+  { key: "expense", label: "费用", tableCount: 2 },
+  { key: "pettyCash", label: "备用金", tableCount: 2 },
+  { key: "loan", label: "借款", tableCount: 4 },
+  { key: "exception", label: "异常", tableCount: 1 }
+];
+
 export function ReportsPage() {
   const [reports, setReports] = useState<ReportsState>(emptyReports);
   const [filters, setFilters] = useState(defaultReportFilters);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [activeReportGroup, setActiveReportGroup] = useState<ReportGroupKey>("funding");
   const query = buildReportQuery(filters);
+
+  function focusReportGroup(key: ReportGroupKey) {
+    setActiveReportGroup(key);
+    const focusTab = () => {
+      document.getElementById(reportGroupTabId(key))?.focus();
+    };
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(focusTab);
+    } else {
+      focusTab();
+    }
+  }
+
+  function handleReportGroupKeyDown(event: KeyboardEvent<HTMLButtonElement>, key: ReportGroupKey) {
+    const currentIndex = reportGroupNavItems.findIndex((item) => item.key === key);
+    if (currentIndex === -1) return;
+
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      event.preventDefault();
+      const nextItem = reportGroupNavItems[(currentIndex + 1) % reportGroupNavItems.length];
+      if (nextItem) focusReportGroup(nextItem.key);
+      return;
+    }
+
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const previousItem = reportGroupNavItems[(currentIndex - 1 + reportGroupNavItems.length) % reportGroupNavItems.length];
+      if (previousItem) focusReportGroup(previousItem.key);
+      return;
+    }
+
+    if (event.key === "Home") {
+      event.preventDefault();
+      const firstItem = reportGroupNavItems[0];
+      if (firstItem) focusReportGroup(firstItem.key);
+      return;
+    }
+
+    if (event.key === "End") {
+      event.preventDefault();
+      const lastItem = reportGroupNavItems[reportGroupNavItems.length - 1];
+      if (lastItem) focusReportGroup(lastItem.key);
+    }
+  }
 
   useEffect(() => {
     let isCurrent = true;
@@ -173,12 +236,57 @@ export function ReportsPage() {
         </div>
       </section>
 
-      <FundingReports reports={reports} emptyLabel={rowLabel} />
-      <ProjectReports reports={reports} emptyLabel={rowLabel} />
-      <ExpenseReports reports={reports} emptyLabel={rowLabel} />
-      <PettyCashReports reports={reports} emptyLabel={rowLabel} />
-      <LoanReports reports={reports} emptyLabel={rowLabel} />
-      <ExceptionReports reports={reports} emptyLabel={rowLabel} />
+      <section className="report-workspace">
+        <div className="report-category-nav" role="tablist" aria-label="报表分类">
+          {reportGroupNavItems.map((item) => (
+            <button
+              key={item.key}
+              id={reportGroupTabId(item.key)}
+              type="button"
+              role="tab"
+              className={
+                item.key === activeReportGroup
+                  ? "report-category-button report-category-button-active"
+                  : "report-category-button"
+              }
+              aria-selected={item.key === activeReportGroup}
+              aria-controls={reportGroupPanelId(item.key)}
+              tabIndex={item.key === activeReportGroup ? 0 : -1}
+              onClick={() => setActiveReportGroup(item.key)}
+              onKeyDown={(event) => handleReportGroupKeyDown(event, item.key)}
+            >
+              <span>{item.label}</span>
+              <small>{item.tableCount} 张表</small>
+            </button>
+          ))}
+        </div>
+
+        <div
+          id={reportGroupPanelId(activeReportGroup)}
+          className="report-detail-region"
+          role="tabpanel"
+          aria-labelledby={reportGroupTabId(activeReportGroup)}
+        >
+          {renderReportGroup(activeReportGroup, reports, rowLabel)}
+        </div>
+      </section>
     </div>
   );
+}
+
+function reportGroupTabId(key: ReportGroupKey) {
+  return `report-group-tab-${key}`;
+}
+
+function reportGroupPanelId(key: ReportGroupKey) {
+  return `report-group-panel-${key}`;
+}
+
+function renderReportGroup(key: ReportGroupKey, reports: ReportsState, rowLabel: string) {
+  if (key === "funding") return <FundingReports reports={reports} emptyLabel={rowLabel} />;
+  if (key === "project") return <ProjectReports reports={reports} emptyLabel={rowLabel} />;
+  if (key === "expense") return <ExpenseReports reports={reports} emptyLabel={rowLabel} />;
+  if (key === "pettyCash") return <PettyCashReports reports={reports} emptyLabel={rowLabel} />;
+  if (key === "loan") return <LoanReports reports={reports} emptyLabel={rowLabel} />;
+  return <ExceptionReports reports={reports} emptyLabel={rowLabel} />;
 }
