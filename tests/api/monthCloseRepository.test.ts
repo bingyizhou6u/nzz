@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { MonthCloseRepository } from "../../src/repositories/monthCloseRepository";
 
@@ -18,12 +17,17 @@ type SqliteModule = {
   DatabaseSync: new (filename: string) => SqliteDatabase;
 };
 
+type FsModule = {
+  readFileSync(path: URL, encoding: "utf8"): string;
+};
+
 const importSqlite = new Function("specifier", "return import(specifier)") as (
   specifier: string
 ) => Promise<SqliteModule>;
+const importFs = new Function("specifier", "return import(specifier)") as (specifier: string) => Promise<FsModule>;
 
 async function createSqliteMonthCloseDb(): Promise<{ db: D1Database; close: () => void }> {
-  const { DatabaseSync } = await importSqlite("node:sqlite");
+  const [{ DatabaseSync }, { readFileSync }] = await Promise.all([importSqlite("node:sqlite"), importFs("node:fs")]);
   const sqlite = new DatabaseSync(":memory:");
   const migration = readFileSync(new URL("../../migrations/0008_month_close_center.sql", import.meta.url), "utf8");
 
