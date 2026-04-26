@@ -102,3 +102,50 @@ export interface MonthCloseCheckPatch {
   assigneePersonId?: string | null;
   resolutionNote?: string | null;
 }
+
+export interface MonthCloseFundingReconciliation {
+  accountId: string;
+  accountType: string;
+  currencyCode: string;
+  openingBalanceMinor: number;
+  periodInflowMinor: number;
+  periodOutflowMinor: number;
+  closingBalanceMinor: number;
+}
+
+export interface MonthClosePettyCashReconciliation {
+  personId: string | null;
+  accountId: string;
+  currencyCode: string;
+  openingBalanceMinor: number;
+  periodIssuedMinor: number;
+  periodReimbursedMinor: number;
+  closingBalanceMinor: number;
+  pendingCostMinor: number;
+}
+
+export interface MonthCloseLoanReconciliation {
+  borrowerPersonId: string;
+  currencyCode: string;
+  openingBalanceMinor: number;
+  periodLoanOutMinor: number;
+  periodRepaymentMinor: number;
+  periodWriteoffMinor: number;
+  closingBalanceMinor: number;
+}
+
+export interface MonthCloseProjectReconciliation {
+  projectId: string | null;
+  currencyCode: string;
+  incomeAmountMinor: number;
+  expenseAmountMinor: number;
+  matchedUsdtCostMinor: number;
+  pendingAmountMinor: number;
+}
+
+export interface MonthCloseReconciliation {
+  funding: MonthCloseFundingReconciliation[];
+  pettyCash: MonthClosePettyCashReconciliation[];
+  loans: MonthCloseLoanReconciliation[];
+  projects: MonthCloseProjectReconciliation[];
+}

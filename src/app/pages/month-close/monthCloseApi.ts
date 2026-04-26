@@ -4,6 +4,7 @@ import type {
   MonthCloseCheckResult,
   MonthCloseOverview,
   MonthClosePeriod,
+  MonthCloseReconciliation,
   MonthCloseRunChecksResult,
   PersonOption
 } from "./monthCloseTypes";
@@ -34,6 +35,12 @@ export function listMonthCloseChecks(period: string) {
   return getJson<ApiEnvelope<ChecksResponse>>(`/api/month-close/${encodeURIComponent(period)}/checks`).then(
     (response) => response.data
   );
+}
+
+export function getMonthCloseReconciliation(period: string) {
+  return getJson<ApiEnvelope<MonthCloseReconciliation>>(
+    `/api/month-close/${encodeURIComponent(period)}/reconciliation`
+  ).then((response) => response.data);
 }
 
 export function updateMonthCloseCheckResult(id: string, patch: MonthCloseCheckPatch) {

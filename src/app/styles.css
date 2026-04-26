@@ -1425,6 +1425,27 @@ textarea {
   min-width: 1120px;
 }
 
+.month-close-reconciliation-panel {
+  min-width: 0;
+}
+
+.month-close-reconciliation-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 12px 0;
+}
+
+.month-close-reconciliation-region {
+  min-width: 0;
+  padding-top: 12px;
+}
+
+.month-close-reconciliation-table {
+  min-width: 860px;
+}
+
 .month-close-check-table th:nth-child(1),
 .month-close-check-table td:nth-child(1),
 .month-close-check-table th:nth-child(6),

@@ -6,6 +6,12 @@ import type {
   PendingCostCheckRow,
   ProjectIntegrityCheckRow
 } from "../services/monthCloseChecks";
+import type {
+  MonthCloseFundingReconciliationRow,
+  MonthCloseLoanReconciliationRow,
+  MonthClosePettyCashReconciliationRow,
+  MonthCloseProjectReconciliationRow
+} from "../services/monthCloseService";
 
 export interface AccountBalanceRow {
   account_id: string;
@@ -888,6 +894,178 @@ export class ReportRepository {
         GROUP BY le.borrower_person_id, le.currency_code
         ORDER BY le.borrower_person_id, le.currency_code
       `)
+    );
+  }
+
+  monthCloseFundingReconciliation(period: string): Promise<MonthCloseFundingReconciliationRow[]> {
+    return all<MonthCloseFundingReconciliationRow>(
+      this.db
+        .prepare(`
+          WITH selected_period(period) AS (SELECT ?),
+          funding_reconciliation_rows AS (
+            SELECT
+              a.id AS accountId,
+              a.account_type AS accountType,
+              ae.currency_code AS currencyCode,
+              COALESCE(SUM(CASE WHEN d.period < selected_period.period THEN ae.amount_minor ELSE 0 END), 0) AS openingBalanceMinor,
+              COALESCE(SUM(CASE WHEN d.period = selected_period.period AND ae.amount_minor > 0 THEN ae.amount_minor ELSE 0 END), 0) AS periodInflowMinor,
+              COALESCE(SUM(CASE WHEN d.period = selected_period.period AND ae.amount_minor < 0 THEN -ae.amount_minor ELSE 0 END), 0) AS periodOutflowMinor,
+              COALESCE(SUM(ae.amount_minor), 0) AS closingBalanceMinor
+            FROM account_entries ae
+            JOIN documents d ON d.id = ae.document_id
+            JOIN accounts a ON a.id = ae.account_id
+            CROSS JOIN selected_period
+            WHERE d.status = 'approved'
+              AND d.period <= selected_period.period
+              AND a.is_company_account = 1
+            GROUP BY a.id, a.account_type, ae.currency_code
+          )
+          SELECT *
+          FROM funding_reconciliation_rows
+          ORDER BY accountId, currencyCode
+        `)
+        .bind(period)
+    );
+  }
+
+  monthClosePettyCashReconciliation(period: string): Promise<MonthClosePettyCashReconciliationRow[]> {
+    return all<MonthClosePettyCashReconciliationRow>(
+      this.db
+        .prepare(`
+          WITH selected_period(period) AS (SELECT ?),
+          petty_cash_pending AS (
+            SELECT
+              pcm.account_id AS accountId,
+              pcm.person_id AS personId,
+              pcm.currency_code AS currencyCode,
+              COALESCE(SUM(pcm.remaining_amount_minor), 0) AS pendingCostMinor
+            FROM pending_cost_matches pcm
+            JOIN documents d ON d.id = pcm.document_id
+            CROSS JOIN selected_period
+            WHERE d.status = 'approved'
+              AND d.period <= selected_period.period
+              AND pcm.status IN ('open', 'partial')
+              AND pcm.remaining_amount_minor > 0
+            GROUP BY pcm.account_id, pcm.person_id, pcm.currency_code
+          ),
+          petty_cash_reconciliation_rows AS (
+            SELECT
+              a.owner_person_id AS personId,
+              a.id AS accountId,
+              ae.currency_code AS currencyCode,
+              COALESCE(SUM(CASE WHEN d.period < selected_period.period THEN ae.amount_minor ELSE 0 END), 0) AS openingBalanceMinor,
+              COALESCE(SUM(CASE WHEN d.period = selected_period.period AND d.document_type = 'petty_cash_issue' AND ae.amount_minor > 0 THEN ae.amount_minor ELSE 0 END), 0) AS periodIssuedMinor,
+              COALESCE(SUM(CASE WHEN d.period = selected_period.period AND d.document_type = 'petty_cash_reimbursement' AND ae.amount_minor < 0 THEN -ae.amount_minor ELSE 0 END), 0) AS periodReimbursedMinor,
+              COALESCE(SUM(ae.amount_minor), 0) AS closingBalanceMinor,
+              COALESCE(MAX(petty_cash_pending.pendingCostMinor), 0) AS pendingCostMinor
+            FROM account_entries ae
+            JOIN documents d ON d.id = ae.document_id
+            JOIN accounts a ON a.id = ae.account_id
+            CROSS JOIN selected_period
+            LEFT JOIN petty_cash_pending
+              ON petty_cash_pending.accountId = a.id
+             AND petty_cash_pending.currencyCode = ae.currency_code
+             AND petty_cash_pending.personId IS a.owner_person_id
+            WHERE d.status = 'approved'
+              AND d.period <= selected_period.period
+              AND a.account_type = 'petty_cash'
+            GROUP BY a.owner_person_id, a.id, ae.currency_code
+          )
+          SELECT *
+          FROM petty_cash_reconciliation_rows
+          ORDER BY personId, accountId, currencyCode
+        `)
+        .bind(period)
+    );
+  }
+
+  monthCloseLoanReconciliation(period: string): Promise<MonthCloseLoanReconciliationRow[]> {
+    return all<MonthCloseLoanReconciliationRow>(
+      this.db
+        .prepare(`
+          WITH selected_period(period) AS (SELECT ?),
+          loan_reconciliation_rows AS (
+            SELECT
+              le.borrower_person_id AS borrowerPersonId,
+              le.currency_code AS currencyCode,
+              COALESCE(SUM(CASE WHEN d.period < selected_period.period THEN le.amount_minor ELSE 0 END), 0) AS openingBalanceMinor,
+              COALESCE(SUM(CASE WHEN d.period = selected_period.period AND d.document_type = 'loan_out' AND le.amount_minor > 0 THEN le.amount_minor ELSE 0 END), 0) AS periodLoanOutMinor,
+              COALESCE(SUM(CASE WHEN d.period = selected_period.period AND d.document_type = 'loan_repayment' AND le.amount_minor < 0 THEN -le.amount_minor ELSE 0 END), 0) AS periodRepaymentMinor,
+              COALESCE(SUM(CASE WHEN d.period = selected_period.period AND d.document_type = 'loan_writeoff' AND le.amount_minor < 0 THEN -le.amount_minor ELSE 0 END), 0) AS periodWriteoffMinor,
+              COALESCE(SUM(le.amount_minor), 0) AS closingBalanceMinor
+            FROM loan_entries le
+            JOIN documents d ON d.id = le.document_id
+            CROSS JOIN selected_period
+            WHERE d.status = 'approved'
+              AND d.period <= selected_period.period
+            GROUP BY le.borrower_person_id, le.currency_code
+          )
+          SELECT *
+          FROM loan_reconciliation_rows
+          ORDER BY borrowerPersonId, currencyCode
+        `)
+        .bind(period)
+    );
+  }
+
+  monthCloseProjectReconciliation(period: string): Promise<MonthCloseProjectReconciliationRow[]> {
+    const expenseDetailsCte = this.expenseDetailsCteSql({ period });
+
+    return all<MonthCloseProjectReconciliationRow>(
+      this.db
+        .prepare(`
+          WITH
+          selected_period(period) AS (SELECT ?),
+          income_rows AS (
+            SELECT
+              d.project_id AS projectId,
+              ae.currency_code AS currencyCode,
+              COALESCE(SUM(ae.amount_minor), 0) AS incomeAmountMinor
+            FROM account_entries ae
+            JOIN documents d ON d.id = ae.document_id
+            CROSS JOIN selected_period
+            WHERE d.status = 'approved'
+              AND d.period = selected_period.period
+              AND d.document_type = 'project_income'
+            GROUP BY d.project_id, ae.currency_code
+          ),
+          ${expenseDetailsCte.sql},
+          expense_rows AS (
+            SELECT
+              project_id AS projectId,
+              currency_code AS currencyCode,
+              COALESCE(SUM(amount_minor), 0) AS expenseAmountMinor,
+              COALESCE(SUM(matched_usdt_cost_minor), 0) AS matchedUsdtCostMinor,
+              COALESCE(SUM(pending_amount_minor), 0) AS pendingAmountMinor
+            FROM expense_detail_rows
+            GROUP BY project_id, currency_code
+          ),
+          project_keys AS (
+            SELECT projectId, currencyCode FROM income_rows
+            UNION
+            SELECT projectId, currencyCode FROM expense_rows
+          ),
+          project_reconciliation_rows AS (
+            SELECT
+              project_keys.projectId AS projectId,
+              project_keys.currencyCode AS currencyCode,
+              COALESCE(income_rows.incomeAmountMinor, 0) AS incomeAmountMinor,
+              COALESCE(expense_rows.expenseAmountMinor, 0) AS expenseAmountMinor,
+              COALESCE(expense_rows.matchedUsdtCostMinor, 0) AS matchedUsdtCostMinor,
+              COALESCE(expense_rows.pendingAmountMinor, 0) AS pendingAmountMinor
+            FROM project_keys
+            LEFT JOIN income_rows
+              ON income_rows.projectId IS project_keys.projectId
+             AND income_rows.currencyCode = project_keys.currencyCode
+            LEFT JOIN expense_rows
+              ON expense_rows.projectId IS project_keys.projectId
+             AND expense_rows.currencyCode = project_keys.currencyCode
+          )
+          SELECT *
+          FROM project_reconciliation_rows
+          ORDER BY projectId, currencyCode
+        `)
+        .bind(period, ...expenseDetailsCte.bindings)
     );
   }
 

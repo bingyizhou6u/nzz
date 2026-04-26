@@ -11,6 +11,7 @@ import { listCurrencies } from "../api/masterData";
 import { getMe } from "../api/me";
 import {
   getMonthCloseOverview,
+  getMonthCloseReconciliation,
   listMonthCloseChecks,
   listMonthClosePeriods,
   runMonthCloseChecks,
@@ -132,6 +133,7 @@ const routes: Route[] = [
   defineRoute("DELETE", "/api/period-locks/:period", deletePeriodLock, "periodLocks.unlock"),
   defineRoute("GET", "/api/month-close/periods", listMonthClosePeriods, "periodLocks.view"),
   defineRoute("GET", "/api/month-close/:period", getMonthCloseOverview, "periodLocks.view"),
+  defineRoute("GET", "/api/month-close/:period/reconciliation", getMonthCloseReconciliation, "periodLocks.view"),
   defineRoute("POST", "/api/month-close/:period/checks/run", runMonthCloseChecks, "periodLocks.lock"),
   defineRoute("GET", "/api/month-close/:period/checks", listMonthCloseChecks, "periodLocks.view"),
   defineRoute("PATCH", "/api/month-close/check-results/:id", updateMonthCloseCheckResult, "periodLocks.lock"),

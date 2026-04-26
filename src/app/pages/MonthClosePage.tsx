@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Notice } from "../components/ui";
 import {
   getMonthCloseOverview,
+  getMonthCloseReconciliation,
   listMonthClosePeriods,
   listPeopleOptions,
   runMonthCloseChecks,
@@ -9,12 +10,14 @@ import {
 } from "./month-close/monthCloseApi";
 import { MonthCloseChecksTab } from "./month-close/MonthCloseChecksTab";
 import { MonthClosePeriodList } from "./month-close/MonthClosePeriodList";
+import { MonthCloseReconciliationTabs } from "./month-close/MonthCloseReconciliationTabs";
 import { MonthCloseStatusBar } from "./month-close/MonthCloseStatusBar";
 import { canRunMonthCloseChecks } from "./month-close/monthCloseModel";
 import type {
   MonthCloseCheckPatch,
   MonthCloseOverview,
   MonthClosePeriod,
+  MonthCloseReconciliation,
   PersonOption
 } from "./month-close/monthCloseTypes";
 
@@ -27,9 +30,11 @@ export function MonthClosePage({ capabilities }: MonthClosePageProps) {
   const [selectedPeriod, setSelectedPeriod] = useState("");
   const [periodInput, setPeriodInput] = useState(currentPeriodValue());
   const [overview, setOverview] = useState<MonthCloseOverview | null>(null);
+  const [reconciliation, setReconciliation] = useState<MonthCloseReconciliation | null>(null);
   const [people, setPeople] = useState<PersonOption[]>([]);
   const [isLoadingPeriods, setIsLoadingPeriods] = useState(false);
   const [isLoadingOverview, setIsLoadingOverview] = useState(false);
+  const [isLoadingReconciliation, setIsLoadingReconciliation] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -72,6 +77,7 @@ export function MonthClosePage({ capabilities }: MonthClosePageProps) {
   useEffect(() => {
     if (!selectedPeriod) {
       setOverview(null);
+      setReconciliation(null);
       return;
     }
 
@@ -79,14 +85,22 @@ export function MonthClosePage({ capabilities }: MonthClosePageProps) {
 
     async function loadOverview() {
       setIsLoadingOverview(true);
+      setIsLoadingReconciliation(true);
       setError(null);
       try {
-        const nextOverview = await getMonthCloseOverview(selectedPeriod);
-        if (isCurrent) setOverview(nextOverview);
+        const [nextOverview, nextReconciliation] = await Promise.all([
+          getMonthCloseOverview(selectedPeriod),
+          getMonthCloseReconciliation(selectedPeriod)
+        ]);
+        if (isCurrent) {
+          setOverview(nextOverview);
+          setReconciliation(nextReconciliation);
+        }
       } catch (loadError) {
         if (isCurrent) setError(errorMessage(loadError, "读取月结检查结果失败"));
       } finally {
         if (isCurrent) setIsLoadingOverview(false);
+        if (isCurrent) setIsLoadingReconciliation(false);
       }
     }
 
@@ -125,8 +139,12 @@ export function MonthClosePage({ capabilities }: MonthClosePageProps) {
 
   async function refreshSelectedOverview(period = selectedPeriod) {
     if (!period) return;
-    const nextOverview = await getMonthCloseOverview(period);
+    const [nextOverview, nextReconciliation] = await Promise.all([
+      getMonthCloseOverview(period),
+      getMonthCloseReconciliation(period)
+    ]);
     setOverview(nextOverview);
+    setReconciliation(nextReconciliation);
   }
 
   async function handleRefresh() {
@@ -134,6 +152,7 @@ export function MonthClosePage({ capabilities }: MonthClosePageProps) {
     setError(null);
     setIsLoadingPeriods(true);
     setIsLoadingOverview(Boolean(selectedPeriod));
+    setIsLoadingReconciliation(Boolean(selectedPeriod));
     try {
       await refreshPeriods();
       await refreshSelectedOverview();
@@ -143,6 +162,7 @@ export function MonthClosePage({ capabilities }: MonthClosePageProps) {
     } finally {
       setIsLoadingPeriods(false);
       setIsLoadingOverview(false);
+      setIsLoadingReconciliation(false);
     }
   }
 
@@ -164,6 +184,7 @@ export function MonthClosePage({ capabilities }: MonthClosePageProps) {
       });
       setSelectedPeriod(period);
       await refreshPeriods();
+      setReconciliation(await getMonthCloseReconciliation(period));
       setNotice(result.canLock ? "检查完成，当前期间可进入锁账确认。" : "检查完成，请先处理清单中的异常项。");
     } catch (runError) {
       setError(errorMessage(runError, "运行月结检查失败"));
@@ -239,6 +260,7 @@ export function MonthClosePage({ capabilities }: MonthClosePageProps) {
         <div className="month-close-main">
           <MonthCloseStatusBar period={selectedPeriodRow} overview={overview} />
           {isLoadingOverview ? <div className="workspace-placeholder">读取检查结果中</div> : null}
+          <MonthCloseReconciliationTabs reconciliation={reconciliation} isLoading={isLoadingReconciliation} />
           <MonthCloseChecksTab
             checks={overview?.checks ?? []}
             people={people}

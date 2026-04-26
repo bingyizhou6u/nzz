@@ -32,6 +32,10 @@ export interface MonthCloseSourceRepository {
   pendingCostRowsForMonthClose(period: string): Promise<PendingCostCheckRow[]>;
   loanAgingRowsForMonthClose(period: string): Promise<LoanAgingCheckRow[]>;
   projectIntegrityRows(period: string): Promise<ProjectIntegrityCheckRow[]>;
+  monthCloseFundingReconciliation(period: string): Promise<MonthCloseFundingReconciliationRow[]>;
+  monthClosePettyCashReconciliation(period: string): Promise<MonthClosePettyCashReconciliationRow[]>;
+  monthCloseLoanReconciliation(period: string): Promise<MonthCloseLoanReconciliationRow[]>;
+  monthCloseProjectReconciliation(period: string): Promise<MonthCloseProjectReconciliationRow[]>;
 }
 
 export interface MonthCloseActor {
@@ -52,6 +56,53 @@ export interface RunMonthCloseChecksResult {
   checks: MonthCloseCheckResultRow[];
   summary: MonthCloseSummary;
   canLock: boolean;
+}
+
+export interface MonthCloseFundingReconciliationRow {
+  accountId: string;
+  accountType: string;
+  currencyCode: string;
+  openingBalanceMinor: number;
+  periodInflowMinor: number;
+  periodOutflowMinor: number;
+  closingBalanceMinor: number;
+}
+
+export interface MonthClosePettyCashReconciliationRow {
+  personId: string | null;
+  accountId: string;
+  currencyCode: string;
+  openingBalanceMinor: number;
+  periodIssuedMinor: number;
+  periodReimbursedMinor: number;
+  closingBalanceMinor: number;
+  pendingCostMinor: number;
+}
+
+export interface MonthCloseLoanReconciliationRow {
+  borrowerPersonId: string;
+  currencyCode: string;
+  openingBalanceMinor: number;
+  periodLoanOutMinor: number;
+  periodRepaymentMinor: number;
+  periodWriteoffMinor: number;
+  closingBalanceMinor: number;
+}
+
+export interface MonthCloseProjectReconciliationRow {
+  projectId: string | null;
+  currencyCode: string;
+  incomeAmountMinor: number;
+  expenseAmountMinor: number;
+  matchedUsdtCostMinor: number;
+  pendingAmountMinor: number;
+}
+
+export interface MonthCloseReconciliation {
+  funding: MonthCloseFundingReconciliationRow[];
+  pettyCash: MonthClosePettyCashReconciliationRow[];
+  loans: MonthCloseLoanReconciliationRow[];
+  projects: MonthCloseProjectReconciliationRow[];
 }
 
 export const defaultMonthCloseCheckOptions: MonthCloseCheckOptions = {
@@ -138,6 +189,17 @@ export class MonthCloseService {
       }
       throw error;
     }
+  }
+
+  async reconciliation(period: string): Promise<MonthCloseReconciliation> {
+    const [funding, pettyCash, loans, projects] = await Promise.all([
+      this.sources.monthCloseFundingReconciliation(period),
+      this.sources.monthClosePettyCashReconciliation(period),
+      this.sources.monthCloseLoanReconciliation(period),
+      this.sources.monthCloseProjectReconciliation(period)
+    ]);
+
+    return { funding, pettyCash, loans, projects };
   }
 }
 

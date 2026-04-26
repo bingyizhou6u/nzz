@@ -89,6 +89,17 @@ export const listMonthCloseChecks: Handler = async ({ env, params, actor: contex
   }
 };
 
+export const getMonthCloseReconciliation: Handler = async ({ env, params, actor: contextActor }) => {
+  try {
+    requireActorWithCapability(contextActor, "periodLocks.view");
+    const period = periodValue(params.period);
+    const service = new MonthCloseService(new MonthCloseRepository(env.DB), new ReportRepository(env.DB));
+    return Response.json({ data: await service.reconciliation(period) });
+  } catch (error) {
+    return errorResponse(error);
+  }
+};
+
 export const updateMonthCloseCheckResult: Handler = async ({ request, env, params, actor: contextActor }) => {
   try {
     const actor = requireActorWithCapability(contextActor, "periodLocks.lock");
