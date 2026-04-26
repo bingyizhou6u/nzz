@@ -3,6 +3,7 @@ import {
   buildCheckActionPatch,
   canHandleMonthCloseChecks,
   canRunMonthCloseChecks,
+  canUnlockMonthClosePeriod,
   monthCloseCheckStatusLabel,
   monthClosePeriodStatus,
   severityTone
@@ -66,6 +67,8 @@ describe("month close model", () => {
     expect(canRunMonthCloseChecks(["periodLocks.view"])).toBe(false);
     expect(canHandleMonthCloseChecks(["periodLocks.lock"])).toBe(true);
     expect(canHandleMonthCloseChecks(["reports.view"])).toBe(false);
+    expect(canUnlockMonthClosePeriod(["periodLocks.unlock"])).toBe(true);
+    expect(canUnlockMonthClosePeriod(["periodLocks.lock"])).toBe(false);
   });
 
   it("builds patches for check result actions with notes and assignees", () => {

@@ -15,6 +15,17 @@ interface ChecksResponse {
   checks: MonthCloseCheckResult[];
 }
 
+export interface MonthCloseLockResult {
+  period: string;
+  status: "locked";
+  snapshot: MonthCloseSnapshot;
+}
+
+export interface MonthCloseUnlockResult {
+  period: string;
+  status: "unlocked";
+}
+
 export function listMonthClosePeriods() {
   return getJson<ApiEnvelope<MonthClosePeriod[]>>("/api/month-close/periods").then((response) => response.data);
 }
@@ -48,6 +59,18 @@ export function listMonthCloseSnapshots(period: string) {
   return getJson<ApiEnvelope<MonthCloseSnapshot[]>>(`/api/month-close/${encodeURIComponent(period)}/snapshots`).then(
     (response) => response.data
   );
+}
+
+export function lockMonthClosePeriod(period: string, note: string) {
+  return postJson<ApiEnvelope<MonthCloseLockResult>>(`/api/month-close/${encodeURIComponent(period)}/lock`, { note }).then(
+    (response) => response.data
+  );
+}
+
+export function unlockMonthClosePeriod(period: string, reason: string) {
+  return postJson<ApiEnvelope<MonthCloseUnlockResult>>(`/api/month-close/${encodeURIComponent(period)}/unlock`, {
+    reason
+  }).then((response) => response.data);
 }
 
 export function updateMonthCloseCheckResult(id: string, patch: MonthCloseCheckPatch) {

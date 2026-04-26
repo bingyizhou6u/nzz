@@ -1542,6 +1542,16 @@ textarea {
   background: #f2f4f7;
 }
 
+.danger-button {
+  border-color: #b42318;
+  background: #b42318;
+  color: #ffffff;
+}
+
+.danger-button:hover:not(:disabled) {
+  background: #912018;
+}
+
 .message-line {
   min-height: 40px;
   padding: 0 16px 14px;
@@ -2053,6 +2063,44 @@ textarea {
   min-width: 142px;
 }
 
+.month-close-workflow-band {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 16px 16px;
+}
+
+.month-close-workflow-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid #d9dde3;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 10px 12px;
+}
+
+.month-close-workflow-summary strong,
+.month-close-workflow-summary span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.month-close-workflow-summary strong {
+  color: #17202a;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.month-close-workflow-summary span {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
 .month-close-grid {
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
@@ -2116,7 +2164,7 @@ textarea {
 
 .month-close-status-bar {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
   min-width: 0;
 }
@@ -2146,8 +2194,44 @@ textarea {
   overflow-wrap: anywhere;
 }
 
-.month-close-check-table {
-  min-width: 1120px;
+.month-close-lock-panel .panel-header p {
+  margin: 4px 0 0;
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.month-close-lock-grid,
+.month-close-unlock-box {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 16px 16px;
+}
+
+.month-close-lock-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 240px);
+  align-items: end;
+}
+
+.month-close-lock-actions {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.month-close-lock-actions span,
+.month-close-unlock-box span {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.month-close-unlock-box {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  border-top: 1px solid #eaecf0;
+  background: #fff8f6;
 }
 
 .month-close-reconciliation-panel {
@@ -2175,27 +2259,6 @@ textarea {
   min-width: 760px;
 }
 
-.month-close-check-table th:nth-child(1),
-.month-close-check-table td:nth-child(1),
-.month-close-check-table th:nth-child(6),
-.month-close-check-table td:nth-child(6) {
-  width: 88px;
-}
-
-.month-close-check-table th:nth-child(2),
-.month-close-check-table td:nth-child(2),
-.month-close-check-table th:nth-child(3),
-.month-close-check-table td:nth-child(3),
-.month-close-check-table th:nth-child(4),
-.month-close-check-table td:nth-child(4) {
-  width: 140px;
-}
-
-.month-close-check-table th:nth-child(7),
-.month-close-check-table td:nth-child(7) {
-  width: 310px;
-}
-
 .month-close-muted-line {
   display: block;
   margin-top: 4px;
@@ -2213,6 +2276,81 @@ textarea {
   color: #667085;
 }
 
+.month-close-check-workspace {
+  grid-template-columns: minmax(280px, 0.82fr) minmax(420px, 1.18fr);
+  gap: 0;
+  border-top: 1px solid #e5e7eb;
+}
+
+.month-close-check-list-region {
+  min-width: 0;
+  padding: 12px;
+}
+
+.month-close-check-workspace .split-workspace-list {
+  border-right: 1px solid #e5e7eb;
+}
+
+.month-close-check-list-status {
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+  min-width: 0;
+}
+
+.month-close-check-workspace .detail-panel {
+  min-height: 100%;
+  border: 0;
+  border-radius: 0;
+}
+
+.month-close-check-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.month-close-check-detail-grid > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid #eaecf0;
+  border-radius: 8px;
+  background: #fafbfc;
+  padding: 10px;
+}
+
+.month-close-check-detail-grid span,
+.month-close-check-detail-grid small {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.month-close-check-detail-grid strong {
+  color: #17202a;
+  font-size: 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.month-close-check-message-card {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid #d9dde3;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #344054;
+  padding: 12px;
+  line-height: 1.45;
+}
+
+.month-close-check-message-card small {
+  color: #667085;
+}
+
 .month-close-check-actions {
   display: grid;
   gap: 8px;
@@ -2220,9 +2358,15 @@ textarea {
 }
 
 .month-close-check-actions select,
-.month-close-check-actions input {
+.month-close-check-actions input,
+.month-close-check-actions textarea {
   width: 100%;
   min-width: 0;
+}
+
+.month-close-check-detail-actions {
+  border-top: 1px solid #eaecf0;
+  padding-top: 12px;
 }
 
 .month-close-check-action-buttons {
@@ -2603,6 +2747,26 @@ textarea {
   .month-close-grid,
   .month-close-status-bar {
     grid-template-columns: 1fr;
+  }
+
+  .month-close-lock-grid,
+  .month-close-unlock-box,
+  .month-close-check-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .month-close-workflow-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .month-close-workflow-summary span {
+    white-space: normal;
+  }
+
+  .month-close-check-workspace .split-workspace-list {
+    border-right: 0;
+    border-bottom: 1px solid #e5e7eb;
   }
 
   .report-workspace-toolbar {

@@ -66,6 +66,10 @@ export function canHandleMonthCloseChecks(capabilities: readonly Capability[] | 
   return capabilities.includes("periodLocks.lock");
 }
 
+export function canUnlockMonthClosePeriod(capabilities: readonly Capability[] | readonly string[]): boolean {
+  return capabilities.includes("periodLocks.unlock");
+}
+
 export function buildCheckActionPatch(
   check: MonthCloseCheckResult,
   action: MonthCloseCheckAction,

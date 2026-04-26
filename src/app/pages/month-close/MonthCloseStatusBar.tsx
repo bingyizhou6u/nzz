@@ -1,13 +1,15 @@
 import { StatusTag } from "../../components/ui";
 import { monthClosePeriodStatus } from "./monthCloseModel";
+import type { MonthCloseWorkflowState } from "./monthCloseWorkflowModel";
 import type { MonthCloseOverview, MonthClosePeriod } from "./monthCloseTypes";
 
 interface MonthCloseStatusBarProps {
   period: MonthClosePeriod | null;
   overview: MonthCloseOverview | null;
+  workflow: MonthCloseWorkflowState;
 }
 
-export function MonthCloseStatusBar({ period, overview }: MonthCloseStatusBarProps) {
+export function MonthCloseStatusBar({ period, overview, workflow }: MonthCloseStatusBarProps) {
   const status = period ? monthClosePeriodStatus(period) : null;
   const run = overview?.latestRun ?? null;
 
@@ -34,6 +36,11 @@ export function MonthCloseStatusBar({ period, overview }: MonthCloseStatusBarPro
         <span>锁账状态</span>
         <strong>{overview?.periodLock ? "已锁账" : period?.can_lock ? "可锁账" : "未锁账"}</strong>
         <small>{overview?.periodLock?.locked_at ?? "等待检查闭环"}</small>
+      </div>
+      <div className="month-close-status-card">
+        <span>流程位置</span>
+        <strong>{workflow.steps.find((step) => step.id === workflow.currentStepId)?.label ?? "-"}</strong>
+        <small>{workflow.currentDescription}</small>
       </div>
     </section>
   );

@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { StatusTag } from "../../components/ui";
+import { useEffect, useMemo, useState } from "react";
+import { DetailPanel, RecordList, SplitWorkspace, type RecordListItem } from "../../components/interaction";
+import { EmptyState, StatusTag } from "../../components/ui";
 import {
   buildCheckActionPatch,
   canHandleMonthCloseChecks,
@@ -21,11 +22,41 @@ interface MonthCloseChecksTabProps {
   onUpdate: (id: string, patch: MonthCloseCheckPatch) => Promise<void>;
 }
 
+type CheckListItem = RecordListItem & {
+  check: MonthCloseCheckResult;
+};
+
 export function MonthCloseChecksTab({ checks, people, capabilities, isUpdating, onUpdate }: MonthCloseChecksTabProps) {
   const canHandle = canHandleMonthCloseChecks(capabilities);
+  const [selectedCheckId, setSelectedCheckId] = useState<string | null>(checks[0]?.id ?? null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [assignees, setAssignees] = useState<Record<string, string>>({});
   const [localError, setLocalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (checks.length === 0) {
+      setSelectedCheckId(null);
+      return;
+    }
+    if (!selectedCheckId || !checks.some((check) => check.id === selectedCheckId)) {
+      setSelectedCheckId(checks[0].id);
+    }
+  }, [checks, selectedCheckId]);
+
+  const selectedCheck = useMemo(
+    () => checks.find((check) => check.id === selectedCheckId) ?? checks[0] ?? null,
+    [checks, selectedCheckId]
+  );
+  const listItems = useMemo<CheckListItem[]>(
+    () =>
+      checks.map((check) => ({
+        id: check.id,
+        title: checkTypeLabel(check.check_type),
+        description: check.message,
+        check
+      })),
+    [checks]
+  );
 
   async function applyAction(check: MonthCloseCheckResult, action: MonthCloseCheckAction) {
     setLocalError(null);
@@ -50,121 +81,143 @@ export function MonthCloseChecksTab({ checks, people, capabilities, isUpdating, 
         <div className="status-slot">{checks.length} 项</div>
       </div>
       {localError ? <div className="notice error">{localError}</div> : null}
-      <div className="table-wrap">
-        <table className="data-table month-close-check-table">
-          <thead>
-            <tr>
-              <th>级别</th>
-              <th>检查项</th>
-              <th>对象</th>
-              <th>金额</th>
-              <th>说明</th>
-              <th>状态</th>
-              <th>处理</th>
-            </tr>
-          </thead>
-          <tbody>
-            {checks.length > 0 ? (
-              checks.map((check) => (
-                <tr key={check.id}>
-                  <td>
-                    <StatusTag tone={severityTone(check.severity)}>{severityLabel(check.severity)}</StatusTag>
-                  </td>
-                  <td>
-                    <strong>{checkTypeLabel(check.check_type)}</strong>
-                    <small className="month-close-muted-line">{check.business_date ?? "-"}</small>
-                  </td>
-                  <td>
-                    <span className="mono">{check.entity_id}</span>
-                    <small className="month-close-muted-line">{check.entity_type}</small>
-                  </td>
-                  <td className="mono">{formatMinorAmount(check.amount_minor, check.currency_code)}</td>
-                  <td>
-                    <div className="month-close-message">
-                      <span>{check.message}</span>
-                      <small>{check.suggested_action}</small>
-                      {check.resolution_note ? <small>处理说明：{check.resolution_note}</small> : null}
-                    </div>
-                  </td>
-                  <td>
-                    <StatusTag tone={statusTone(check.status)}>{monthCloseCheckStatusLabel(check.status)}</StatusTag>
-                  </td>
-                  <td>
-                    {canHandle ? (
-                      <div className="month-close-check-actions">
-                        <select
-                          aria-label={`${check.id} 责任人`}
-                          value={assignees[check.id] ?? check.assignee_person_id ?? ""}
-                          onChange={(event) => setAssignees((current) => ({ ...current, [check.id]: event.target.value }))}
-                          disabled={isUpdating}
-                        >
-                          <option value="">选择责任人</option>
-                          {people.map((person) => (
-                            <option key={person.id} value={person.id}>
-                              {person.alias ? `${person.name} / ${person.alias}` : person.name}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          aria-label={`${check.id} 处理说明`}
-                          value={notes[check.id] ?? ""}
-                          onChange={(event) => setNotes((current) => ({ ...current, [check.id]: event.target.value }))}
-                          placeholder="处理说明"
-                          disabled={isUpdating}
-                        />
-                        <div className="month-close-check-action-buttons">
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            disabled={isUpdating}
-                            onClick={() => void applyAction(check, "assign")}
-                          >
-                            分配
-                          </button>
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            disabled={isUpdating}
-                            onClick={() => void applyAction(check, "resolve")}
-                          >
-                            标记已处理
-                          </button>
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            disabled={isUpdating}
-                            onClick={() => void applyAction(check, "acknowledge")}
-                          >
-                            确认原因
-                          </button>
-                          {check.severity !== "critical" ? (
-                            <button
-                              type="button"
-                              className="secondary-button"
-                              disabled={isUpdating}
-                              onClick={() => void applyAction(check, "waive")}
-                            >
-                              确认保留
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="month-close-muted-line">只读</span>
-                    )}
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={7} className="empty-cell">
-                  暂无检查项
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <SplitWorkspace
+        className="month-close-check-workspace"
+        list={
+          <div className="month-close-check-list-region">
+            <RecordList
+              aria-label="月结检查项"
+              items={listItems}
+              selectedId={selectedCheck?.id ?? null}
+              onSelect={(id) => setSelectedCheckId(id)}
+              emptyState={<EmptyState title="暂无检查项" message="当前期间没有需要处理的检查结果" />}
+              renderMeta={(item) => (
+                <>
+                  <span>{item.check.business_date ?? "无业务日期"}</span>
+                  <span className="mono">{item.check.entity_id}</span>
+                </>
+              )}
+              renderStatus={(item) => (
+                <span className="month-close-check-list-status">
+                  <StatusTag tone={severityTone(item.check.severity)}>{severityLabel(item.check.severity)}</StatusTag>
+                  <StatusTag tone={statusTone(item.check.status)}>{monthCloseCheckStatusLabel(item.check.status)}</StatusTag>
+                </span>
+              )}
+            />
+          </div>
+        }
+        detail={
+          selectedCheck ? (
+            <DetailPanel
+              title={checkTypeLabel(selectedCheck.check_type)}
+              description={selectedCheck.message}
+              status={<StatusTag tone={severityTone(selectedCheck.severity)}>{severityLabel(selectedCheck.severity)}</StatusTag>}
+            >
+              <div className="month-close-check-detail-grid">
+                <div>
+                  <span>对象</span>
+                  <strong className="mono">{selectedCheck.entity_id}</strong>
+                  <small>{selectedCheck.entity_type}</small>
+                </div>
+                <div>
+                  <span>金额</span>
+                  <strong className="mono">{formatMinorAmount(selectedCheck.amount_minor, selectedCheck.currency_code)}</strong>
+                  <small>{selectedCheck.business_date ?? "无业务日期"}</small>
+                </div>
+                <div>
+                  <span>USDT 成本</span>
+                  <strong className="mono">{formatMinorAmount(selectedCheck.usdt_cost_minor, "USDT")}</strong>
+                  <small>{selectedCheck.period}</small>
+                </div>
+                <div>
+                  <span>状态</span>
+                  <strong>{monthCloseCheckStatusLabel(selectedCheck.status)}</strong>
+                  <small>{selectedCheck.resolved_at ?? "尚未完成处理"}</small>
+                </div>
+              </div>
+              <div className="month-close-check-message-card">
+                <span>{selectedCheck.suggested_action}</span>
+                {selectedCheck.resolution_note ? <small>处理说明：{selectedCheck.resolution_note}</small> : null}
+              </div>
+              {canHandle ? (
+                <div className="month-close-check-actions month-close-check-detail-actions">
+                  <label className="field">
+                    <span>责任人</span>
+                    <select
+                      aria-label={`${selectedCheck.id} 责任人`}
+                      value={assignees[selectedCheck.id] ?? selectedCheck.assignee_person_id ?? ""}
+                      onChange={(event) =>
+                        setAssignees((current) => ({ ...current, [selectedCheck.id]: event.target.value }))
+                      }
+                      disabled={isUpdating}
+                    >
+                      <option value="">选择责任人</option>
+                      {people.map((person) => (
+                        <option key={person.id} value={person.id}>
+                          {person.alias ? `${person.name} / ${person.alias}` : person.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>处理说明</span>
+                    <textarea
+                      aria-label={`${selectedCheck.id} 处理说明`}
+                      rows={3}
+                      value={notes[selectedCheck.id] ?? ""}
+                      onChange={(event) => setNotes((current) => ({ ...current, [selectedCheck.id]: event.target.value }))}
+                      placeholder="填写确认依据、修正动作或保留原因"
+                      disabled={isUpdating}
+                    />
+                  </label>
+                  <div className="month-close-check-action-buttons">
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={isUpdating}
+                      onClick={() => void applyAction(selectedCheck, "assign")}
+                    >
+                      分配
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={isUpdating}
+                      onClick={() => void applyAction(selectedCheck, "resolve")}
+                    >
+                      标记已处理
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={isUpdating}
+                      onClick={() => void applyAction(selectedCheck, "acknowledge")}
+                    >
+                      确认原因
+                    </button>
+                    {selectedCheck.severity !== "critical" ? (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        disabled={isUpdating}
+                        onClick={() => void applyAction(selectedCheck, "waive")}
+                      >
+                        确认保留
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : (
+                <EmptyState title="只读模式" message="当前账号没有处理月结检查项的权限" />
+              )}
+            </DetailPanel>
+          ) : (
+            <DetailPanel title="检查详情" description="选择一条检查项后查看处理上下文">
+              <EmptyState title="暂无检查项" message="当前期间没有需要处理的检查结果" />
+            </DetailPanel>
+          )
+        }
+      />
     </section>
   );
 }
