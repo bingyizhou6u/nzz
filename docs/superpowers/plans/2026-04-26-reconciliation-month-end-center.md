@@ -34,12 +34,13 @@
   - Commit：`16803b4 feat: add month close repository persistence`
 - [x] Task 2 RED：月结检查规则测试已写入。
   - Commit：`0747b47 test: cover month close check rules`
+- [x] Task 2 GREEN：月结检查规则纯函数已实现。
+  - Commit：本次提交 `feat: add month close check rules`
 
 当前注意事项：
 
-- 当前 `main` 包含 Task 2 RED 检查点，`tests/services/monthCloseChecks.test.ts` 会因为 `src/services/monthCloseChecks.ts` 尚未实现而失败。
-- 下一步不是重做 Task 1，而是先审查 Task 1，再完成 Task 2 GREEN。
-- 在 Task 2 GREEN 前，不应跑全量测试作为最终验收依据。
+- Task 1 无需重做。
+- Task 2 已进入 GREEN 验证，下一步是提交后进入 Task 3 服务编排。
 
 ## 3. 源文档
 
@@ -129,12 +130,12 @@ export const MONTH_CLOSE_RESULT_STATUSES = ["open", "assigned", "acknowledged", 
 
 ## 7. Task 2：月结检查规则纯函数
 
-状态：RED 已完成，GREEN 待做。
+状态：已完成。
 
 文件：
 
 - [x] `tests/services/monthCloseChecks.test.ts`
-- [ ] `src/services/monthCloseChecks.ts`
+- [x] `src/services/monthCloseChecks.ts`
 
 ### 7.1 RED
 
@@ -153,20 +154,20 @@ Cannot find module '../../src/services/monthCloseChecks'
 
 ### 7.2 GREEN
 
-创建 `src/services/monthCloseChecks.ts`。
+- [x] 创建 `src/services/monthCloseChecks.ts`。
 
 必须导出：
 
-- `MonthCloseCheckOptions`
-- `MonthCloseCheckResultInput`
-- `MonthCloseHandledCheckResult`
-- `documentWorkflowChecks`
-- `accountBalanceChecks`
-- `pendingCostChecks`
-- `loanAgingChecks`
-- `projectIntegrityChecks`
-- `summarizeCheckResults`
-- `canLockFromCheckResults`
+- [x] `MonthCloseCheckOptions`
+- [x] `MonthCloseCheckResultInput`
+- [x] `MonthCloseHandledCheckResult`
+- [x] `documentWorkflowChecks`
+- [x] `accountBalanceChecks`
+- [x] `pendingCostChecks`
+- [x] `loanAgingChecks`
+- [x] `projectIntegrityChecks`
+- [x] `summarizeCheckResults`
+- [x] `canLockFromCheckResults`
 
 检查规则：
 
