@@ -155,8 +155,8 @@ export function PeopleTab({
               <option value="disabled">停用</option>
             </select>
           </label>
-          <div className="checkbox-group person-role-options" aria-label="角色">
-            <span className="checkbox-group-heading">角色</span>
+          <fieldset className="checkbox-group person-role-options">
+            <legend className="person-role-options-legend">角色</legend>
             {personRoles.map((role) => (
               <label key={role}>
                 <input
@@ -168,7 +168,7 @@ export function PeopleTab({
                 <span>{personRoleLabels[role]}</span>
               </label>
             ))}
-          </div>
+          </fieldset>
         </fieldset>
         <FormActions
           isSubmitting={isSubmitting}

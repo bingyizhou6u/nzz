@@ -91,7 +91,7 @@ describe("master data capability gating", () => {
     expect(buttonTexts(container)).not.toContain("归档");
   });
 
-  it("renders master data governance layout with side navigation and detail region", async () => {
+  it("links master data tabs to the active detail panel", async () => {
     const fetchMock = vi.fn<FetchHandler>().mockResolvedValue(
       new Response(JSON.stringify({ data: masterDataSnapshot() }), {
         status: 200,
@@ -119,11 +119,59 @@ describe("master data capability gating", () => {
     expect(governanceLayout).toBeInstanceOf(HTMLElement);
     expect(governanceLayout?.textContent).toContain("人员");
 
-    const sideNav = container.querySelector(".master-data-side-nav");
+    const sideNav = container.querySelector('[role="tablist"][aria-label="基础资料分类"]');
     expect(sideNav).toBeInstanceOf(HTMLElement);
     expect(sideNav?.textContent).toContain("管理科目");
 
-    expect(container.querySelector(".master-data-detail-region")).toBeInstanceOf(HTMLElement);
+    const peopleTab = tabByText(container, "人员");
+    const projectsTab = tabByText(container, "项目");
+    expect(peopleTab.id).toBe("master-data-tab-people");
+    expect(peopleTab.getAttribute("aria-controls")).toBe("master-data-panel-people");
+    expect(projectsTab.id).toBe("master-data-tab-projects");
+    expect(projectsTab.getAttribute("aria-controls")).toBe("master-data-panel-projects");
+
+    const panel = container.querySelector(".master-data-detail-region");
+    expect(panel).toBeInstanceOf(HTMLElement);
+    expect(panel?.getAttribute("role")).toBe("tabpanel");
+    expect(panel?.id).toBe("master-data-panel-people");
+    expect(panel?.getAttribute("aria-labelledby")).toBe("master-data-tab-people");
+  });
+
+  it("switches master data tabs with keyboard navigation", async () => {
+    const fetchMock = vi.fn<FetchHandler>().mockResolvedValue(
+      new Response(JSON.stringify({ data: masterDataSnapshot() }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        createElement(MasterDataPage, {
+          capabilities: ["masterData.view", "masterData.write", "masterData.managePeopleRoles"]
+        })
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const peopleTab = tabByText(container, "人员");
+    peopleTab.focus();
+
+    await act(async () => {
+      peopleTab.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    });
+
+    const projectsTab = tabByText(container, "项目");
+    expect(document.activeElement).toBe(projectsTab);
+    expect(projectsTab.getAttribute("aria-selected")).toBe("true");
+    expect(container.querySelector(".master-data-detail-region")?.id).toBe("master-data-panel-projects");
   });
 
   it("groups person login identity fields in a dedicated identity section", async () => {
@@ -135,6 +183,11 @@ describe("master data capability gating", () => {
     expect(identitySection?.textContent).toContain("登录邮箱");
     expect(identitySection?.textContent).toContain("状态");
     expect(identitySection?.textContent).toContain("管理员");
+
+    const roleGroup = identitySection?.querySelector(".person-role-options");
+    expect(roleGroup).toBeInstanceOf(HTMLFieldSetElement);
+    expect(roleGroup?.querySelector("legend")?.textContent).toBe("角色");
+    expect(checkboxByLabel(container, "管理员").closest("fieldset")).toBe(roleGroup);
   });
 
   it("disables person role controls and preserves existing roles without manage people roles capability", async () => {
@@ -615,6 +668,18 @@ function buttonByText(container: HTMLElement, text: string): HTMLButtonElement {
   }
 
   return button;
+}
+
+function tabByText(container: HTMLElement, text: string): HTMLButtonElement {
+  const tab = Array.from(container.querySelectorAll('[role="tab"]')).find(
+    (candidate) => candidate.textContent?.trim() === text
+  );
+
+  if (!(tab instanceof HTMLButtonElement)) {
+    throw new Error(`Tab not found: ${text}`);
+  }
+
+  return tab;
 }
 
 function inputByLabel(container: HTMLElement, text: string): HTMLInputElement {

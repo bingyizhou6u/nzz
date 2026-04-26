@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type KeyboardEvent, useEffect, useState } from "react";
 import { getJson, type ApiEnvelope } from "../api";
 import { AccountsTab } from "./master-data/AccountsTab";
 import { CategoriesTab } from "./master-data/CategoriesTab";
@@ -21,6 +21,14 @@ const tabs: Array<{ key: TabKey; label: string }> = [
   { key: "currencies", label: "币种" },
   { key: "categories", label: "管理科目" }
 ];
+
+function masterDataTabId(tabKey: TabKey) {
+  return `master-data-tab-${tabKey}`;
+}
+
+function masterDataPanelId(tabKey: TabKey) {
+  return `master-data-panel-${tabKey}`;
+}
 
 const emptySnapshot: MasterDataSnapshot = {
   people: [],
@@ -77,6 +85,31 @@ export function MasterDataPage({ capabilities }: MasterDataPageProps) {
     setReloadKey((value) => value + 1);
   }
 
+  function activateTab(tabKey: TabKey) {
+    setActiveTab(tabKey);
+    document.getElementById(masterDataTabId(tabKey))?.focus();
+  }
+
+  function handleTabKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const currentIndex = tabs.findIndex((tab) => tab.key === activeTab);
+    let nextIndex = currentIndex;
+
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      nextIndex = (currentIndex + 1) % tabs.length;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = tabs.length - 1;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    activateTab(tabs[nextIndex].key);
+  }
+
   return (
     <div className="page-stack">
       <section className="panel">
@@ -95,21 +128,34 @@ export function MasterDataPage({ capabilities }: MasterDataPageProps) {
       </section>
 
       <section className="panel master-data-governance-layout">
-        <div className="master-data-side-nav" role="tablist" aria-label="基础资料分类">
+        <div className="master-data-side-nav" role="tablist" aria-label="基础资料分类" onKeyDown={handleTabKeyDown}>
           {tabs.map((tab) => (
             <button
               key={tab.key}
+              id={masterDataTabId(tab.key)}
               type="button"
-              className={activeTab === tab.key ? "side-nav-lite active" : "side-nav-lite"}
-              onClick={() => setActiveTab(tab.key)}
+              className={
+                activeTab === tab.key
+                  ? "master-data-side-nav-button master-data-side-nav-button-active"
+                  : "master-data-side-nav-button"
+              }
+              onClick={() => activateTab(tab.key)}
+              aria-controls={masterDataPanelId(tab.key)}
               aria-selected={activeTab === tab.key}
               role="tab"
+              tabIndex={activeTab === tab.key ? 0 : -1}
             >
               {tab.label}
             </button>
           ))}
         </div>
-        <div className="master-data-detail-region">
+        <div
+          className="master-data-detail-region"
+          id={masterDataPanelId(activeTab)}
+          role="tabpanel"
+          aria-labelledby={masterDataTabId(activeTab)}
+          tabIndex={0}
+        >
           {activeTab === "people" ? (
             <PeopleTab
               rows={data.people}
