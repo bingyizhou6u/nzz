@@ -6,10 +6,22 @@ import {
   previewReviewDocument,
   rejectReviewDocument
 } from "./review/reviewApi";
-import { documentTypeLabels, formatPreviewRecord, previewGroups, reviewRiskTone, waitingLabel } from "./review/reviewModel";
+import { DetailPanel, RecordList, SplitWorkspace } from "../components/interaction";
+import { EmptyState, Notice, StatusTag } from "../components/ui";
+import {
+  documentTypeLabels,
+  formatPreviewRecord,
+  previewGroups,
+  reviewActionAvailability,
+  reviewRiskTone,
+  sortReviewQueueByRisk,
+  waitingLabel,
+  type ReviewLoadState,
+  type ReviewRiskTone
+} from "./review/reviewModel";
 import type { ApprovalPreviewState, ReviewDocumentRow } from "./review/reviewTypes";
 
-type LoadState = "idle" | "loading" | "ready" | "error";
+type LoadState = ReviewLoadState;
 
 interface ClearedReviewActionState {
   documents: ReviewDocumentRow[];
@@ -72,7 +84,9 @@ export function ReviewCenterPage({ capabilities }: ReviewCenterPageProps) {
     () => documents.find((document) => document.id === selectedId) ?? null,
     [documents, selectedId]
   );
-  const groups = useMemo(() => (preview ? previewGroups(preview) : []), [preview]);
+  const selectedContext = detail ?? selectedDocument;
+  const groups = useMemo(() => (preview ? previewGroups(preview, selectedContext) : []), [preview, selectedContext]);
+  const actionAvailability = reviewActionAvailability({ selectedId, previewState, actionKey, rejectReason });
 
   useEffect(() => {
     if (!canRenderReviewCenter(capabilities)) return;
@@ -82,7 +96,7 @@ export function ReviewCenterPage({ capabilities }: ReviewCenterPageProps) {
       setQueueState("loading");
       setError(null);
       try {
-        const nextDocuments = await listReviewDocuments();
+        const nextDocuments = sortReviewQueueByRisk(await listReviewDocuments());
         if (!isCurrent) return;
         setDocuments(nextDocuments);
         setSelectedId((current) =>
@@ -176,7 +190,7 @@ export function ReviewCenterPage({ capabilities }: ReviewCenterPageProps) {
     setQueueState("loading");
 
     try {
-      const nextDocuments = await listReviewDocuments();
+      const nextDocuments = sortReviewQueueByRisk(await listReviewDocuments());
       const nextSelectedId = nextDocuments[0]?.id ?? null;
       setDocuments(nextDocuments);
       setSelectedId(nextSelectedId);
@@ -191,7 +205,7 @@ export function ReviewCenterPage({ capabilities }: ReviewCenterPageProps) {
   }
 
   async function handleApprove() {
-    if (!selectedId || previewState !== "ready") return;
+    if (!selectedId || !actionAvailability.canApprove) return;
 
     setActionKey("approve");
     setError(null);
@@ -206,8 +220,7 @@ export function ReviewCenterPage({ capabilities }: ReviewCenterPageProps) {
     }
   }
 
-  async function handleReject(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleReject() {
     if (!selectedId) return;
 
     const reason = rejectReason.trim();
@@ -229,167 +242,167 @@ export function ReviewCenterPage({ capabilities }: ReviewCenterPageProps) {
     }
   }
 
+  const queueItems = documents.map((document) => ({
+    id: document.id,
+    title: document.document_no,
+    description: `${documentTypeLabels[document.document_type] ?? document.document_type} / ${document.business_date}`,
+    document
+  }));
+  const detailStatus = reviewDetailStatus(detailState, previewState, selectedId);
+  const previewStatus = reviewPreviewStatus(previewState, preview, groups.length);
+
   return (
-    <div className="review-workspace">
-      <section className="panel review-queue-panel">
-        <div className="panel-header">
-          <h2>审核队列</h2>
-          <div className="status-slot" role="status" aria-live="polite">
-            {queueState === "loading" ? "读取中" : queueState === "error" ? "读取失败" : `${documents.length} 条`}
-          </div>
-        </div>
-        <div className="table-wrap">
-          <table className="data-table review-queue-table">
-            <thead>
-              <tr>
-                <th>单据号</th>
-                <th>类型</th>
-                <th>业务日期</th>
-                <th>等待</th>
-                <th>摘要</th>
-              </tr>
-            </thead>
-            <tbody>
-              {queueState === "loading" ? (
-                <tr>
-                  <td colSpan={5} className="empty-cell">
-                    读取中
-                  </td>
-                </tr>
-              ) : documents.length > 0 ? (
-                documents.map((document) => (
-                  <tr
-                    key={document.id}
-                    className={document.id === selectedId ? "selected-row" : undefined}
-                    onClick={() => setSelectedId(document.id)}
-                  >
-                    <td>
-                      <button type="button" className="row-select-button" onClick={() => setSelectedId(document.id)}>
-                        {document.document_no}
-                      </button>
-                    </td>
-                    <td>{documentTypeLabels[document.document_type] ?? document.document_type}</td>
-                    <td className="mono">{document.business_date}</td>
-                    <td>
-                      <span className={`tag ${reviewRiskTone(document)}`}>{waitingLabel(document.submitted_at)}</span>
-                    </td>
-                    <td>{document.summary}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={5} className="empty-cell">
-                    暂无待审核单据
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="panel review-detail-panel">
-        <div className="review-detail-section">
-          <div className="panel-header">
-            <h2>审核详情</h2>
-            <div className="status-slot" role="status" aria-live="polite">
-              {detailState === "loading" ? "读取中" : previewState === "ready" ? "可审核" : selectedId ? "待预览" : "未选择"}
+    <div className="page-stack">
+      <SplitWorkspace
+        className="review-workspace"
+        list={
+          <section className="panel review-queue-panel">
+            <div className="panel-header">
+              <div>
+                <h2>审核队列</h2>
+                <p className="panel-subtitle">按风险和等待时间排序，优先处理超时单据。</p>
+              </div>
+              <div className="status-slot" role="status" aria-live="polite">
+                {queueState === "loading" ? "读取中" : queueState === "error" ? "读取失败" : `${documents.length} 条`}
+              </div>
             </div>
-          </div>
 
-          {selectedDocument || detail ? (
-            <div className="review-detail-grid">
-              <DetailItem label="单据号" value={detail?.document_no ?? selectedDocument?.document_no} mono />
-              <DetailItem
-                label="类型"
-                value={documentTypeLabels[detail?.document_type ?? selectedDocument?.document_type ?? ""] ?? detail?.document_type}
+            {queueState === "error" && error ? <Notice tone="danger">{error}</Notice> : null}
+
+            <div className="review-record-list-region">
+              <RecordList
+                aria-label="审核队列"
+                items={queueState === "loading" || queueState === "error" ? [] : queueItems}
+                selectedId={selectedId}
+                onSelect={(id) => setSelectedId(id)}
+                emptyState={
+                  queueState === "loading" ? (
+                    <EmptyState title="读取中" message="正在读取待审单据" />
+                  ) : queueState === "error" ? (
+                    <EmptyState title="读取失败" message="请处理错误后重新读取" />
+                  ) : (
+                    <EmptyState title="暂无待审核单据" message="当前队列没有需要处理的单据" />
+                  )
+                }
+                renderMeta={(item) => item.document.summary}
+                renderStatus={(item) => {
+                  const tone = reviewRiskTone(item.document);
+                  return (
+                    <span className="review-queue-status">
+                      <StatusTag tone={tone}>{reviewRiskLabel(tone)}</StatusTag>
+                      <span>{waitingLabel(item.document.submitted_at)}</span>
+                    </span>
+                  );
+                }}
               />
-              <DetailItem label="业务日期" value={detail?.business_date ?? selectedDocument?.business_date} mono />
-              <DetailItem label="期间" value={detail?.period ?? selectedDocument?.period} mono />
-              <DetailItem label="提交时间" value={detail?.submitted_at ?? selectedDocument?.submitted_at ?? "未记录"} mono />
-              <DetailItem label="创建人" value={detail?.created_by ?? selectedDocument?.created_by} mono />
-              <DetailItem label="经办人" value={detail?.operator_person_id ?? selectedDocument?.operator_person_id ?? "-"} mono />
-              <DetailItem label="项目" value={detail?.project_id ?? selectedDocument?.project_id ?? "-"} mono />
-              <DetailItem label="商户" value={detail?.merchant_id ?? selectedDocument?.merchant_id ?? "-"} mono />
-              <DetailItem label="摘要" value={detail?.summary ?? selectedDocument?.summary} />
             </div>
-          ) : (
-            <div className="workspace-placeholder">请选择一条待审单据。</div>
-          )}
+          </section>
+        }
+        detail={
+          <DetailPanel
+            className="review-detail-panel"
+            title="审核详情"
+            description={
+              selectedContext
+                ? `${selectedContext.document_no} / ${documentTypeLabels[selectedContext.document_type] ?? selectedContext.document_type}`
+                : "从左侧队列选择一条单据查看详情、影响预览和审批动作。"
+            }
+            status={<StatusTag tone={detailStatus.tone}>{detailStatus.label}</StatusTag>}
+          >
+            {error && queueState !== "error" ? <Notice tone="danger">{error}</Notice> : null}
+            {actionMessage ? <Notice tone="ok">{actionMessage}</Notice> : null}
 
-          <div className="review-actions">
-            <button
-              type="button"
-              onClick={() => void handleApprove()}
-              disabled={!selectedId || previewState !== "ready" || Boolean(actionKey)}
-            >
-              {actionKey === "approve" ? "通过中" : "通过"}
-            </button>
-            <form className="reject-form" onSubmit={(event) => void handleReject(event)}>
-              <label>
-                退回原因
-                <textarea
-                  value={rejectReason}
-                  onChange={(event) => setRejectReason(event.target.value)}
-                  rows={3}
-                  required
-                  disabled={!selectedId || Boolean(actionKey)}
+            {selectedContext ? (
+              <div className="review-detail-grid">
+                <DetailItem label="单据号" value={selectedContext.document_no} mono />
+                <DetailItem
+                  label="类型"
+                  value={documentTypeLabels[selectedContext.document_type] ?? selectedContext.document_type}
                 />
-              </label>
-              <button type="submit" className="secondary-button" disabled={!selectedId || Boolean(actionKey)}>
-                {actionKey === "reject" ? "退回中" : "退回"}
-              </button>
-            </form>
-          </div>
+                <DetailItem label="业务日期" value={selectedContext.business_date} mono />
+                <DetailItem label="期间" value={selectedContext.period} mono />
+                <DetailItem label="提交时间" value={selectedContext.submitted_at ?? "未记录"} mono />
+                <DetailItem label="创建人" value={selectedContext.created_by} mono />
+                <DetailItem label="经办人" value={selectedContext.operator_person_id ?? "-"} mono />
+                <DetailItem label="项目" value={selectedContext.project_id ?? "-"} mono />
+                <DetailItem label="商户" value={selectedContext.merchant_id ?? "-"} mono />
+                <DetailItem label="摘要" value={selectedContext.summary} />
+              </div>
+            ) : (
+              <EmptyState title={queueState === "loading" ? "读取中" : "未选择单据"} message="左侧队列选中后会在这里显示审核上下文" />
+            )}
 
-          {error ? <div className="notice error">{error}</div> : null}
-          {actionMessage ? (
-            <div className="message-line" role="status" aria-live="polite">
-              {actionMessage}
-            </div>
-          ) : null}
-        </div>
+            <section className="review-impact-panel">
+              <div className="review-section-heading">
+                <div>
+                  <h3>入账影响预览</h3>
+                  <p>预览只读取将要写入的资金、备用金、借款和项目影响。</p>
+                </div>
+                <StatusTag tone={previewStatus.tone}>{previewStatus.label}</StatusTag>
+              </div>
 
-        <div className="review-preview-section">
-          <div className="panel-header">
-            <h2>影响预览</h2>
-            <div className="status-slot" role="status" aria-live="polite">
-              {previewState === "loading" ? "计算中" : previewState === "error" ? "失败" : preview ? `${groups.length} 组` : "未选择"}
-            </div>
-          </div>
-
-          {previewState === "loading" ? <div className="workspace-placeholder">正在计算审批影响...</div> : null}
-          {previewState === "error" ? <div className="workspace-placeholder">预览失败时不能通过审核。</div> : null}
-          {previewState === "ready" && groups.length === 0 ? <div className="workspace-placeholder">无入账影响。</div> : null}
-          {groups.length > 0 ? (
-            <div className="preview-groups">
-              {groups.map((group) => (
-                <div key={group.title} className="preview-group">
-                  <div className="preview-group-header">
-                    <strong>{group.title}</strong>
-                    <span className="tag muted">{group.count} 条</span>
-                  </div>
-                  {group.sections.map((section) => (
-                    <div key={section.label} className="preview-section">
-                      <div className="risk-line">
-                        <span>{section.label}</span>
-                        <strong>{section.rows.length}</strong>
+              {previewState === "loading" ? <EmptyState title="计算中" message="正在计算审批后的入账影响" /> : null}
+              {previewState === "error" ? <EmptyState title="预览失败" message="预览失败时不能通过审核" /> : null}
+              {previewState === "ready" && groups.length === 0 ? <EmptyState title="无入账影响" message="当前单据不会产生可展示的影响记录" /> : null}
+              {groups.length > 0 ? (
+                <div className="preview-groups">
+                  {groups.map((group) => (
+                    <div key={group.title} className="preview-group">
+                      <div className="preview-group-header">
+                        <strong>{group.title}</strong>
+                        <StatusTag tone="muted">{group.count} 条</StatusTag>
                       </div>
-                      <ul>
-                        {section.rows.map((row, index) => (
-                          <li key={`${section.label}-${index}`} className="mono">
-                            {formatPreviewRecord(row)}
-                          </li>
-                        ))}
-                      </ul>
+                      {group.sections.map((section) => (
+                        <div key={section.label} className="preview-section">
+                          <div className="risk-line">
+                            <span>{section.label}</span>
+                            <strong>{section.rows.length}</strong>
+                          </div>
+                          <ul>
+                            {section.rows.map((row, index) => (
+                              <li key={`${section.label}-${index}`} className="mono">
+                                {formatPreviewRecord(row)}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>
-              ))}
+              ) : null}
+            </section>
+
+            <div className="review-action-dock">
+              <div className="review-action-copy">
+                <strong>审批动作</strong>
+                <span>通过会正式入账；退回会保留原因，等待制单人修正后重新提交。</span>
+              </div>
+              <div className="review-action-controls">
+                <button type="button" onClick={() => void handleApprove()} disabled={!actionAvailability.canApprove}>
+                  {actionKey === "approve" ? "通过中" : "通过"}
+                </button>
+                <label className="reject-reason-field">
+                  退回原因
+                  <textarea
+                    aria-label="退回原因"
+                    value={rejectReason}
+                    onChange={(event) => setRejectReason(event.target.value)}
+                    onInput={(event) => setRejectReason(event.currentTarget.value)}
+                    rows={3}
+                    maxLength={240}
+                    placeholder="说明需要补充或修正的内容"
+                    disabled={!selectedId || actionAvailability.isBusy}
+                  />
+                </label>
+                <button type="button" className="secondary-button" onClick={() => void handleReject()} disabled={!actionAvailability.canReject}>
+                  {actionKey === "reject" ? "退回中" : "退回"}
+                </button>
+              </div>
             </div>
-          ) : null}
-        </div>
-      </section>
+          </DetailPanel>
+        }
+      />
     </div>
   );
 }
@@ -401,4 +414,26 @@ function DetailItem({ label, value, mono = false }: { label: string; value: stri
       <strong className={mono ? "mono" : undefined}>{value || "-"}</strong>
     </div>
   );
+}
+
+function reviewRiskLabel(tone: ReviewRiskTone): string {
+  if (tone === "warning") return "超时";
+  if (tone === "ok") return "正常";
+  return "未记录";
+}
+
+function reviewDetailStatus(detailState: LoadState, previewState: LoadState, selectedId: string | null) {
+  if (!selectedId) return { label: "未选择", tone: "muted" as const };
+  if (detailState === "loading") return { label: "读取中", tone: "warning" as const };
+  if (previewState === "loading") return { label: "计算中", tone: "warning" as const };
+  if (previewState === "error" || detailState === "error") return { label: "需处理", tone: "danger" as const };
+  if (previewState === "ready") return { label: "可审核", tone: "ok" as const };
+  return { label: "待预览", tone: "muted" as const };
+}
+
+function reviewPreviewStatus(previewState: LoadState, preview: ApprovalPreviewState | null, groupCount: number) {
+  if (previewState === "loading") return { label: "计算中", tone: "warning" as const };
+  if (previewState === "error") return { label: "失败", tone: "danger" as const };
+  if (preview) return { label: `${groupCount} 组`, tone: groupCount > 0 ? ("ok" as const) : ("muted" as const) };
+  return { label: "未选择", tone: "muted" as const };
 }

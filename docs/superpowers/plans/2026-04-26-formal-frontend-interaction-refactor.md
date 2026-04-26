@@ -378,19 +378,19 @@ git commit -m "feat: redesign document center workflow"
 
 **Steps:**
 
-- [ ] Step 1: 扩展 `reviewModel.test.ts`，覆盖审核风险排序、预览组标题、动作可用性。
-- [ ] Step 2: 运行 `npm test -- src/app/pages/review/reviewModel.test.ts`，预期 RED。
-- [ ] Step 3: 实现缺失 model helper。
-- [ ] Step 4: 改造 `ReviewCenterPage.tsx` 为 `SplitWorkspace`。
-- [ ] Step 5: 在 `ReviewCenterPage.test.ts` 覆盖：选中队列项、预览读取中、通过按钮禁用/启用、退回原因必填。
-- [ ] Step 6: 运行：
+- [x] Step 1: 扩展 `reviewModel.test.ts`，覆盖审核风险排序、预览组标题、动作可用性。
+- [x] Step 2: 运行 `npm test -- src/app/pages/review/reviewModel.test.ts`，预期 RED。
+- [x] Step 3: 实现缺失 model helper。
+- [x] Step 4: 改造 `ReviewCenterPage.tsx` 为 `SplitWorkspace`。
+- [x] Step 5: 在 `ReviewCenterPage.test.ts` 覆盖：选中队列项、预览读取中、通过按钮禁用/启用、退回原因必填。
+- [x] Step 6: 运行：
 
 ```bash
 npm test -- src/app/pages/ReviewCenterPage.test.ts src/app/pages/review/reviewModel.test.ts
 npx tsc --noEmit
 ```
 
-- [ ] Step 7: 提交。
+- [x] Step 7: 提交。
 
 ```bash
 git add src/app/pages/ReviewCenterPage.tsx src/app/pages/ReviewCenterPage.test.ts src/app/pages/review/reviewModel.ts src/app/pages/review/reviewModel.test.ts src/app/styles.css
@@ -402,6 +402,14 @@ git commit -m "feat: redesign review center interaction"
 - 审核人能在同一屏完成“选单据 -> 看影响 -> 决策”。
 - 退回原因不再是固定文案。
 - 审核动作有清晰处理中状态和结果反馈。
+
+**完成记录（2026-04-26）：**
+
+- 审核中心改为 `SplitWorkspace`：左侧 `RecordList` 展示风险和等待时间，右侧 `DetailPanel` 承载详情、影响预览和审批动作。
+- `reviewModel` 新增队列风险排序、正式影响分组和审批动作可用性 helper；影响预览按资金、备用金、借款、项目呈现。
+- 底部审批动作区固定在详情面板内；通过必须等预览 ready，退回必须填写原因。
+- 切换审核队列项会重新读取详情和预览，并清空旧退回原因和旧反馈消息。
+- 验证：`npm test -- src/app/pages/ReviewCenterPage.test.ts src/app/pages/review/reviewModel.test.ts`、`npm test`、`npx tsc --noEmit`、`npm run build`、`npm audit --audit-level=high`、`git diff --check` 均通过。
 
 ---
 
