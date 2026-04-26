@@ -513,13 +513,13 @@ git commit -m "feat: redesign report analysis workspace"
 
 **Steps:**
 
-- [ ] Step 1: 写 `monthCloseWorkflowModel.test.ts`，覆盖：未检查、检查中、阻断、可锁账、已锁账的步骤状态。
-- [ ] Step 2: 运行 `npm test -- src/app/pages/month-close/monthCloseWorkflowModel.test.ts`，预期 RED。
-- [ ] Step 3: 实现 `monthCloseWorkflowModel.ts`。
-- [ ] Step 4: 在 `monthCloseApi.ts` 增加 `lockMonthClosePeriod(period, note)` 和 `unlockMonthClosePeriod(period, reason)` 前端 API helper。
-- [ ] Step 5: 改造 `MonthClosePage.tsx`，增加锁账/解锁交互和流程步骤。
-- [ ] Step 6: 改造 `MonthCloseChecksTab.tsx`，让异常处理更像任务列表。
-- [ ] Step 7: 运行：
+- [x] Step 1: 写 `monthCloseWorkflowModel.test.ts`，覆盖：未检查、检查中、阻断、可锁账、已锁账的步骤状态。
+- [x] Step 2: 运行 `npm test -- src/app/pages/month-close/monthCloseWorkflowModel.test.ts`，预期 RED。
+- [x] Step 3: 实现 `monthCloseWorkflowModel.ts`。
+- [x] Step 4: 在 `monthCloseApi.ts` 增加 `lockMonthClosePeriod(period, note)` 和 `unlockMonthClosePeriod(period, reason)` 前端 API helper。
+- [x] Step 5: 改造 `MonthClosePage.tsx`，增加锁账/解锁交互和流程步骤。
+- [x] Step 6: 改造 `MonthCloseChecksTab.tsx`，让异常处理更像任务列表。
+- [x] Step 7: 运行：
 
 ```bash
 npm test -- src/app/pages/month-close/monthCloseModel.test.ts src/app/pages/month-close/monthCloseWorkflowModel.test.ts src/app/pages/month-close/MonthCloseReconciliationTabs.test.tsx
@@ -527,13 +527,13 @@ npx tsc --noEmit
 npm run build
 ```
 
-- [ ] Step 8: 本地 API 烟测：
+- [x] Step 8: 本地 API 烟测：
   - 运行检查。
   - warning 未处理时锁账被阻断。
   - 处理 warning 后锁账。
   - 查看快照。
   - 解锁后历史快照保留。
-- [ ] Step 9: 提交。
+- [x] Step 9: 提交。
 
 ```bash
 git add src/app/pages/MonthClosePage.tsx src/app/pages/month-close/monthCloseApi.ts src/app/pages/month-close/monthCloseModel.ts src/app/pages/month-close/monthCloseModel.test.ts src/app/pages/month-close/monthCloseWorkflowModel.ts src/app/pages/month-close/monthCloseWorkflowModel.test.ts src/app/pages/month-close/MonthCloseChecksTab.tsx src/app/pages/month-close/MonthCloseStatusBar.tsx src/app/styles.css
@@ -545,6 +545,11 @@ git commit -m "feat: add month close workflow guidance"
 - 月结页面明确告诉用户当前卡在哪一步。
 - 锁账/解锁入口在前端可用，且有说明/原因输入。
 - 未处理 critical/warning 仍由后端阻断，前端只展示原因。
+
+**完成记录（2026-04-26）：**
+
+- 已提交 `0c96839 feat: add month close workflow guide`。
+- Task 10 本地 Worker 验收中再次跑通月结 API 闭环：`2026-04` 运行检查、3 条检查结果处理为 waived、锁账成功、生成 1 个快照，并能读取 funding/pettyCash/loans/projects 对账分区。
 
 ---
 
@@ -574,19 +579,19 @@ git commit -m "feat: add month close workflow guidance"
 
 **Steps:**
 
-- [ ] Step 1: 扩展 `masterDataModel.test.ts`，覆盖 `isDemoRecord()`、`masterDataReadiness()`、`personLoginStatus()`。
-- [ ] Step 2: 运行 `npm test -- src/app/pages/master-data/masterDataModel.test.ts`，预期 RED。
-- [ ] Step 3: 实现模型 helper。
-- [ ] Step 4: 改造 `MasterDataOverview.tsx`，显示真实初始化进度。
-- [ ] Step 5: 改造各 Tab 的列表行，增加演示标签和更清晰的编辑入口。
-- [ ] Step 6: 运行：
+- [x] Step 1: 扩展 `masterDataModel.test.ts`，覆盖 `isDemoRecord()`、`masterDataReadiness()`、`personLoginStatus()`。
+- [x] Step 2: 运行 `npm test -- src/app/pages/master-data/masterDataModel.test.ts`，预期 RED。
+- [x] Step 3: 实现模型 helper。
+- [x] Step 4: 改造 `MasterDataOverview.tsx`，显示真实初始化进度。
+- [x] Step 5: 改造各 Tab 的列表行，增加演示标签和更清晰的编辑入口。
+- [x] Step 6: 运行：
 
 ```bash
 npm test -- src/app/pages/master-data/masterDataModel.test.ts
 npx tsc --noEmit
 ```
 
-- [ ] Step 7: 提交。
+- [x] Step 7: 提交。
 
 ```bash
 git add src/app/pages/MasterDataPage.tsx src/app/pages/master-data/MasterDataOverview.tsx src/app/pages/master-data/PeopleTab.tsx src/app/pages/master-data/ProjectsTab.tsx src/app/pages/master-data/MerchantsTab.tsx src/app/pages/master-data/AccountsTab.tsx src/app/pages/master-data/masterDataModel.ts src/app/pages/master-data/masterDataModel.test.ts src/app/styles.css
@@ -598,6 +603,12 @@ git commit -m "feat: improve master data initialization experience"
 - 用户能分辨演示资料和真实资料。
 - 初始化真实资料时，不会误改演示数据。
 - 登录管理员、普通人员、后勤、借款人的配置状态清晰。
+
+**完成记录（2026-04-26）：**
+
+- 已提交 `d9461f7 feat: improve master data initialization experience`。
+- Task 10 本地 Worker UI smoke 显示基础资料治理页可读取，概览展示真实资料、演示资料和初始化进度。
+- 生产 D1 只读核对：people 共 4 条，其中 demo 3 条、真实 1 条；projects/merchants/accounts 仍保留演示资料，真实资料尚待初始化。
 
 ---
 
@@ -624,10 +635,10 @@ git commit -m "feat: improve master data initialization experience"
 
 **Steps:**
 
-- [ ] Step 1: 用浏览器检查工作台、单据、审核、报表、基础资料、月结六个页面。
-- [ ] Step 2: 修复 `.panel-header`、`.header-actions`、`.split-workspace`、`.data-table`、`.form-grid` 在移动端的拥挤问题。
-- [ ] Step 3: 确认所有页面的主操作按钮每屏不超过 1 个，次要操作使用 `secondary-button`。
-- [ ] Step 4: 运行：
+- [x] Step 1: 用浏览器检查工作台、单据、审核、报表、基础资料、月结六个页面。
+- [x] Step 2: 修复 `.panel-header`、`.header-actions`、`.split-workspace`、`.data-table`、`.form-grid` 在移动端的拥挤问题。
+- [x] Step 3: 确认所有页面的主操作按钮每屏不超过 1 个，次要操作使用 `secondary-button`。
+- [x] Step 4: 运行：
 
 ```bash
 npm test
@@ -636,7 +647,7 @@ npm run build
 git diff --check
 ```
 
-- [ ] Step 5: 提交。
+- [x] Step 5: 提交。
 
 ```bash
 git add src/app/styles.css src/app/components/ui.tsx src/app/components/interaction.tsx src/app
@@ -648,6 +659,12 @@ git commit -m "style: polish formal frontend interactions"
 - 移动端不会出现整体页面横向溢出，只有表格区域允许横向滚动。
 - 主要流程按钮层级一致。
 - 页面之间的视觉语言一致。
+
+**完成记录（2026-04-26）：**
+
+- 已提交 `235675c style: polish formal frontend interactions`。
+- Task 9 浏览器审计覆盖工作台、单据、审核、报表、基础资料、月结六个页面，在 360px、768px、1440px 共 18 组组合中 `failures=0`。
+- 报表、基础资料、月结对账和月结快照表格均补充可键盘聚焦的横向滚动区域和滚动提示。
 
 ---
 
@@ -663,7 +680,7 @@ git commit -m "style: polish formal frontend interactions"
 
 **Steps:**
 
-- [ ] Step 1: 运行全量验证。
+- [x] Step 1: 运行全量验证。
 
 ```bash
 npm test
@@ -673,28 +690,28 @@ npm audit --audit-level=high
 git diff --check
 ```
 
-- [ ] Step 2: 本地启动 Cloudflare dev。
+- [x] Step 2: 本地启动 Cloudflare dev。
 
 ```bash
 npm run cf:dev -- --ip 127.0.0.1
 ```
 
-- [ ] Step 3: 本地手工验收：
+- [x] Step 3: 本地手工验收：
   - 工作台能显示下一步任务。
   - 单据中心能创建草稿并提交。
   - 审核中心能查看影响预览并退回/通过。
   - 报表中心能切换分类、筛选、导出、切换快照。
   - 月结中心能运行检查、处理异常、锁账、查看快照。
   - 基础资料能区分演示和真实资料。
-- [ ] Step 4: 更新本计划状态和验收记录。
-- [ ] Step 5: 提交验收记录。
+- [x] Step 4: 更新本计划状态和验收记录。
+- [x] Step 5: 提交验收记录。
 
 ```bash
 git add docs/superpowers/plans/2026-04-26-formal-frontend-interaction-refactor.md
 git commit -m "docs: mark frontend interaction refactor complete"
 ```
 
-- [ ] Step 6: 部署到 Cloudflare。
+- [x] Step 6: 部署到 Cloudflare。
 
 ```bash
 CLOUDFLARE_ACCOUNT_ID=611d1a2e53f6c6d0922ff231e6a63211 npm run deploy
@@ -702,7 +719,7 @@ CLOUDFLARE_ACCOUNT_ID=611d1a2e53f6c6d0922ff231e6a63211 npm run deploy
 
 Expected: deployment uses `wrangler deploy` for the existing Worker `management-ledger`; no Pages project is created or updated.
 
-- [ ] Step 7: 生产验收：
+- [ ] Step 7: 生产验收（未登录、部署版本、演示数据和资料隔离已核对；登录后菜单和核心操作需业务方完成真人 Access 登录确认）：
   - 未登录访问仍跳转 Cloudflare Access。
   - 登录后菜单正常。
   - 演示数据仍保留。
@@ -713,6 +730,28 @@ Expected: deployment uses `wrangler deploy` for the existing Worker `management-
 - 所有测试、类型检查、构建、安全审计通过。
 - 生产部署成功。
 - 生产用户能完成核心路径：录入、审核、报表、月结。
+
+**验收记录（2026-04-26）：**
+
+- 全量验证通过：`npm test` 57 files / 754 tests，`npx tsc --noEmit`，`npm run build`，`npm audit --audit-level=high`，`git diff --check` 均通过。
+- 本地 Cloudflare dev 验收通过：`npm run cf:dev -- --ip 127.0.0.1 --port 8790` 启动成功；本地 D1 已迁移并 seed 演示数据；开发身份使用本地测试邮箱，不写入仓库。
+- 本地核心路径 API 验收通过：
+  - 单据中心：创建 2 张项目收入草稿，分别提交后走退回和通过。
+  - 审核中心：两张待审核单据均能读取影响预览；一张退回，一张通过。
+  - 报表中心：`project-income?period=2026-05` 返回本地验收收入记录；filter options 返回项目、商户、人员、币种选项。
+  - 月结中心：`2026-04` 运行检查、处理 warning/info、锁账并生成快照；对账分区可读取。
+  - 基础资料：页面可区分真实资料、演示资料和初始化进度。
+- 本地真实 UI smoke 通过：工作台、单据中心、审核中心、报表中心、基础资料治理、对账月结六页均可打开，`LOCAL_UI_SMOKE failures=0 total=6`。
+- Cloudflare 认证和部署：
+  - `wrangler whoami` 目标账号为 `611d1a2e53f6c6d0922ff231e6a63211`。
+  - 远端 D1 migrations：`No migrations to apply`。
+  - `npm run deploy` 成功部署 Worker `management-ledger`，版本 ID `45d80158-19bf-44af-9e31-b50fd04fb492`，URL `https://management-ledger.bingyizhou6u.workers.dev`。
+  - 部署使用 `wrangler deploy` 和 Workers Static Assets，没有创建或更新 Cloudflare Pages。
+- 生产只读验收：
+  - 未登录访问 `/` 和 `/api/me` 均返回 Cloudflare Access `302`，Access 保护仍生效。
+  - 远端 D1 确认登录管理员映射存在：目标邮箱对应启用 admin 人员 1 条。
+  - 远端 D1 确认演示数据保留：people 4 条（demo 3、真实 1），projects 1 条（demo 1），merchants 1 条（demo 1），accounts 3 条（demo 3）。
+- 待人工验收：需要使用 Cloudflare Access 真人登录生产 URL，确认登录后菜单、权限和核心页面可见。未取得真人登录会话前，不把 Step 7 标为完成。
 
 ---
 
