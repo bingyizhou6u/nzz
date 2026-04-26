@@ -11,7 +11,8 @@ import {
   merchantIncome,
   monthlyOperatingSummary,
   projectIncome,
-  projectProfitLoss
+  projectProfitLoss,
+  reportFilterOptions
 } from "../../src/api/reports";
 import { route } from "../../src/worker/router";
 import type { Env } from "../../src/worker/env";
@@ -154,6 +155,33 @@ describe("reports API", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ data: rows });
   });
+
+  it("returns formal report filter options from the handler", async () => {
+    const { env, sql } = mockEnvWithSql();
+
+    const response = await reportFilterOptions({
+      request: new Request("https://ledger.test/api/reports/filter-options"),
+      env,
+      params: {},
+      actor: null
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        projects: [],
+        merchants: [],
+        people: [],
+        currencies: []
+      }
+    });
+    expect(sql.map(normalizeSql)).toEqual([
+      expect.stringContaining("from projects"),
+      expect.stringContaining("from merchants"),
+      expect.stringContaining("from people"),
+      expect.stringContaining("from currencies")
+    ]);
+  });
 });
 
 describe("report routes", () => {
@@ -173,7 +201,8 @@ describe("report routes", () => {
     "/api/reports/expense-summary",
     "/api/reports/project-profit-loss",
     "/api/reports/monthly-operating",
-    "/api/reports/exception-checks"
+    "/api/reports/exception-checks",
+    "/api/reports/filter-options"
   ])("routes GET %s", async (pathname) => {
     const response = await route(new Request(`https://ledger.test${pathname}`), mockEnv());
 
