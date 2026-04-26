@@ -20,6 +20,10 @@ type MonthCloseSourceMock = ConstructorParameters<typeof MonthCloseService>[1] &
   pendingCostRowsForMonthClose: ReturnType<typeof vi.fn>;
   loanAgingRowsForMonthClose: ReturnType<typeof vi.fn>;
   projectIntegrityRows: ReturnType<typeof vi.fn>;
+  monthCloseFundingReconciliation: ReturnType<typeof vi.fn>;
+  monthClosePettyCashReconciliation: ReturnType<typeof vi.fn>;
+  monthCloseLoanReconciliation: ReturnType<typeof vi.fn>;
+  monthCloseProjectReconciliation: ReturnType<typeof vi.fn>;
 };
 
 const checkOptions: MonthCloseCheckOptions = {
@@ -246,6 +250,44 @@ describe("MonthCloseService", () => {
 
     await expect(service.runChecks(period, actor, { startedAt, finishedAt })).rejects.toThrow("source unavailable");
   });
+
+  it("returns reconciliation tabs without mixing source currencies", async () => {
+    const { sources, service } = createMocks({
+      sources: {
+        monthCloseFundingReconciliation: vi.fn(async () => [
+          reconciliationFundingRow({ accountId: "acct_usdt", currencyCode: "USDT", closingBalanceMinor: 20000 }),
+          reconciliationFundingRow({ accountId: "acct_aed", currencyCode: "AED", closingBalanceMinor: 73400 })
+        ]),
+        monthClosePettyCashReconciliation: vi.fn(async () => [
+          reconciliationPettyCashRow({ personId: "person_ops", currencyCode: "AED", pendingCostMinor: 15000 })
+        ]),
+        monthCloseLoanReconciliation: vi.fn(async () => [
+          reconciliationLoanRow({ borrowerPersonId: "person_borrower", currencyCode: "USDT", closingBalanceMinor: 100000 })
+        ]),
+        monthCloseProjectReconciliation: vi.fn(async () => [
+          reconciliationProjectRow({ projectId: "project_alpha", currencyCode: "USDT", incomeAmountMinor: 500000 }),
+          reconciliationProjectRow({ projectId: "project_alpha", currencyCode: "AED", expenseAmountMinor: 215000 })
+        ])
+      }
+    });
+
+    await expect(service.reconciliation(period)).resolves.toEqual({
+      funding: [
+        expect.objectContaining({ accountId: "acct_usdt", currencyCode: "USDT" }),
+        expect.objectContaining({ accountId: "acct_aed", currencyCode: "AED" })
+      ],
+      pettyCash: [expect.objectContaining({ personId: "person_ops", currencyCode: "AED" })],
+      loans: [expect.objectContaining({ borrowerPersonId: "person_borrower", currencyCode: "USDT" })],
+      projects: [
+        expect.objectContaining({ projectId: "project_alpha", currencyCode: "USDT", incomeAmountMinor: 500000 }),
+        expect.objectContaining({ projectId: "project_alpha", currencyCode: "AED", expenseAmountMinor: 215000 })
+      ]
+    });
+    expect(sources.monthCloseFundingReconciliation).toHaveBeenCalledWith(period);
+    expect(sources.monthClosePettyCashReconciliation).toHaveBeenCalledWith(period);
+    expect(sources.monthCloseLoanReconciliation).toHaveBeenCalledWith(period);
+    expect(sources.monthCloseProjectReconciliation).toHaveBeenCalledWith(period);
+  });
 });
 
 function createMocks(input: {
@@ -269,6 +311,10 @@ function createMocks(input: {
     pendingCostRowsForMonthClose: vi.fn(async () => []),
     loanAgingRowsForMonthClose: vi.fn(async () => []),
     projectIntegrityRows: vi.fn(async () => []),
+    monthCloseFundingReconciliation: vi.fn(async () => []),
+    monthClosePettyCashReconciliation: vi.fn(async () => []),
+    monthCloseLoanReconciliation: vi.fn(async () => []),
+    monthCloseProjectReconciliation: vi.fn(async () => []),
     ...input.sources
   } satisfies MonthCloseSourceMock;
 
@@ -346,5 +392,57 @@ function insertedCheckRowFromInput(
     resolved_at: null,
     resolution_note: null,
     created_at: row.createdAt ?? startedAt
+  };
+}
+
+function reconciliationFundingRow(overrides: Record<string, unknown> = {}) {
+  return {
+    accountId: "acct_main",
+    accountType: "currency_reserve",
+    currencyCode: "USDT",
+    openingBalanceMinor: 0,
+    periodInflowMinor: 0,
+    periodOutflowMinor: 0,
+    closingBalanceMinor: 0,
+    ...overrides
+  };
+}
+
+function reconciliationPettyCashRow(overrides: Record<string, unknown> = {}) {
+  return {
+    personId: "person_ops",
+    accountId: "acct_petty",
+    currencyCode: "AED",
+    openingBalanceMinor: 0,
+    periodIssuedMinor: 0,
+    periodReimbursedMinor: 0,
+    closingBalanceMinor: 0,
+    pendingCostMinor: 0,
+    ...overrides
+  };
+}
+
+function reconciliationLoanRow(overrides: Record<string, unknown> = {}) {
+  return {
+    borrowerPersonId: "person_borrower",
+    currencyCode: "USDT",
+    openingBalanceMinor: 0,
+    periodLoanOutMinor: 0,
+    periodRepaymentMinor: 0,
+    periodWriteoffMinor: 0,
+    closingBalanceMinor: 0,
+    ...overrides
+  };
+}
+
+function reconciliationProjectRow(overrides: Record<string, unknown> = {}) {
+  return {
+    projectId: "project_alpha",
+    currencyCode: "USDT",
+    incomeAmountMinor: 0,
+    expenseAmountMinor: 0,
+    matchedUsdtCostMinor: 0,
+    pendingAmountMinor: 0,
+    ...overrides
   };
 }

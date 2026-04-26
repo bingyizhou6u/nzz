@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getMonthCloseOverview,
+  getMonthCloseReconciliation,
   listMonthCloseChecks,
   listMonthClosePeriods,
   runMonthCloseChecks,
@@ -193,6 +194,55 @@ describe("month close API", () => {
     await expect(response.json()).resolves.toMatchObject({
       data: { run: { id: "run_1" }, checks: [expect.objectContaining({ id: "check_1" })] }
     });
+  });
+
+  it("returns month close reconciliation tabs for authorized users", async () => {
+    const response = await getMonthCloseReconciliation({
+      request: new Request("https://ledger.test/api/month-close/2026-04/reconciliation"),
+      env: env({
+        rowsBySql: (sql) => {
+          if (sql.includes("funding_reconciliation_rows")) {
+            return [{ accountId: "acct_usdt", currencyCode: "USDT", closingBalanceMinor: 20000 }];
+          }
+          if (sql.includes("petty_cash_reconciliation_rows")) {
+            return [{ personId: "person_ops", currencyCode: "AED", pendingCostMinor: 15000 }];
+          }
+          if (sql.includes("loan_reconciliation_rows")) {
+            return [{ borrowerPersonId: "person_borrower", currencyCode: "USDT", closingBalanceMinor: 100000 }];
+          }
+          if (sql.includes("project_reconciliation_rows")) {
+            return [{ projectId: "project_alpha", currencyCode: "USDT", incomeAmountMinor: 500000 }];
+          }
+          return [];
+        }
+      }),
+      params: { period: "2026-04" },
+      actor: manager
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        funding: [expect.objectContaining({ accountId: "acct_usdt", currencyCode: "USDT" })],
+        pettyCash: [expect.objectContaining({ personId: "person_ops", currencyCode: "AED" })],
+        loans: [expect.objectContaining({ borrowerPersonId: "person_borrower", currencyCode: "USDT" })],
+        projects: [expect.objectContaining({ projectId: "project_alpha", currencyCode: "USDT" })]
+      }
+    });
+  });
+
+  it("routes reconciliation requests through the period lock viewer gate", async () => {
+    const preparedSql: string[] = [];
+    const response = await route(
+      new Request("https://ledger.test/api/month-close/2026-04/reconciliation"),
+      env({
+        firstRow: actorRow("readonly"),
+        onPrepare: (sql) => preparedSql.push(sql)
+      })
+    );
+
+    expect(response.status).toBe(403);
+    expect(preparedSql.some((sql) => sql.toLowerCase().includes("reconciliation_rows"))).toBe(false);
   });
 
   it("requires a handling note when acknowledging or waiving a check result", async () => {

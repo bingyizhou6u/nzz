@@ -253,6 +253,33 @@ describe("ReportRepository", () => {
     expect(normalized).toContain("order by le.borrower_person_id, le.currency_code");
   });
 
+  it("builds month close funding reconciliation by period and original currency", async () => {
+    const rows = [
+      {
+        accountId: "acct_usdt",
+        accountType: "usdt_wallet",
+        currencyCode: "USDT",
+        openingBalanceMinor: 10000,
+        periodInflowMinor: 5000,
+        periodOutflowMinor: 2000,
+        closingBalanceMinor: 13000
+      }
+    ];
+    let sql = "";
+    let bindings: unknown[] = [];
+    const repo = new ReportRepository(mockDb(rows, (value) => (sql = value), (values) => (bindings = values)));
+
+    await expect(repo.monthCloseFundingReconciliation("2026-04")).resolves.toEqual(rows);
+
+    const normalized = normalizeSql(sql);
+    expect(normalized).toContain("funding_reconciliation_rows");
+    expect(normalized).toContain("with selected_period(period) as (select ?)");
+    expect(normalized).toContain("d.period < selected_period.period");
+    expect(normalized).toContain("d.period = selected_period.period");
+    expect(normalized).toContain("group by a.id, a.account_type, ae.currency_code");
+    expect(bindings).toEqual(["2026-04"]);
+  });
+
   it("returns open lot balance rows ordered by account, currency, date, and id", async () => {
     const rows = [
       {
