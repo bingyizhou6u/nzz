@@ -57,13 +57,13 @@ async function click(element: Element | null | undefined) {
   });
 }
 
-async function keyDown(element: Element | null | undefined, key: string) {
+async function dispatchKeyDown(element: Element | null | undefined, key: string, repeat = false) {
   if (!element) {
     throw new Error("Expected keyboard target to exist");
   }
 
   await act(async () => {
-    element.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+    element.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, repeat }));
   });
 }
 
@@ -127,7 +127,7 @@ describe("formal interaction primitives", () => {
     expect(onSelect).toHaveBeenCalledWith("doc-1", expect.objectContaining({ id: "doc-1" }));
   });
 
-  it("supports keyboard activation for record buttons", async () => {
+  it("does not select records from repeated keydown events", async () => {
     const onSelect = vi.fn();
     const items: RecordListItem[] = [
       { id: "doc-1", title: "项目收入单" },
@@ -141,15 +141,18 @@ describe("formal interaction primitives", () => {
     }
 
     secondRecord.focus();
-    await keyDown(secondRecord, "Enter");
+    await dispatchKeyDown(secondRecord, "Enter");
+    await dispatchKeyDown(secondRecord, "Enter", true);
+    await dispatchKeyDown(secondRecord, " ");
+    await dispatchKeyDown(secondRecord, " ", true);
 
     expect(document.activeElement).toBe(secondRecord);
-    expect(onSelect).toHaveBeenCalledWith("doc-2", expect.objectContaining({ id: "doc-2" }));
+    expect(onSelect).not.toHaveBeenCalled();
 
-    await keyDown(secondRecord, " ");
+    await click(secondRecord);
 
     expect(onSelect).toHaveBeenCalledWith("doc-2", expect.objectContaining({ id: "doc-2" }));
-    expect(onSelect).toHaveBeenCalledTimes(2);
+    expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
   it("requires a second confirmation before running dangerous actions", async () => {

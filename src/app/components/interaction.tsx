@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type HTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from "react";
 import { EmptyState, classNames } from "./ui";
 
 export type PageActionBarProps = HTMLAttributes<HTMLDivElement> & {
@@ -79,15 +79,6 @@ export function RecordList<TItem extends RecordListItem>({
     );
   }
 
-  function handleRecordKeyDown(event: KeyboardEvent<HTMLButtonElement>, item: TItem) {
-    if (event.defaultPrevented || (event.key !== "Enter" && event.key !== " " && event.key !== "Spacebar")) {
-      return;
-    }
-
-    event.preventDefault();
-    onSelect(item.id, item);
-  }
-
   return (
     <ul {...props} className={classNames("record-list", className)} aria-label={ariaLabel}>
       {items.map((item) => {
@@ -103,7 +94,6 @@ export function RecordList<TItem extends RecordListItem>({
               aria-current={isSelected ? "true" : undefined}
               disabled={item.disabled}
               onClick={() => onSelect(item.id, item)}
-              onKeyDown={(event) => handleRecordKeyDown(event, item)}
             >
               <span className="record-list-copy">
                 <strong>{item.title}</strong>
