@@ -8,15 +8,40 @@ interface ExportSheet {
   rows: object[];
 }
 
-export function downloadReportExport(group: ReportGroupKey, reports: ReportsState, format: "csv" | "xlsx") {
-  const sheets = exportSheetsForGroup(group, reports);
+export interface ReportExportContext {
+  source: "live" | "snapshot";
+  period?: string;
+  version?: number;
+}
+
+export function downloadReportExport(
+  group: ReportGroupKey,
+  reports: ReportsState,
+  format: "csv" | "xlsx",
+  context: ReportExportContext = { source: "live" }
+) {
+  const sheets = format === "xlsx" && context.source === "snapshot" ? exportSheetsForPackage(reports) : exportSheetsForGroup(group, reports);
   const timestamp = new Date().toISOString().slice(0, 10);
-  const baseName = `${reportGroupLabel(group)}报表-${timestamp}`;
+  const baseName = exportBaseName(group, format, timestamp, context);
   const blob =
     format === "csv"
       ? new Blob([csvForSheets(sheets)], { type: "text/csv;charset=utf-8" })
       : xlsxBlobForSheets(sheets);
   downloadBlob(blob, `${baseName}.${format}`);
+}
+
+export function exportBaseName(
+  group: ReportGroupKey,
+  format: "csv" | "xlsx",
+  timestamp: string,
+  context: ReportExportContext
+) {
+  if (context.source === "snapshot" && context.period && context.version) {
+    if (format === "xlsx") return `月结包-${context.period}-v${context.version}`;
+    return `${reportGroupLabel(group)}报表-${context.period}-v${context.version}`;
+  }
+
+  return `${reportGroupLabel(group)}报表-${timestamp}`;
 }
 
 export function exportSheetsForGroup(group: ReportGroupKey, reports: ReportsState): ExportSheet[] {
@@ -58,6 +83,17 @@ export function exportSheetsForGroup(group: ReportGroupKey, reports: ReportsStat
   return [{ name: "异常检查", rows: reports.exceptionChecks }];
 }
 
+export function exportSheetsForPackage(reports: ReportsState): ExportSheet[] {
+  return [
+    ...exportSheetsForGroup("funding", reports),
+    ...exportSheetsForGroup("project", reports),
+    ...exportSheetsForGroup("expense", reports),
+    ...exportSheetsForGroup("pettyCash", reports),
+    ...exportSheetsForGroup("loan", reports),
+    ...exportSheetsForGroup("exception", reports)
+  ];
+}
+
 function csvForSheets(sheets: ExportSheet[]) {
   return sheets
     .flatMap((sheet) => {
@@ -70,24 +106,25 @@ function csvForSheets(sheets: ExportSheet[]) {
 }
 
 function xlsxBlobForSheets(sheets: ExportSheet[]) {
-  const firstSheet = sheets[0] ?? { name: "报表", rows: [] };
-  const headers = headersForRows(firstSheet.rows);
-  const worksheetRows = [
-    xmlRow(["报表", firstSheet.name]),
-    xmlRow(headers),
-    ...firstSheet.rows.map((row) => xmlRow(headers.map((header) => valueForKey(row, header))))
-  ].join("");
-  const worksheet = xml(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <sheetData>${worksheetRows}</sheetData>
-</worksheet>`);
+  const workbookSheets = sheets.length ? sheets : [{ name: "报表", rows: [] }];
+  const worksheetFiles = workbookSheets.map((sheet, index) => ({
+    name: `xl/worksheets/sheet${index + 1}.xml`,
+    data: worksheetXml(sheet)
+  }));
   const workbook = xml(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets><sheet name="${escapeXml(firstSheet.name).slice(0, 31)}" sheetId="1" r:id="rId1"/></sheets>
+  <sheets>${workbookSheets
+    .map((sheet, index) => `<sheet name="${escapeXml(sheet.name).slice(0, 31)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`)
+    .join("")}</sheets>
 </workbook>`);
   const workbookRels = xml(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+${workbookSheets
+  .map(
+    (_sheet, index) =>
+      `  <Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`
+  )
+  .join("\n")}
 </Relationships>`);
   const rootRels = xml(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -98,7 +135,12 @@ function xlsxBlobForSheets(sheets: ExportSheet[]) {
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+${workbookSheets
+  .map(
+    (_sheet, index) =>
+      `  <Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
+  )
+  .join("\n")}
 </Types>`);
 
   return new Blob(
@@ -108,13 +150,27 @@ function xlsxBlobForSheets(sheets: ExportSheet[]) {
         { name: "_rels/.rels", data: rootRels },
         { name: "xl/workbook.xml", data: workbook },
         { name: "xl/_rels/workbook.xml.rels", data: workbookRels },
-        { name: "xl/worksheets/sheet1.xml", data: worksheet }
+        ...worksheetFiles
       ])
     ],
     {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     }
   );
+}
+
+function worksheetXml(sheet: ExportSheet) {
+  const headers = headersForRows(sheet.rows);
+  const worksheetRows = [
+    xmlRow(["报表", sheet.name]),
+    xmlRow(headers),
+    ...sheet.rows.map((row) => xmlRow(headers.map((header) => valueForKey(row, header))))
+  ].join("");
+
+  return xml(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>${worksheetRows}</sheetData>
+</worksheet>`);
 }
 
 function headersForRows(rows: object[]): string[] {

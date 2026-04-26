@@ -189,6 +189,32 @@ export interface ReportsState {
   exceptionChecks: ExceptionCheck[];
 }
 
+export interface MonthCloseSnapshot {
+  id: string;
+  period: string;
+  version: number;
+  run_id: string;
+  locked_by: string;
+  locked_at: string;
+  note: string;
+  summary_json: string;
+}
+
+export interface MonthCloseReportSnapshot<T = object> {
+  id: string;
+  snapshot_id: string;
+  report_key: string;
+  row_count: number;
+  data_json?: string;
+  rows: T[];
+  created_at: string;
+}
+
+export interface MonthCloseReportSnapshotResponse<T = object> {
+  snapshot: MonthCloseSnapshot;
+  report: MonthCloseReportSnapshot<T>;
+}
+
 export const emptyReports: ReportsState = {
   projectProfitLoss: [],
   projectIncome: [],

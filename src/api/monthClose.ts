@@ -1,7 +1,11 @@
 import { assertCan, type Capability } from "../auth/permissions";
 import { AuthError, type AuthenticatedActor } from "../auth/types";
 import { auditFieldsForRequest, AuditLogRepository } from "../repositories/auditLogRepository";
-import { MonthCloseRepository, type MonthCloseCheckResultStatus } from "../repositories/monthCloseRepository";
+import {
+  MonthCloseRepository,
+  type MonthCloseCheckResultStatus,
+  type MonthCloseReportSnapshotRow
+} from "../repositories/monthCloseRepository";
 import { PeriodLockRepository } from "../repositories/periodLockRepository";
 import { ReportRepository } from "../repositories/reportRepository";
 import { MonthCloseLockError, MonthCloseLockNotFoundError, MonthCloseService } from "../services/monthCloseService";
@@ -43,6 +47,39 @@ export const getMonthCloseOverview: Handler = async ({ env, params, actor: conte
         periodLock,
         checks,
         snapshots
+      }
+    });
+  } catch (error) {
+    return errorResponse(error);
+  }
+};
+
+export const listMonthCloseSnapshots: Handler = async ({ env, params, actor: contextActor }) => {
+  try {
+    requireActorWithCapability(contextActor, "periodLocks.view");
+    const period = periodValue(params.period);
+    return Response.json({ data: await new MonthCloseRepository(env.DB).listSnapshots(period) });
+  } catch (error) {
+    return errorResponse(error);
+  }
+};
+
+export const getMonthCloseReportSnapshot: Handler = async ({ env, params, actor: contextActor }) => {
+  try {
+    requireActorWithCapability(contextActor, "reports.view");
+    const id = requiredText(params.id, "id");
+    const reportKey = requiredText(params.reportKey, "reportKey");
+    const monthCloses = new MonthCloseRepository(env.DB);
+    const snapshot = await monthCloses.getSnapshot(id);
+    if (!snapshot) throw new NotFoundError("Month close snapshot not found");
+
+    const report = await monthCloses.getReportSnapshot(id, reportKey);
+    if (!report) throw new NotFoundError("Month close report snapshot not found");
+
+    return Response.json({
+      data: {
+        snapshot,
+        report: parsedReportSnapshot(report)
       }
     });
   } catch (error) {
@@ -260,6 +297,15 @@ function nullableText(value: unknown) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function parsedReportSnapshot(row: MonthCloseReportSnapshotRow) {
+  const rows = JSON.parse(row.data_json) as unknown;
+  if (!Array.isArray(rows)) throw new Error("Month close report snapshot data is invalid");
+  return {
+    ...row,
+    rows
+  };
 }
 
 class ValidationError extends Error {

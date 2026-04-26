@@ -11,6 +11,7 @@ import {
 import { MonthCloseChecksTab } from "./month-close/MonthCloseChecksTab";
 import { MonthClosePeriodList } from "./month-close/MonthClosePeriodList";
 import { MonthCloseReconciliationTabs } from "./month-close/MonthCloseReconciliationTabs";
+import { MonthCloseSnapshotsTab } from "./month-close/MonthCloseSnapshotsTab";
 import { MonthCloseStatusBar } from "./month-close/MonthCloseStatusBar";
 import { canRunMonthCloseChecks } from "./month-close/monthCloseModel";
 import type {
@@ -260,6 +261,7 @@ export function MonthClosePage({ capabilities }: MonthClosePageProps) {
         <div className="month-close-main">
           <MonthCloseStatusBar period={selectedPeriodRow} overview={overview} />
           {isLoadingOverview ? <div className="workspace-placeholder">读取检查结果中</div> : null}
+          <MonthCloseSnapshotsTab snapshots={overview?.snapshots ?? []} isLoading={isLoadingOverview} />
           <MonthCloseReconciliationTabs reconciliation={reconciliation} isLoading={isLoadingReconciliation} />
           <MonthCloseChecksTab
             checks={overview?.checks ?? []}

@@ -10,10 +10,12 @@ import { listDocumentEntryOptions, listOriginalDocuments } from "../api/document
 import { listCurrencies } from "../api/masterData";
 import { getMe } from "../api/me";
 import {
+  getMonthCloseReportSnapshot,
   getMonthCloseOverview,
   getMonthCloseReconciliation,
   listMonthCloseChecks,
   listMonthClosePeriods,
+  listMonthCloseSnapshots,
   lockMonthClosePeriod,
   runMonthCloseChecks,
   unlockMonthClosePeriod,
@@ -134,8 +136,10 @@ const routes: Route[] = [
   defineRoute("POST", "/api/period-locks", createPeriodLock, "periodLocks.lock"),
   defineRoute("DELETE", "/api/period-locks/:period", deletePeriodLock, "periodLocks.unlock"),
   defineRoute("GET", "/api/month-close/periods", listMonthClosePeriods, "periodLocks.view"),
+  defineRoute("GET", "/api/month-close/snapshots/:id/reports/:reportKey", getMonthCloseReportSnapshot, "reports.view"),
   defineRoute("GET", "/api/month-close/:period", getMonthCloseOverview, "periodLocks.view"),
   defineRoute("GET", "/api/month-close/:period/reconciliation", getMonthCloseReconciliation, "periodLocks.view"),
+  defineRoute("GET", "/api/month-close/:period/snapshots", listMonthCloseSnapshots, "periodLocks.view"),
   defineRoute("POST", "/api/month-close/:period/checks/run", runMonthCloseChecks, "periodLocks.lock"),
   defineRoute("POST", "/api/month-close/:period/lock", lockMonthClosePeriod, "periodLocks.lock"),
   defineRoute("POST", "/api/month-close/:period/unlock", unlockMonthClosePeriod, "periodLocks.unlock"),
