@@ -507,17 +507,18 @@ git diff --check
 
 ## 13. Task 8：快照查看与报表版本切换
 
-状态：待做。
+状态：已完成。
 
 文件：
 
-- [ ] `src/api/monthClose.ts`
-- [ ] `src/app/pages/month-close/MonthCloseSnapshotsTab.tsx`
-- [ ] `src/app/pages/ReportsPage.tsx`
-- [ ] `src/app/pages/reports/reportTypes.ts`
-- [ ] `src/app/pages/reports/reportExport.ts`
-- [ ] `tests/api/monthClose.test.ts`
-- [ ] `src/app/pages/ReportsPage.test.tsx`
+- [x] `src/api/monthClose.ts`
+- [x] `src/worker/router.ts`
+- [x] `src/app/pages/month-close/MonthCloseSnapshotsTab.tsx`
+- [x] `src/app/pages/ReportsPage.tsx`
+- [x] `src/app/pages/reports/reportTypes.ts`
+- [x] `src/app/pages/reports/reportExport.ts`
+- [x] `tests/api/monthClose.test.ts`
+- [x] `src/app/pages/ReportsPage.test.tsx`
 
 新增 API：
 
@@ -536,6 +537,22 @@ git diff --check
 ```text
 项目经营报表-2026-04-v1.csv
 月结包-2026-04-v1.xlsx
+```
+
+TDD 步骤：
+
+- [x] RED：补快照列表、报表快照读取、报表中心实时/快照切换和快照导出命名测试。提交：`210a560 test: cover month close snapshot report versions`。
+- [x] GREEN：实现快照列表与报表快照 API，新增月结快照展示，报表中心支持实时数据/已结账快照版本切换，快照导出使用正式命名。提交：`9501f5f feat: add month close snapshot report versions`。
+- [x] 提交。
+
+验收命令：
+
+```bash
+npm test -- tests/api/monthClose.test.ts src/app/pages/ReportsPage.test.tsx
+npx tsc --noEmit
+npm test
+npm run build
+git diff --check
 ```
 
 ## 14. Task 9：最终验收与部署准备
