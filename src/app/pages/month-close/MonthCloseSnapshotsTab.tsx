@@ -14,7 +14,12 @@ export function MonthCloseSnapshotsTab({ snapshots, isLoading }: MonthCloseSnaps
         </div>
         <span className="month-close-muted-line">{snapshots.length} 个版本</span>
       </div>
-      <div className="table-scroll">
+      <div
+        className="table-wrap month-close-snapshots-table-wrap"
+        role="region"
+        aria-label="月结快照表格，可横向滚动"
+        tabIndex={0}
+      >
         <table className="data-table month-close-snapshots-table">
           <thead>
             <tr>
@@ -50,6 +55,7 @@ export function MonthCloseSnapshotsTab({ snapshots, isLoading }: MonthCloseSnaps
           </tbody>
         </table>
       </div>
+      <div className="table-scroll-hint">列较多时可横向滚动查看完整字段</div>
     </section>
   );
 }

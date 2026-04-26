@@ -34,7 +34,7 @@ export function ReportTable<T>({
         </div>
         <span>{rows.length} 行</span>
       </div>
-      <div className="table-wrap">
+      <div className="table-wrap" role="region" aria-label={`${title}表格，可横向滚动`} tabIndex={0}>
         <table>
           <thead>
             <tr>

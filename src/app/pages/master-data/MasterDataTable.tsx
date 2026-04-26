@@ -73,7 +73,7 @@ export function MasterDataTable<Row>({
           ) : null}
         </div>
       ) : null}
-      <div className="table-wrap master-data-table-wrap">
+      <div className="table-wrap master-data-table-wrap" role="region" aria-label="基础资料表格，可横向滚动" tabIndex={0}>
         <table className="data-table master-data-table">
           <thead>
             <tr>
@@ -101,6 +101,7 @@ export function MasterDataTable<Row>({
           </tbody>
         </table>
       </div>
+      <div className="table-scroll-hint">列较多时可横向滚动查看完整字段</div>
     </div>
   );
 }

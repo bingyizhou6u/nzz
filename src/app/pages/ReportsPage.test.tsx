@@ -152,6 +152,11 @@ describe("ReportsPage", () => {
       expect(container.querySelector(".report-table-scroll-hint")?.textContent).toContain("横向滚动");
     });
 
+    const tableRegion = container.querySelector(".report-panel .table-wrap");
+    expect(tableRegion?.getAttribute("role")).toBe("region");
+    expect(tableRegion?.getAttribute("aria-label")).toContain("账户余额表");
+    expect(tableRegion?.getAttribute("tabindex")).toBe("0");
+
     await act(async () => {
       buttonByText(container, "费用2 张表").click();
     });

@@ -134,36 +134,39 @@ function ProjectTable({ rows }: { rows: MonthCloseProjectReconciliation[] }) {
 
 function ReconciliationTable({ columns, rows, emptyText }: { columns: string[]; rows: string[][]; emptyText: string }) {
   return (
-    <div className="table-wrap">
-      <table className="data-table month-close-reconciliation-table">
-        <thead>
-          <tr>
-            {columns.map((column) => (
-              <th key={column}>{column}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length > 0 ? (
-            rows.map((row, rowIndex) => (
-              <tr key={`${row[0]}-${row[1]}-${rowIndex}`}>
-                {row.map((cell, cellIndex) => (
-                  <td key={`${cell}-${cellIndex}`} className={cellIndex >= 2 ? "mono" : undefined}>
-                    {cell}
-                  </td>
-                ))}
-              </tr>
-            ))
-          ) : (
+    <>
+      <div className="table-wrap" role="region" aria-label="月结对账表格，可横向滚动" tabIndex={0}>
+        <table className="data-table month-close-reconciliation-table">
+          <thead>
             <tr>
-              <td colSpan={columns.length} className="empty-cell">
-                {emptyText}
-              </td>
+              {columns.map((column) => (
+                <th key={column}>{column}</th>
+              ))}
             </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {rows.length > 0 ? (
+              rows.map((row, rowIndex) => (
+                <tr key={`${row[0]}-${row[1]}-${rowIndex}`}>
+                  {row.map((cell, cellIndex) => (
+                    <td key={`${cell}-${cellIndex}`} className={cellIndex >= 2 ? "mono" : undefined}>
+                      {cell}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={columns.length} className="empty-cell">
+                  {emptyText}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="table-scroll-hint">列较多时可横向滚动查看完整字段</div>
+    </>
   );
 }
 

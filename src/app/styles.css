@@ -24,6 +24,7 @@ textarea {
 }
 
 button {
+  max-width: 100%;
   min-height: 36px;
   border: 1px solid #1f5e5a;
   border-radius: 6px;
@@ -31,8 +32,11 @@ button {
   color: #ffffff;
   cursor: pointer;
   font-weight: 600;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
   padding: 0 14px;
-  white-space: nowrap;
+  text-align: center;
+  white-space: normal;
 }
 
 button:disabled {
@@ -47,7 +51,11 @@ button:hover:not(:disabled) {
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+a:focus-visible,
+[role="tab"]:focus-visible,
+[role="button"]:focus-visible,
+.table-wrap:focus-visible {
   outline: 3px solid #8ecac4;
   outline-offset: 2px;
 }
@@ -197,6 +205,7 @@ textarea:focus-visible {
 .page-header-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
 }
@@ -362,6 +371,7 @@ main {
 .filter-strip-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   min-width: 0;
@@ -487,6 +497,7 @@ main {
 .detail-panel-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   min-width: 0;
@@ -646,7 +657,14 @@ main {
 .header-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
+  min-width: 0;
+}
+
+.header-actions > *,
+.page-header-actions > *,
+.document-toolbar > * {
   min-width: 0;
 }
 
@@ -1183,6 +1201,7 @@ main {
   color: #344054;
 }
 
+.table-scroll-hint,
 .report-table-scroll-hint {
   border-top: 1px solid #f0f2f5;
   color: #667085;
@@ -1299,6 +1318,8 @@ main {
   min-width: 0;
   max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 table {
@@ -1529,6 +1550,8 @@ textarea {
 .form-actions {
   display: flex;
   align-items: end;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: flex-end;
 }
 
@@ -2739,11 +2762,13 @@ textarea {
   .header-actions {
     width: 100%;
     flex-wrap: wrap;
-    justify-content: space-between;
+    justify-content: flex-start;
   }
 
   .status-slot {
+    min-width: 0;
     text-align: left;
+    white-space: normal;
   }
 
   .document-toolbar {
@@ -2862,6 +2887,7 @@ textarea {
 
   .detail-panel-status,
   .detail-panel-actions {
+    flex-wrap: wrap;
     justify-content: flex-start;
   }
 
@@ -2877,6 +2903,12 @@ textarea {
     display: flex;
     flex-wrap: wrap;
     padding: 8px;
+  }
+
+  .table-scroll-hint,
+  .report-table-scroll-hint {
+    padding-inline: 12px;
+    text-align: left;
   }
 
   .report-category-button {

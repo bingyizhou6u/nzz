@@ -87,4 +87,16 @@ describe("MonthCloseReconciliationTabs", () => {
     expect(document.querySelector("[role='tabpanel']")?.textContent).toContain("person_ops");
     expect(document.querySelector("[role='tabpanel']")?.textContent).not.toContain("acct_usdt");
   });
+
+  it("marks reconciliation tables as keyboard-scrollable regions", async () => {
+    await act(async () => {
+      root.render(<MonthCloseReconciliationTabs reconciliation={reconciliation} isLoading={false} />);
+    });
+
+    const tableRegion = document.querySelector(".table-wrap");
+    expect(tableRegion?.getAttribute("role")).toBe("region");
+    expect(tableRegion?.getAttribute("aria-label")).toContain("月结对账");
+    expect(tableRegion?.getAttribute("tabindex")).toBe("0");
+    expect(document.querySelector(".table-scroll-hint")?.textContent).toContain("横向滚动");
+  });
 });
