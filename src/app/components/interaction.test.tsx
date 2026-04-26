@@ -33,6 +33,16 @@ async function render(element: ReactElement) {
   return container;
 }
 
+async function rerender(element: ReactElement) {
+  if (!root) {
+    throw new Error("Expected root to exist before rerender");
+  }
+
+  await act(async () => {
+    root?.render(element);
+  });
+}
+
 async function click(element: Element | null | undefined) {
   if (!element) {
     throw new Error("Expected clickable element to exist");
@@ -44,6 +54,16 @@ async function click(element: Element | null | undefined) {
 
   await act(async () => {
     element.click();
+  });
+}
+
+async function keyDown(element: Element | null | undefined, key: string) {
+  if (!element) {
+    throw new Error("Expected keyboard target to exist");
+  }
+
+  await act(async () => {
+    element.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
   });
 }
 
@@ -105,6 +125,31 @@ describe("formal interaction primitives", () => {
     await click(records[0]);
 
     expect(onSelect).toHaveBeenCalledWith("doc-1", expect.objectContaining({ id: "doc-1" }));
+  });
+
+  it("supports keyboard activation for record buttons", async () => {
+    const onSelect = vi.fn();
+    const items: RecordListItem[] = [
+      { id: "doc-1", title: "项目收入单" },
+      { id: "doc-2", title: "备用金报销" },
+    ];
+    const container = await render(createElement(RecordList, { items, selectedId: "doc-1", onSelect }));
+    const secondRecord = container.querySelectorAll(".record-list-item")[1];
+
+    if (!(secondRecord instanceof HTMLElement)) {
+      throw new Error("Expected record button to exist");
+    }
+
+    secondRecord.focus();
+    await keyDown(secondRecord, "Enter");
+
+    expect(document.activeElement).toBe(secondRecord);
+    expect(onSelect).toHaveBeenCalledWith("doc-2", expect.objectContaining({ id: "doc-2" }));
+
+    await keyDown(secondRecord, " ");
+
+    expect(onSelect).toHaveBeenCalledWith("doc-2", expect.objectContaining({ id: "doc-2" }));
+    expect(onSelect).toHaveBeenCalledTimes(2);
   });
 
   it("requires a second confirmation before running dangerous actions", async () => {
@@ -186,6 +231,32 @@ describe("formal interaction primitives", () => {
     expect(container.querySelector("button")?.textContent).toBe("删除单据");
   });
 
+  it("restores focus to the trigger after async confirmation succeeds", async () => {
+    let resolveConfirm: (() => void) | undefined;
+    const onConfirm = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveConfirm = resolve;
+        })
+    );
+    const container = await render(
+      createElement(ConfirmAction, {
+        label: "删除单据",
+        confirmLabel: "确认删除",
+        cancelLabel: "取消",
+        onConfirm,
+      })
+    );
+
+    await click(container.querySelector("button"));
+    await click(Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "确认删除"));
+
+    resolveConfirm?.();
+    await flushPromises();
+
+    expect(document.activeElement?.textContent).toBe("删除单据");
+  });
+
   it("keeps confirmation available for retry after async rejection", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const onConfirm = vi.fn().mockRejectedValueOnce(new Error("network")).mockResolvedValueOnce(undefined);
@@ -214,6 +285,58 @@ describe("formal interaction primitives", () => {
     expect(consoleError).toHaveBeenCalled();
 
     consoleError.mockRestore();
+  });
+
+  it("does not leak global unhandled rejections after async rejection", async () => {
+    const unhandledRejection = vi.fn();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const onConfirm = vi.fn().mockRejectedValueOnce(new Error("network"));
+    window.addEventListener("unhandledrejection", unhandledRejection);
+
+    try {
+      const container = await render(
+        createElement(ConfirmAction, {
+          label: "删除单据",
+          confirmLabel: "确认删除",
+          cancelLabel: "取消",
+          onConfirm,
+        })
+      );
+
+      await click(container.querySelector("button"));
+      await click(Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "确认删除"));
+      await flushPromises();
+
+      expect(unhandledRejection).not.toHaveBeenCalled();
+      expect(container.textContent).toContain("确认删除");
+    } finally {
+      window.removeEventListener("unhandledrejection", unhandledRejection);
+      consoleError.mockRestore();
+    }
+  });
+
+  it("allows cancel after parent props switch to disabled while confirming", async () => {
+    const onConfirm = vi.fn();
+    const initialProps = {
+      label: "删除单据",
+      confirmLabel: "确认删除",
+      cancelLabel: "取消",
+      onConfirm,
+    };
+    const container = await render(createElement(ConfirmAction, initialProps));
+
+    await click(container.querySelector("button"));
+    await rerender(createElement(ConfirmAction, { ...initialProps, disabled: true }));
+
+    const cancelButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "取消");
+
+    expect(cancelButton?.hasAttribute("disabled")).toBe(false);
+
+    await click(cancelButton);
+
+    expect(container.querySelector("button")?.textContent).toBe("删除单据");
+    expect(container.textContent).not.toContain("确认删除");
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 
   it("supports disabled busy actions with loading copy", async () => {

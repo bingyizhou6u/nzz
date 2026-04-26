@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, useState, type HTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
 import { EmptyState, classNames } from "./ui";
 
 export type PageActionBarProps = HTMLAttributes<HTMLDivElement> & {
@@ -79,6 +79,15 @@ export function RecordList<TItem extends RecordListItem>({
     );
   }
 
+  function handleRecordKeyDown(event: KeyboardEvent<HTMLButtonElement>, item: TItem) {
+    if (event.defaultPrevented || (event.key !== "Enter" && event.key !== " " && event.key !== "Spacebar")) {
+      return;
+    }
+
+    event.preventDefault();
+    onSelect(item.id, item);
+  }
+
   return (
     <ul {...props} className={classNames("record-list", className)} aria-label={ariaLabel}>
       {items.map((item) => {
@@ -94,6 +103,7 @@ export function RecordList<TItem extends RecordListItem>({
               aria-current={isSelected ? "true" : undefined}
               disabled={item.disabled}
               onClick={() => onSelect(item.id, item)}
+              onKeyDown={(event) => handleRecordKeyDown(event, item)}
             >
               <span className="record-list-copy">
                 <strong>{item.title}</strong>
@@ -205,6 +215,7 @@ export function ConfirmAction({
   const shouldRestoreTriggerFocusRef = useRef(false);
   const isBusy = busy || isSubmitting;
   const isDisabled = disabled || isBusy;
+  const isCancelDisabled = isBusy;
 
   useEffect(() => {
     if (isConfirming) {
@@ -237,7 +248,7 @@ export function ConfirmAction({
   }
 
   function handleCancel() {
-    if (isDisabled) {
+    if (isCancelDisabled) {
       return;
     }
 
@@ -268,7 +279,7 @@ export function ConfirmAction({
         <button ref={confirmButtonRef} type="button" className="confirm-action-confirm" disabled={isDisabled} onClick={handleConfirm}>
           {isBusy ? busyLabel : confirmLabel}
         </button>
-        <button type="button" className="secondary-button confirm-action-cancel" disabled={isDisabled} onClick={handleCancel}>
+        <button type="button" className="secondary-button confirm-action-cancel" disabled={isCancelDisabled} onClick={handleCancel}>
           {cancelLabel}
         </button>
       </div>
