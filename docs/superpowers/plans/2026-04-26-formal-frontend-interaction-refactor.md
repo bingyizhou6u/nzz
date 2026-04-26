@@ -139,13 +139,13 @@
 
 **Steps:**
 
-- [ ] Step 1: 在 `src/app/components/interaction.test.tsx` 写 RED 测试，覆盖 `WorkflowStepper` 当前步骤、`RecordList` 选中态、`ConfirmAction` 二次确认。
-- [ ] Step 2: 运行 `npm test -- src/app/components/interaction.test.tsx`，预期失败，因为文件和组件不存在。
-- [ ] Step 3: 创建 `src/app/components/interaction.tsx`，实现上述组件，不引入外部 UI 库。
-- [ ] Step 4: 在 `src/app/styles.css` 添加 `.split-workspace`、`.record-list`、`.detail-panel`、`.workflow-stepper`、`.page-action-bar` 等基础样式。
-- [ ] Step 5: 运行 `npm test -- src/app/components/interaction.test.tsx src/app/components/ui.test.tsx`。
-- [ ] Step 6: 运行 `npx tsc --noEmit`。
-- [ ] Step 7: 提交。
+- [x] Step 1: 在 `src/app/components/interaction.test.tsx` 写 RED 测试，覆盖 `WorkflowStepper` 当前步骤、`RecordList` 选中态、`ConfirmAction` 二次确认。
+- [x] Step 2: 运行 `npm test -- src/app/components/interaction.test.tsx`，预期失败，因为文件和组件不存在。
+- [x] Step 3: 创建 `src/app/components/interaction.tsx`，实现上述组件，不引入外部 UI 库。
+- [x] Step 4: 在 `src/app/styles.css` 添加 `.split-workspace`、`.record-list`、`.detail-panel`、`.workflow-stepper`、`.page-action-bar` 等基础样式。
+- [x] Step 5: 运行 `npm test -- src/app/components/interaction.test.tsx src/app/components/ui.test.tsx`。
+- [x] Step 6: 运行 `npx tsc --noEmit`。
+- [x] Step 7: 提交。
 
 ```bash
 git add src/app/components/interaction.tsx src/app/components/interaction.test.tsx src/app/components/ui.tsx src/app/components/ui.test.tsx src/app/styles.css
@@ -157,6 +157,12 @@ git commit -m "feat: add formal interaction primitives"
 - 所有页面后续都能复用同一套列表、详情、步骤、确认和筛选容器。
 - 移动端 `.split-workspace` 自动变成单列。
 - 所有可点击区域有清晰 focus-visible 状态。
+
+**完成记录（2026-04-26）：**
+
+- 实现提交：`eaf0d02`、`9dfc073`、`41ec685`、`15d0bd4`。
+- 质量修复：`ConfirmAction` 支持异步防重入、失败重试、焦点回迁和 disabled 状态下可取消；`RecordList` 使用普通 `ul > li > button`，不伪装成 listbox，选择行为依赖原生 button click。
+- 验证：`npm test`、`npx tsc --noEmit`、`npm run build`、`git diff --check` 均通过。
 
 ---
 
