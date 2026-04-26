@@ -198,7 +198,7 @@ export function categoryOptionsForDocumentType(
   return options.categories;
 }
 
-const fieldLabels: Record<DocumentFieldKey, string> = {
+export const documentFieldLabels: Record<DocumentFieldKey, string> = {
   originalDocumentId: "原单据",
   operatorPersonId: "经办人",
   projectId: "项目",
@@ -213,6 +213,10 @@ const fieldLabels: Record<DocumentFieldKey, string> = {
   borrowerPersonId: "借款人",
   summary: "摘要"
 };
+
+export function documentFieldLabel(field: DocumentFieldKey) {
+  return documentFieldLabels[field];
+}
 
 function optionalString(value: string) {
   const trimmed = value.trim();
@@ -245,7 +249,7 @@ export function validateDocumentForm(
     if (!entryState && field === "operatorPersonId" && form.documentType === "petty_cash_reimbursement") continue;
     if (!entryState && field === "projectId" && form.documentType === "loan_writeoff") continue;
     if (field === "originalDocumentId") continue;
-    if (!form[field].trim()) errors.push(`请选择或填写${fieldLabels[field]}`);
+    if (!form[field].trim()) errors.push(`请选择或填写${documentFieldLabel(field)}`);
   }
   if (
     form.documentType === "account_transfer" &&

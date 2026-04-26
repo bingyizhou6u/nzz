@@ -13,6 +13,7 @@ import {
   validateDocumentForm
 } from "./documentEntryModel";
 import { deriveDocumentEntryState } from "./documentEntryRules";
+import { entryStepState, nextStepLabel } from "./documentWorkflowModel";
 import type { DocumentEntryForm, DocumentEntryOptions } from "./documentEntryTypes";
 
 const options: DocumentEntryOptions = {
@@ -469,6 +470,60 @@ describe("document entry model", () => {
     );
 
     expect(payload).toEqual({
+      documentType: "project_income",
+      actionType: "normal",
+      businessDate: "2026-04-24",
+      period: "2026-04",
+      operatorPersonId: "person_ops",
+      projectId: "proj_1",
+      merchantId: "merchant_1",
+      categoryId: "cat_income",
+      summary: "Merchant income",
+      createdBy: "person_ops",
+      lines: [
+        {
+          lineType: "main",
+          accountId: "acct_company_aed",
+          currencyCode: "AED",
+          amountMinor: 12050,
+          usdtAmountMinor: 3284
+        }
+      ]
+    });
+  });
+
+  it("keeps project income payload unchanged when the workflow reaches review", () => {
+    const form: DocumentEntryForm = {
+      ...createInitialDocumentForm(new Date("2026-04-24T10:00:00Z")),
+      documentType: "project_income",
+      actionType: "normal",
+      businessDate: "2026-04-24",
+      period: "2026-04",
+      operatorPersonId: "person_ops",
+      projectId: "proj_1",
+      merchantId: "merchant_1",
+      categoryId: "cat_income",
+      accountId: "acct_company_aed",
+      currencyCode: "AED",
+      amountMajor: "120.50",
+      usdtAmountMajor: "32.84",
+      summary: "Merchant income"
+    };
+    const requiredFields = [
+      "operatorPersonId",
+      "projectId",
+      "merchantId",
+      "categoryId",
+      "accountId",
+      "currencyCode",
+      "amountMajor",
+      "usdtAmountMajor",
+      "summary"
+    ] as const;
+
+    expect(entryStepState(form, requiredFields)[2]).toMatchObject({ id: "review", status: "current", canProceed: true });
+    expect(nextStepLabel(form, requiredFields)).toBe("预览并保存");
+    expect(buildDocumentPayload(form, "person_ops")).toEqual({
       documentType: "project_income",
       actionType: "normal",
       businessDate: "2026-04-24",

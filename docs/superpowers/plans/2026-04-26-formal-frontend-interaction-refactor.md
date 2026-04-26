@@ -249,18 +249,18 @@ git commit -m "feat: improve formal workspace context"
 
 **Steps:**
 
-- [ ] Step 1: 写 `documentWorkflowModel.test.ts`，覆盖 `documentTypeGroup()`、`entryStepState()`、`nextStepLabel()` 和 `documentScenarioCards()`。
-- [ ] Step 2: 运行 `npm test -- src/app/pages/documents/documentWorkflowModel.test.ts`，预期 RED。
-- [ ] Step 3: 实现 `documentWorkflowModel.ts`，只写纯函数，不调用 API。
-- [ ] Step 4: 扩展 `documentEntryModel.test.ts`，确认现有 payload builder 不因步骤化而改变入参和输出。
-- [ ] Step 5: 运行：
+- [x] Step 1: 写 `documentWorkflowModel.test.ts`，覆盖 `documentTypeGroup()`、`entryStepState()`、`nextStepLabel()` 和 `documentScenarioCards()`。
+- [x] Step 2: 运行 `npm test -- src/app/pages/documents/documentWorkflowModel.test.ts`，预期 RED。
+- [x] Step 3: 实现 `documentWorkflowModel.ts`，只写纯函数，不调用 API。
+- [x] Step 4: 扩展 `documentEntryModel.test.ts`，确认现有 payload builder 不因步骤化而改变入参和输出。
+- [x] Step 5: 运行：
 
 ```bash
 npm test -- src/app/pages/documents/documentWorkflowModel.test.ts src/app/pages/documents/documentEntryModel.test.ts
 npx tsc --noEmit
 ```
 
-- [ ] Step 6: 提交。
+- [x] Step 6: 提交。
 
 ```bash
 git add src/app/pages/documents/documentWorkflowModel.ts src/app/pages/documents/documentWorkflowModel.test.ts src/app/pages/documents/documentEntryModel.ts src/app/pages/documents/documentEntryModel.test.ts
@@ -272,6 +272,13 @@ git commit -m "feat: add document workflow interaction model"
 - 页面可以根据业务场景决定显示字段和下一步状态。
 - 业务语义仍由现有 `buildDocumentPayload()` 和后端校验兜底。
 - 纯函数测试能覆盖常见单据类型。
+
+**完成记录（2026-04-26）：**
+
+- 新增 `documentWorkflowModel.ts`，提供单据业务分类、场景卡片、三步状态、缺失字段提示和下一步按钮文案。
+- 导出 `documentFieldLabel()`，让 workflow 文案复用现有单据字段中文标签，不复制字段语义。
+- 补充 payload 回归测试，确认进入 review 状态后 `buildDocumentPayload()` 的项目收入输出保持不变。
+- 验证：`npm test`、`npx tsc --noEmit`、`npm run build`、`npm audit --audit-level=high`、`git diff --check` 均通过。
 
 ---
 
