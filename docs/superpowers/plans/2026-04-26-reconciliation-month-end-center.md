@@ -198,13 +198,13 @@ git commit -m "feat: add month close check rules"
 
 ## 8. Task 3：月结服务编排
 
-状态：待做。
+状态：已完成。
 
 文件：
 
-- [ ] `src/services/monthCloseService.ts`
-- [ ] `tests/services/monthCloseService.test.ts`
-- [ ] 必要时扩展 `src/repositories/reportRepository.ts`
+- [x] `src/services/monthCloseService.ts`
+- [x] `tests/services/monthCloseService.test.ts`
+- [x] 本任务未扩展 `src/repositories/reportRepository.ts`；先通过 `MonthCloseSourceRepository` 窄接口承接五类源查询，真实 SQL 留到 Task 4/接口接入阶段。
 
 目标：
 
@@ -217,10 +217,10 @@ git commit -m "feat: add month close check rules"
 
 TDD 步骤：
 
-- [ ] RED：写 `runChecks(period, actor)` 服务测试。
-- [ ] GREEN：实现最小服务。
-- [ ] 审查：确认 Service 不绕过 Repository、不直接拼接用户 SQL。
-- [ ] 提交。
+- [x] RED：写 `runChecks(period, actor)` 服务测试。提交：`f38b159 test: cover month close service orchestration`。
+- [x] GREEN：实现最小服务。提交：`730ec0f feat: add month close service orchestration`。
+- [x] 审查：确认 Service 不绕过 Repository、不直接拼接用户 SQL；代码质量审查问题已在 `59e3278 fix: harden month close service result contract` 修复并复审 PASS。
+- [x] 提交。
 
 必须覆盖：
 
@@ -244,6 +244,15 @@ TDD 步骤：
 ```bash
 npm test -- tests/services/monthCloseService.test.ts tests/services/monthCloseChecks.test.ts
 npx tsc --noEmit
+```
+
+已执行补充验收：
+
+```bash
+npm test
+npm run build
+npm audit --audit-level=high
+git diff --check
 ```
 
 ## 9. Task 4：月结检查 API
